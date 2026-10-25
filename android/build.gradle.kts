@@ -19,6 +19,17 @@ subprojects {
     project.evaluationDependsOn(":app")
 }
 
+// Release "lintVital" analyzes every Flutter plugin module and needs a lot of
+// metaspace; it repeatedly OOMs on CI. Dart-side checks are covered by
+// `flutter analyze`, so skip the Android release lint tasks here.
+subprojects {
+    tasks.configureEach {
+        if (name.startsWith("lintVital")) {
+            enabled = false
+        }
+    }
+}
+
 tasks.register<Delete>("clean") {
     delete(rootProject.layout.buildDirectory)
 }

@@ -9,10 +9,15 @@ on:
 permissions:
   contents: write
 
+# A newer commit on the same ref makes the previous build obsolete.
+concurrency:
+  group: build-apk-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -23,8 +28,9 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Cache Gradle
-        uses: actions/cache@v4
+      - name: Restore Gradle cache
+        id: gradle-cache
+        uses: actions/cache/restore@v4
         with:
           path: |
             ~/.gradle/caches
@@ -47,10 +53,21 @@ jobs:
         run: flutter analyze
 
       - name: Build universal APK
-        run: flutter build apk --release
+        run: flutter build apk --release --no-pub
 
       - name: Build split APKs
-        run: flutter build apk --release --split-per-abi
+        run: flutter build apk --release --split-per-abi --no-pub
+
+      # Save even when a build step fails, so the next run does not have to
+      # download the Gradle distribution and all dependencies again.
+      - name: Save Gradle cache
+        if: always() && steps.gradle-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('android/**/*.gradle*', 'android/gradle/wrapper/gradle-wrapper.properties') }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
