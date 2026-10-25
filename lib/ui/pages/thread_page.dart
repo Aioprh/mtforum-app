@@ -13,6 +13,7 @@ import '../widgets/post_html_view.dart';
 import '../widgets/state_views.dart';
 import '../widgets/user_avatar.dart';
 import 'login_page.dart';
+import 'user_page.dart';
 
 /// 帖子详情：楼层流 + 分页加载 + 点赞 / 收藏 / 回复 / 楼中楼。
 class ThreadPage extends StatefulWidget {
@@ -42,6 +43,10 @@ class _ThreadPageState extends State<ThreadPage> {
   bool _liked = false;
   bool _disliked = false;
   bool _showEmoji = false;
+  bool _onlyOp = false;
+  bool _orderDesc = false;
+  bool _voting = false;
+  final Set<int> _pollSelected = <int>{};
   ForumPost? _replyTarget;
   bool _quoteTarget = false;
   int _likes = 0;
@@ -98,7 +103,11 @@ class _ThreadPageState extends State<ThreadPage> {
       });
     }
     try {
-      final detail = await _repo.fetchThread(widget.tid);
+      final detail = await _repo.fetchThread(
+        widget.tid,
+        authorId: _onlyOp ? _opUid : null,
+        orderDesc: _orderDesc,
+      );
       if (!mounted) return;
       setState(() {
         _detail = detail;
@@ -109,6 +118,7 @@ class _ThreadPageState extends State<ThreadPage> {
         _hasMore = detail.hasMore;
         _likes = detail.likes;
         _dislikes = detail.dislikes;
+        _pollSelected.clear();
         _loading = false;
       });
     } catch (e) {
@@ -120,13 +130,40 @@ class _ThreadPageState extends State<ThreadPage> {
     }
   }
 
+  int get _opUid {
+    final uid = _detail?.uid ?? 0;
+    if (uid > 0) return uid;
+    return _posts.isNotEmpty ? _posts.first.uid : 0;
+  }
+
+  Future<void> _setOnlyOp(bool value) async {
+    setState(() {
+      _onlyOp = value;
+      _showEmoji = false;
+    });
+    await _load();
+  }
+
+  Future<void> _setOrderDesc(bool value) async {
+    setState(() {
+      _orderDesc = value;
+      _showEmoji = false;
+    });
+    await _load();
+  }
+
   Future<void> _loadMore() async {
     if (_loadingMore || !_hasMore) return;
     setState(() => _loadingMore = true);
     try {
-      final detail = await _repo.fetchThread(widget.tid, page: _page + 1);
+      final detail = await _repo.fetchThread(
+        widget.tid,
+        page: _page + 1,
+        authorId: _onlyOp ? _opUid : null,
+        orderDesc: _orderDesc,
+      );
       if (!mounted) return;
-      final offset = _page * AppConfig.postsPerPage;
+      final offset = _orderDesc ? 0 : _page * AppConfig.postsPerPage;
       setState(() {
         _page += 1;
         _posts.addAll(detail.posts.map((post) => post.copyWith(floor: post.floor + offset)));
@@ -394,6 +431,111 @@ class _ThreadPageState extends State<ThreadPage> {
     _toast('楼层链接已复制');
   }
 
+  bool _isMine(ForumPost post) {
+    final uid = AppState.instance.profile?.uid ?? 0;
+    return post.uid > 0 && uid > 0 && post.uid == uid;
+  }
+
+  void _openUser(int uid, String name) {
+    if (uid <= 0) return;
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => UserPage(uid: uid, name: name)));
+  }
+
+  Future<void> _handleFloorMenu(ForumPost post, String value) async {
+    switch (value) {
+      case 'copy':
+        _copyFloor(post);
+      case 'report':
+        await _report(post);
+      case 'edit':
+        await _editPost(post);
+      case 'delete':
+        await _deletePost(post);
+    }
+  }
+
+  Future<void> _report(ForumPost post) async {
+    if (!await _ensureLogin()) return;
+    final detail = _detail;
+    if (detail == null) return;
+    if (!mounted) return;
+    final result = await showModalBottomSheet<(int, String)>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => _ReportSheet(floor: post.floorLabel),
+    );
+    if (result == null || !mounted) return;
+    try {
+      final message = await _repo.report(
+        fid: detail.fid,
+        tid: widget.tid,
+        pid: post.pid,
+        formhash: detail.formhash,
+        reason: result.$1,
+        message: result.$2,
+      );
+      _toast(message);
+    } catch (e) {
+      _toast(_message(e));
+    }
+  }
+
+  Future<void> _editPost(ForumPost post) async {
+    final detail = _detail;
+    if (detail == null) return;
+    final ok = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => _EditPostPage(
+          fid: detail.fid,
+          tid: widget.tid,
+          pid: post.pid,
+          formhash: detail.formhash,
+          subject: post.isOp ? detail.title : 'Re: ${detail.title}',
+          message: _plainText(post.html),
+          isOp: post.isOp,
+        ),
+      ),
+    );
+    if (ok == true && mounted) {
+      _toast('已保存修改');
+      await _load();
+    }
+  }
+
+  Future<void> _deletePost(ForumPost post) async {
+    final detail = _detail;
+    if (detail == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('删除确认'),
+        content: Text('确定删除${post.isOp ? '整篇主题' : '第 ${post.floor} 楼的回复'}吗？删除后不可恢复。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('删除')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      final message = await _repo.deletePost(
+        fid: detail.fid,
+        tid: widget.tid,
+        pid: post.pid,
+        formhash: detail.formhash,
+      );
+      _toast(message);
+      if (post.isOp && mounted) {
+        Navigator.of(context).maybePop();
+        return;
+      }
+      await _load();
+    } catch (e) {
+      _toast(_message(e));
+    }
+  }
+
   void _handleMenu(String value) {
     switch (value) {
       case 'favorite':
@@ -404,6 +546,10 @@ class _ThreadPageState extends State<ThreadPage> {
         _openInBrowser();
       case 'refresh':
         _load();
+      case 'onlyOp':
+        _setOnlyOp(!_onlyOp);
+      case 'order':
+        _setOrderDesc(!_orderDesc);
     }
   }
 
@@ -454,6 +600,24 @@ class _ThreadPageState extends State<ThreadPage> {
                   contentPadding: EdgeInsets.zero,
                   leading: Icon(Icons.open_in_browser_rounded),
                   title: Text('在浏览器打开'),
+                ),
+              ),
+              PopupMenuItem(
+                value: 'onlyOp',
+                child: ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(_onlyOp ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded),
+                  title: const Text('只看楼主'),
+                ),
+              ),
+              PopupMenuItem(
+                value: 'order',
+                child: ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(_orderDesc ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded),
+                  title: const Text('倒序浏览'),
                 ),
               ),
               const PopupMenuItem(
@@ -589,11 +753,145 @@ class _ThreadPageState extends State<ThreadPage> {
               ),
             ],
           ),
+          if (detail.poll != null) ...[
+            const SizedBox(height: 10),
+            _pollCard(detail.poll!),
+          ],
           const SizedBox(height: 6),
           Divider(color: scheme.outlineVariant.withValues(alpha: 0.7)),
         ],
       ),
     );
+  }
+
+  /// 投票卡片：显示选项与票数，未投票时可直接勾选提交。
+  Widget _pollCard(Poll poll) {
+    final scheme = Theme.of(context).colorScheme;
+    final votable = !poll.expired && poll.options.every((option) => option.id > 0);
+    final maxVotes = poll.options.fold<int>(1, (max, option) => option.votes > max ? option.votes : max);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: scheme.primary.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: scheme.primary.withValues(alpha: 0.16)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.how_to_vote_rounded, size: 16, color: scheme.primary),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  poll.multiple ? '投票 · 多选' : '投票 · 单选',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: scheme.primary),
+                ),
+              ),
+              Text(
+                poll.total > 0 ? '${poll.total} 人参与' : (poll.expired ? '已结束' : '暂无投票'),
+                style: TextStyle(fontSize: 10.5, color: scheme.outline),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          for (final option in poll.options)
+            InkWell(
+              onTap: votable && option.id > 0
+                  ? () => setState(() {
+                        if (poll.multiple) {
+                          if (!_pollSelected.remove(option.id)) _pollSelected.add(option.id);
+                        } else {
+                          _pollSelected
+                            ..clear()
+                            ..add(option.id);
+                        }
+                      })
+                  : null,
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 5),
+                child: Row(
+                  children: [
+                    Icon(
+                      _pollSelected.contains(option.id)
+                          ? (poll.multiple ? Icons.check_box_rounded : Icons.radio_button_checked_rounded)
+                          : (poll.multiple ? Icons.check_box_outline_blank_rounded : Icons.radio_button_unchecked_rounded),
+                      size: 17,
+                      color: _pollSelected.contains(option.id) ? scheme.primary : scheme.outline,
+                    ),
+                    const SizedBox(width: 7),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(option.text, style: const TextStyle(fontSize: 12.5, height: 1.4)),
+                          if (option.votes > 0) ...[
+                            const SizedBox(height: 3),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(3),
+                              child: LinearProgressIndicator(
+                                value: option.votes / (maxVotes == 0 ? 1 : maxVotes),
+                                minHeight: 4,
+                                backgroundColor: scheme.surfaceContainerHighest,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      option.votes > 0 ? '${option.votes} 票' : '',
+                      style: TextStyle(fontSize: 10.5, color: scheme.onSurfaceVariant),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          if (votable && !poll.voted) ...[
+            const SizedBox(height: 6),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton.tonal(
+                onPressed: _voting ? null : _vote,
+                style: FilledButton.styleFrom(minimumSize: const Size(88, 32), padding: const EdgeInsets.symmetric(horizontal: 14)),
+                child: _voting
+                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Text('提交投票', style: TextStyle(fontSize: 12)),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Future<void> _vote() async {
+    final detail = _detail;
+    if (detail == null) return;
+    if (!await _ensureLogin()) return;
+    if (_pollSelected.isEmpty) {
+      _toast('请先选择投票选项');
+      return;
+    }
+    setState(() => _voting = true);
+    try {
+      final message = await _repo.votePoll(
+        tid: widget.tid,
+        fid: detail.fid,
+        formhash: detail.formhash,
+        ids: _pollSelected.toList(),
+      );
+      if (!mounted) return;
+      _toast(message);
+      await _load();
+    } catch (e) {
+      _toast(_message(e));
+    } finally {
+      if (mounted) setState(() => _voting = false);
+    }
   }
 
   Widget _actionButton({
@@ -660,7 +958,10 @@ class _ThreadPageState extends State<ThreadPage> {
           children: [
             Row(
               children: [
-                UserAvatar(url: post.avatar, name: post.author, size: 34),
+                GestureDetector(
+                  onTap: () => _openUser(post.uid, post.author),
+                  child: UserAvatar(url: post.avatar, name: post.author, size: 34),
+                ),
                 const SizedBox(width: 9),
                 Expanded(
                   child: Column(
@@ -669,11 +970,14 @@ class _ThreadPageState extends State<ThreadPage> {
                       Row(
                         children: [
                           Flexible(
-                            child: Text(
-                              post.author.isEmpty ? '匿名' : post.author,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                            child: GestureDetector(
+                              onTap: () => _openUser(post.uid, post.author),
+                              child: Text(
+                                post.author.isEmpty ? '匿名' : post.author,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                              ),
                             ),
                           ),
                           if (post.level.isNotEmpty) ...[
@@ -733,7 +1037,54 @@ class _ThreadPageState extends State<ThreadPage> {
                 _floorAction(Icons.reply_rounded, '回复', () => _startReply(post), highlight: targeted && !_quoteTarget),
                 _floorAction(Icons.format_quote_rounded, '引用', () => _startQuote(post), highlight: targeted && _quoteTarget),
                 _floorAction(Icons.chat_bubble_outline_rounded, '点评', () => _openCommentSheet(post), highlight: false),
-                _floorAction(Icons.link_rounded, '复制楼层', () => _copyFloor(post), highlight: false),
+                const Spacer(),
+                PopupMenuButton<String>(
+                  tooltip: '更多操作',
+                  padding: EdgeInsets.zero,
+                  iconSize: 18,
+                  icon: Icon(Icons.more_horiz_rounded, color: Theme.of(context).colorScheme.outline),
+                  onSelected: (value) => _handleFloorMenu(post, value),
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(
+                      value: 'copy',
+                      child: ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(Icons.link_rounded, size: 20),
+                        title: Text('复制楼层'),
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'report',
+                      child: ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(Icons.flag_outlined, size: 20),
+                        title: Text('举报'),
+                      ),
+                    ),
+                    if (_isMine(post)) ...[
+                      const PopupMenuItem(
+                        value: 'edit',
+                        child: ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(Icons.edit_outlined, size: 20),
+                          title: Text('编辑'),
+                        ),
+                      ),
+                      const PopupMenuItem(
+                        value: 'delete',
+                        child: ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(Icons.delete_outline_rounded, size: 20),
+                          title: Text('删除'),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ],
             ),
           ],
@@ -1021,6 +1372,236 @@ class _CommentSheetState extends State<_CommentSheet> {
                 ),
               ),
               FilledButton(onPressed: _send, child: const Text('发送')),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 编辑主题或回复。
+class _EditPostPage extends StatefulWidget {
+  const _EditPostPage({
+    required this.fid,
+    required this.tid,
+    required this.pid,
+    required this.formhash,
+    required this.subject,
+    required this.message,
+    required this.isOp,
+  });
+
+  final int fid;
+  final int tid;
+  final int pid;
+  final String formhash;
+  final String subject;
+  final String message;
+  final bool isOp;
+
+  @override
+  State<_EditPostPage> createState() => _EditPostPageState();
+}
+
+class _EditPostPageState extends State<_EditPostPage> {
+  late final TextEditingController _subject = TextEditingController(text: widget.subject);
+  late final TextEditingController _message = TextEditingController(text: widget.message);
+  bool _saving = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _subject.dispose();
+    _message.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final subject = widget.isOp ? _subject.text.trim() : widget.subject;
+    final message = _message.text.trim();
+    if (widget.isOp && subject.isEmpty) {
+      setState(() => _error = '标题不能为空');
+      return;
+    }
+    if (message.isEmpty) {
+      setState(() => _error = '内容不能为空');
+      return;
+    }
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await AppState.instance.repo.editPost(
+        fid: widget.fid,
+        tid: widget.tid,
+        pid: widget.pid,
+        subject: subject,
+        message: message,
+        formhash: widget.formhash,
+      );
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _error = e is SiteException ? e.message : '保存失败，请稍后重试';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.isOp ? '编辑主题' : '编辑回复'),
+        actions: [
+          TextButton(
+            onPressed: _saving ? null : _save,
+            child: _saving
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Text('保存', style: TextStyle(fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+          children: [
+            if (widget.isOp) ...[
+              TextField(
+                controller: _subject,
+                maxLength: 80,
+                decoration: const InputDecoration(
+                  labelText: '标题',
+                  counterText: '',
+                  prefixIcon: Icon(Icons.title_rounded),
+                ),
+              ),
+              const SizedBox(height: 14),
+            ],
+            TextField(
+              controller: _message,
+              minLines: 10,
+              maxLines: null,
+              keyboardType: TextInputType.multiline,
+              decoration: const InputDecoration(
+                labelText: '内容',
+                alignLabelWithHint: true,
+                hintText: '支持 Discuz BBCode',
+              ),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 12),
+              Text(_error!, style: TextStyle(fontSize: 12.5, color: scheme.error)),
+            ],
+            const SizedBox(height: 18),
+            FilledButton.icon(
+              onPressed: _saving ? null : _save,
+              icon: const Icon(Icons.done_rounded, size: 18),
+              label: Text(_saving ? '正在保存…' : '保存修改'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 举报面板。
+class _ReportSheet extends StatefulWidget {
+  const _ReportSheet({required this.floor});
+
+  final String floor;
+
+  @override
+  State<_ReportSheet> createState() => _ReportSheetState();
+}
+
+class _ReportSheetState extends State<_ReportSheet> {
+  static const List<String> _reasons = ['广告垃圾', '违规内容', '重复发帖', '恶意灌水', '其他'];
+
+  final TextEditingController _controller = TextEditingController();
+  int _reason = 1;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 16,
+        right: 16,
+        top: 12,
+        bottom: MediaQuery.viewInsetsOf(context).bottom + 14,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '举报 ${widget.floor}',
+                  style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700),
+                ),
+              ),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                onPressed: () => Navigator.of(context).pop(),
+                icon: const Icon(Icons.close_rounded, size: 18),
+              ),
+            ],
+          ),
+          for (var i = 0; i < _reasons.length; i++)
+            InkWell(
+              onTap: () => setState(() => _reason = i + 1),
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 2),
+                child: Row(
+                  children: [
+                    Icon(
+                      _reason == i + 1 ? Icons.radio_button_checked_rounded : Icons.radio_button_unchecked_rounded,
+                      size: 17,
+                      color: _reason == i + 1 ? scheme.primary : scheme.outline,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(_reasons[i], style: const TextStyle(fontSize: 13)),
+                  ],
+                ),
+              ),
+            ),
+          const SizedBox(height: 6),
+          TextField(
+            controller: _controller,
+            minLines: 1,
+            maxLines: 3,
+            maxLength: 120,
+            decoration: const InputDecoration(
+              hintText: '补充说明（可选）',
+              isDense: true,
+              border: OutlineInputBorder(),
+            ),
+          ),
+          Row(
+            children: [
+              Expanded(
+                child: Text('举报将由版主处理', style: TextStyle(fontSize: 11, color: scheme.outline)),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop((_reason, _controller.text.trim())),
+                child: const Text('提交举报'),
+              ),
             ],
           ),
         ],

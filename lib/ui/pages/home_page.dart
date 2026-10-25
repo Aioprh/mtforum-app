@@ -4,6 +4,7 @@ import '../../data/models.dart';
 import '../../state/app_state.dart';
 import '../pages/thread_page.dart';
 import '../widgets/thread_feed.dart';
+import 'notifications_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key, this.onOpenSearch});
@@ -83,6 +84,19 @@ class _HomePageState extends State<HomePage> {
                   ],
                 ),
               ),
+              IconButton.filledTonal(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const NotificationsPage()),
+                ),
+                icon: const Icon(Icons.notifications_none_rounded, size: 21),
+                style: IconButton.styleFrom(
+                  backgroundColor: scheme.surface,
+                  foregroundColor: scheme.onSurface,
+                  minimumSize: const Size(42, 42),
+                  side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.6)),
+                ),
+              ),
+              const SizedBox(width: 8),
               IconButton.filledTonal(
                 onPressed: widget.onOpenSearch,
                 icon: const Icon(Icons.search_rounded, size: 21),

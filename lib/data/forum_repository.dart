@@ -89,11 +89,21 @@ class ForumRepository {
 
   // ---------------------------------------------------------------- 详情
 
-  Future<ThreadDetail> fetchThread(int tid, {int page = 1}) async {
-    final result = await _http.get(
-      'forum.php',
-      query: {'mod': 'viewthread', 'tid': '$tid', 'mobile': '2', 'page': '$page'},
-    );
+  Future<ThreadDetail> fetchThread(
+    int tid, {
+    int page = 1,
+    int? authorId,
+    bool orderDesc = false,
+  }) async {
+    final query = <String, String>{
+      'mod': 'viewthread',
+      'tid': '$tid',
+      'mobile': '2',
+      'page': '$page',
+    };
+    if (authorId != null && authorId > 0) query['authorid'] = '$authorId';
+    if (orderDesc) query['ordertype'] = '1';
+    final result = await _http.get('forum.php', query: query);
     _ensureOk(result);
     final html = result.body;
     final doc = parser.parse(html);
@@ -160,7 +170,62 @@ class ForumRepository {
       dislikes: _intOf(doc.querySelector('#recommendv_subtract')?.text),
       uploadHash: _findUploadHash(html),
       uid: _findUid(html),
+      poll: _parsePoll(doc),
       notice: notice,
+    );
+  }
+
+  /// 解析投票区块：兼容存在可投票表单与仅展示结果两种页面。
+  Poll? _parsePoll(Document doc) {
+    final container = doc.querySelector(
+      '.comiis_poll, #poll, .poll, .comiis_pollbox, .pollpanel, form[action*="votepoll"]',
+    );
+    if (container == null) return null;
+
+    final options = <PollOption>[];
+    var multiple = false;
+    for (final input in container.querySelectorAll('input')) {
+      final type = (input.attributes['type'] ?? '').toLowerCase();
+      if (type != 'radio' && type != 'checkbox') continue;
+      final name = input.attributes['name'] ?? '';
+      if (!name.contains('pollanswer') && !name.contains('polloption')) continue;
+      final id = int.tryParse(input.attributes['value'] ?? '') ?? 0;
+      if (id <= 0) continue;
+      if (type == 'checkbox') multiple = true;
+      final raw = _clean(input.parent?.text ?? '');
+      final votes = RegExp(r'(\d+)\s*票').firstMatch(raw)?.group(1);
+      final text = raw
+          .replaceAll(RegExp(r'[（(]?\s*\d+\s*票[）)]?'), '')
+          .replaceAll(RegExp(r'\d+(\.\d+)?%'), '')
+          .trim();
+      if (text.isEmpty) continue;
+      options.add(PollOption(id: id, text: text, votes: int.tryParse(votes ?? '') ?? 0));
+    }
+
+    if (options.isEmpty) {
+      for (final label in container.querySelectorAll('label, li, .polloption')) {
+        final text = _clean(label.text);
+        if (text.isEmpty || text.length > 80) continue;
+        final votes = RegExp(r'(\d+)\s*票').firstMatch(text);
+        options.add(PollOption(
+          id: 0,
+          text: text.replaceAll(RegExp(r'[（(]?\s*\d+\s*票[）)]?'), '').trim(),
+          votes: int.tryParse(votes?.group(1) ?? '') ?? 0,
+        ));
+      }
+    }
+    if (options.isEmpty) return null;
+
+    final text = _clean(container.text);
+    final total = int.tryParse(RegExp(r'共\s*(\d+)\s*人参与').firstMatch(text)?.group(1) ?? '') ??
+        options.fold<int>(0, (sum, option) => sum + option.votes);
+    final hasForm = container.querySelector('input[type=radio], input[type=checkbox]') != null;
+    return Poll(
+      options: options,
+      multiple: multiple || text.contains('多选'),
+      total: total,
+      voted: !hasForm && options.any((option) => option.votes > 0),
+      expired: text.contains('投票已结束') || text.contains('已结束'),
     );
   }
 
@@ -409,6 +474,335 @@ class ForumRepository {
     throw SiteException(msg ?? (up ? '点赞失败，请稍后重试' : '操作失败，请稍后重试'));
   }
 
+  /// 参与投票。`ids` 为选项 id，多选时逐个提交。
+  Future<String> votePoll({
+    required int tid,
+    required int fid,
+    required String formhash,
+    required List<int> ids,
+  }) async {
+    if (ids.isEmpty) throw SiteException('请选择投票选项');
+    if (formhash.isEmpty) throw SiteException('投票凭证已失效，请下拉刷新后重试');
+    final form = <String, String>{
+      'formhash': formhash,
+      'pollsubmit': 'yes',
+      'quickforward': 'yes',
+      'handlekey': 'poll',
+    };
+    for (var i = 0; i < ids.length; i++) {
+      form['pollanswers[$i]'] = '${ids[i]}';
+    }
+    final response = await _http.post(
+      'forum.php',
+      query: {
+        'mod': 'misc',
+        'action': 'votepoll',
+        'tid': '$tid',
+        'fid': '$fid',
+        'mobile': '2',
+      },
+      referer: _threadReferer(tid),
+      form: form,
+    );
+    final msg = _pageMessage(parser.parse(response.body));
+    if (msg != null && _looksLikeError(msg)) throw SiteException(msg);
+    return msg ?? '投票成功';
+  }
+
+  /// 编辑自己的帖子 / 回复。
+  Future<String> editPost({
+    required int fid,
+    required int tid,
+    required int pid,
+    required String subject,
+    required String message,
+    required String formhash,
+  }) async {
+    final response = await _http.post(
+      'forum.php',
+      query: {
+        'mod': 'post',
+        'action': 'edit',
+        'fid': '$fid',
+        'tid': '$tid',
+        'pid': '$pid',
+        'editsubmit': 'yes',
+        'mobile': '2',
+      },
+      referer: _threadReferer(tid),
+      form: {
+        'formhash': formhash,
+        'subject': subject,
+        'message': message,
+        'posttime': '${DateTime.now().millisecondsSinceEpoch ~/ 1000}',
+        'usesig': '1',
+        'save': '',
+      },
+    );
+    final msg = _pageMessage(parser.parse(response.body));
+    if (msg != null && _looksLikeError(msg)) throw SiteException(msg);
+    return '编辑成功';
+  }
+
+  /// 删除自己的帖子 / 回复（Discuz 用 `action=edit&delete=1`）。
+  Future<String> deletePost({
+    required int fid,
+    required int tid,
+    required int pid,
+    required String formhash,
+  }) async {
+    final response = await _http.get(
+      'forum.php',
+      query: {
+        'mod': 'post',
+        'action': 'edit',
+        'fid': '$fid',
+        'tid': '$tid',
+        'pid': '$pid',
+        'delete': '1',
+        'formhash': formhash,
+        'mobile': '2',
+      },
+      referer: _threadReferer(tid),
+    );
+    final msg = _pageMessage(parser.parse(response.body));
+    if (msg != null && _looksLikeError(msg)) throw SiteException(msg);
+    return '已删除';
+  }
+
+  /// 举报主题或回复。
+  Future<String> report({
+    required int fid,
+    required int tid,
+    required int pid,
+    required String formhash,
+    required int reason,
+    String message = '',
+  }) async {
+    final response = await _http.post(
+      'forum.php',
+      query: {
+        'mod': 'misc',
+        'action': 'report',
+        'fid': '$fid',
+        'tid': '$tid',
+        'pid': '$pid',
+        'reportsubmit': 'yes',
+        'handlekey': 'report',
+        'mobile': '2',
+      },
+      referer: _threadReferer(tid),
+      form: {
+        'formhash': formhash,
+        'reason': '$reason',
+        'message': message,
+      },
+    );
+    final msg = _pageMessage(parser.parse(response.body));
+    if (msg != null && _looksLikeError(msg)) throw SiteException(msg);
+    return '举报已提交';
+  }
+
+  /// 他人主页资料。`hash` 为关注操作所需的 formhash。
+  Future<(UserProfile, String)> fetchUserProfile(int uid) async {
+    final result = await _http.get(
+      'home.php',
+      query: {'mod': 'space', 'uid': '$uid', 'do': 'profile', 'mobile': '2'},
+    );
+    _ensureOk(result);
+    final doc = parser.parse(result.body);
+    final html = result.body;
+    final bodyText = _clean(doc.body?.text ?? '');
+    String numberAfter(String label) {
+      final match = RegExp('$label\\s*[:：]?\\s*(\\d+)').firstMatch(bodyText);
+      return match?.group(1) ?? '';
+    }
+
+    final name = _clean(
+      doc.querySelector('.comiis_space_name')?.text ??
+          doc.querySelector('.space_name')?.text ??
+          doc.querySelector('.top_user')?.text ??
+          RegExp(r"username\s*=\s*'([^']*)'").firstMatch(html)?.group(1) ??
+          '',
+    );
+    var avatar = _absolute(
+      doc.querySelector('.comiis_space_tximg img')?.attributes['src'] ??
+          doc.querySelector('img[src*="/avatar/"]')?.attributes['src'],
+    );
+    if (avatar.isEmpty && uid > 0) avatar = _avatarForUid(uid);
+    final level = RegExp(r'(Lv\.\s*\d+[^\s]{0,8})').firstMatch(bodyText)?.group(1) ?? '';
+
+    return (
+      UserProfile(
+        uid: uid,
+        username: name,
+        avatar: avatar,
+        level: _clean(level),
+        credits: numberAfter('金币'),
+        posts: numberAfter('主题'),
+        replies: numberAfter('帖子'),
+        followers: numberAfter('粉丝'),
+        regTime: RegExp(r'注册时间\s*[:：]?\s*([0-9\-\/年月日]+)').firstMatch(bodyText)?.group(1) ?? '',
+        group: _clean(doc.querySelector('.comiis_space_group')?.text ?? ''),
+      ),
+      _findFormhash(html),
+    );
+  }
+
+  Future<List<ThreadSummary>> fetchUserThreads(int uid, {int page = 1}) => fetchPersonalList(
+        'home.php',
+        query: {
+          'mod': 'space',
+          'uid': '$uid',
+          'do': 'thread',
+          'view': 'me',
+          'mobile': '2',
+          'page': '$page',
+        },
+      );
+
+  Future<List<ThreadSummary>> fetchUserReplies(int uid, {int page = 1}) => fetchPersonalList(
+        'home.php',
+        query: {
+          'mod': 'space',
+          'uid': '$uid',
+          'do': 'reply',
+          'view': 'me',
+          'mobile': '2',
+          'page': '$page',
+        },
+      );
+
+  /// 关注 / 取消关注用户。
+  Future<bool> followUser({required int uid, required bool follow, required String hash}) async {
+    if (hash.isEmpty) throw SiteException('操作凭证已失效，请重新进入主页');
+    final result = await _http.get(
+      'home.php',
+      query: {
+        'mod': 'spacecp',
+        'ac': 'follow',
+        'op': follow ? 'add' : 'del',
+        'hash': hash,
+        'fuid': '$uid',
+        'from': 'space',
+        'mobile': '2',
+      },
+      referer: AppConfig.uri('home.php', {'mod': 'space', 'uid': '$uid'}).toString(),
+    );
+    _ensureOk(result);
+    final msg = _pageMessage(parser.parse(result.body));
+    if (msg != null && _looksLikeError(msg)) throw SiteException(msg);
+    return follow;
+  }
+
+  /// 消息通知：回复提醒 / @提醒 / 系统通知。
+  Future<List<NoticeItem>> fetchNotices({int page = 1}) async {
+    final result = await _http.get(
+      'home.php',
+      query: {'mod': 'space', 'do': 'notice', 'mobile': '2', 'page': '$page'},
+    );
+    _ensureOk(result);
+    final doc = parser.parse(result.body);
+    final items = <NoticeItem>[];
+    final containers = doc.querySelectorAll('.comiis_notice, .comiis_noticeli, .notice, .comiis_notice_list li');
+    for (final el in containers) {
+      final text = _clean(el.text);
+      if (text.isEmpty || text.length > 400) continue;
+      final link = el.querySelector('a[href]');
+      items.add(NoticeItem(
+        title: _clean(el.querySelector('h3, .comiis_notice_title, .title')?.text ?? text),
+        text: text,
+        time: _clean(el.querySelector('.time, .comiis_notice_time')?.text ?? ''),
+        url: _absolute(link?.attributes['href']),
+        kind: _clean(el.querySelector('.type')?.text ?? ''),
+      ));
+    }
+    return items;
+  }
+
+  /// 排行榜：type ∈ member / thread / forum。
+  Future<List<(String, String)>> fetchRanking(String type) async {
+    final result = await _http.get(
+      'misc.php',
+      query: {'mod': 'ranklist', 'type': type, 'mobile': '2'},
+    );
+    _ensureOk(result);
+    final doc = parser.parse(result.body);
+    final items = <(String, String)>[];
+    final rows = doc.querySelectorAll('.comiis_ranklist li, .ranklist li, ol li');
+    for (final row in rows) {
+      final name = _clean(row.querySelector('a')?.text ?? row.text);
+      if (name.isEmpty) continue;
+      final value = _clean(
+        row.querySelector('.comiis_ranknum, .num, em, span')?.text ?? '',
+      ).replaceAll(RegExp(r'^[^\d]*'), '');
+      items.add((name, value));
+    }
+    if (items.isEmpty) {
+      for (final a in doc.querySelectorAll('a[href*="uid="], a[href*="thread-"]')) {
+        final name = _clean(a.text);
+        if (name.isEmpty) continue;
+        items.add((name, ''));
+      }
+    }
+    return items;
+  }
+
+  /// 标签列表。
+  Future<List<(String, int)>> fetchTags() async {
+    final result = await _http.get('misc.php', query: {'mod': 'tag', 'mobile': '2'});
+    _ensureOk(result);
+    final doc = parser.parse(result.body);
+    final tags = <(String, int)>[];
+    final seen = <int>{};
+    for (final a in doc.querySelectorAll('a[href*="mod=tag"]')) {
+      final id = int.tryParse(
+            RegExp(r'[?&]id=(\d+)').firstMatch(a.attributes['href'] ?? '')?.group(1) ?? '',
+          ) ??
+          0;
+      final name = _clean(a.text);
+      if (name.isEmpty || id <= 0 || !seen.add(id)) continue;
+      tags.add((name, id));
+    }
+    return tags;
+  }
+
+  /// 标签下的主题列表。
+  Future<List<ThreadSummary>> fetchTagThreads(int id, {int page = 1}) => fetchPersonalList(
+        'misc.php',
+        query: {'mod': 'tag', 'id': '$id', 'mobile': '2', 'page': '$page'},
+      );
+
+  /// 每日签到（k_misign 插件）。
+  Future<String> signIn() async {
+    final home = await _http.get('home.php', query: {'mobile': '2'});
+    _ensureOk(home);
+    final hash = _findFormhash(home.body);
+    if (hash.isEmpty) throw SiteException('请先登录后再签到');
+    final result = await _http.get(
+      'plugin.php',
+      query: {
+        'id': 'k_misign:sign',
+        'operation': 'qiandao',
+        'format': 'button',
+        'formhash': hash,
+        'mobile': '2',
+      },
+      referer: AppConfig.uri('home.php', {'mobile': '2'}).toString(),
+    );
+    _ensureOk(result);
+    final text = _clean(result.body);
+    if (text.contains('已签到') || text.contains('签到成功') || text.contains('成功')) {
+      return text.length <= 40 ? text : '签到成功';
+    }
+    final msg = _pageMessage(parser.parse(result.body));
+    if (msg != null && _looksLikeError(msg)) throw SiteException(msg);
+    return text.isEmpty ? '签到完成' : (text.length <= 40 ? text : '签到完成');
+  }
+
+  String _threadReferer(int tid) =>
+      AppConfig.uri('forum.php', {'mod': 'viewthread', 'tid': '$tid', 'mobile': '2'}).toString();
+
   Future<String> reply({
     required int tid,
     required int fid,
@@ -491,12 +885,21 @@ class ForumRepository {
     bool orderDesc = false,
     bool notify = false,
     bool useSignature = true,
+    bool poll = false,
+    List<String> pollOptions = const [],
+    bool pollMultiple = false,
   }) async {
     var hash = formhash;
     if (hash.isEmpty) {
       final page = await _http.get(
         'forum.php',
-        query: {'mod': 'post', 'action': 'newthread', 'fid': '$fid', 'mobile': '2'},
+        query: {
+          'mod': 'post',
+          'action': 'newthread',
+          'fid': '$fid',
+          if (poll) 'special': '1',
+          'mobile': '2',
+        },
       );
       _ensureOk(page);
       hash = _findFormhash(page.body);
@@ -507,12 +910,19 @@ class ForumRepository {
 
     final response = await _http.post(
       'forum.php',
-      referer: AppConfig.uri('forum.php', {'mod': 'post', 'action': 'newthread', 'fid': '$fid', 'mobile': '2'}).toString(),
+      referer: AppConfig.uri('forum.php', {
+        'mod': 'post',
+        'action': 'newthread',
+        'fid': '$fid',
+        if (poll) 'special': '1',
+        'mobile': '2',
+      }).toString(),
       query: {
         'mod': 'post',
         'action': 'newthread',
         'fid': '$fid',
         'topicsubmit': 'yes',
+        if (poll) 'special': '1',
         'mobile': '2',
       },
       form: {
@@ -526,6 +936,11 @@ class ForumRepository {
         if (replyOnly) 'replyonly': '1',
         if (orderDesc) 'ordertype': '1',
         if (notify) 'emailnotify': '1',
+        if (poll) ...{
+          'polloptions': pollOptions.join('\n'),
+          'pollmultiple': pollMultiple ? '1' : '0',
+          'maxselect': pollMultiple ? '${pollOptions.length}' : '1',
+        },
         for (final aid in attachmentIds) 'attachnew[$aid][description]': '',
         'save': '',
       },

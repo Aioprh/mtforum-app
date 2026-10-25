@@ -61,6 +61,49 @@ class ForumComment {
   final String time;
 }
 
+/// 投票选项。
+class PollOption {
+  const PollOption({required this.id, required this.text, this.votes = 0});
+
+  final int id;
+  final String text;
+  final int votes;
+}
+
+/// 主题投票。
+class Poll {
+  const Poll({
+    this.options = const <PollOption>[],
+    this.multiple = false,
+    this.total = 0,
+    this.voted = false,
+    this.expired = false,
+  });
+
+  final List<PollOption> options;
+  final bool multiple;
+  final int total;
+  final bool voted;
+  final bool expired;
+}
+
+/// 消息通知（回复提醒、@提醒、系统通知）。
+class NoticeItem {
+  const NoticeItem({
+    required this.title,
+    this.text = '',
+    this.time = '',
+    this.url = '',
+    this.kind = '',
+  });
+
+  final String title;
+  final String text;
+  final String time;
+  final String url;
+  final String kind;
+}
+
 class ForumPost {
   ForumPost({
     required this.pid,
@@ -129,6 +172,7 @@ class ThreadDetail {
     this.dislikes = 0,
     this.uploadHash = '',
     this.uid = 0,
+    this.poll,
     this.notice = '',
   });
 
@@ -150,6 +194,7 @@ class ThreadDetail {
   /// 当前页面用于附件上传的 hash 与 uid（游客为 0）。
   final String uploadHash;
   final int uid;
+  final Poll? poll;
   final String notice;
 
   ThreadDetail copyWith({List<ForumPost>? posts, bool? hasMore, int? likes, int? dislikes}) => ThreadDetail(
@@ -169,6 +214,7 @@ class ThreadDetail {
         dislikes: dislikes ?? this.dislikes,
         uploadHash: uploadHash,
         uid: uid,
+        poll: poll,
         notice: notice,
       );
 }

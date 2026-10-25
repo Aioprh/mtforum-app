@@ -53,12 +53,18 @@ class _ComposePageState extends State<ComposePage> {
   final GlobalKey _messageKey = GlobalKey();
   final ImagePicker _picker = ImagePicker();
   final List<_DraftAttachment> _attachments = <_DraftAttachment>[];
+  final List<TextEditingController> _pollOptions = <TextEditingController>[
+    TextEditingController(),
+    TextEditingController(),
+  ];
 
   List<ForumCategory> _categories = const [];
   bool _loadingBoards = true;
   bool _submitting = false;
   bool _uploading = false;
   bool _restoredDraft = false;
+  bool _poll = false;
+  bool _pollMultiple = false;
   int? _fid;
   int? _draftFid;
   String? _error;
@@ -88,6 +94,9 @@ class _ComposePageState extends State<ComposePage> {
     _mediaUrl.dispose();
     _messageFocus.dispose();
     _scroll.dispose();
+    for (final controller in _pollOptions) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
@@ -386,6 +395,26 @@ class _ComposePageState extends State<ComposePage> {
     _messageFocus.requestFocus();
   }
 
+  void _addPollOption() {
+    if (_pollOptions.length >= 10) {
+      _toast('最多添加 10 个选项');
+      return;
+    }
+    setState(() => _pollOptions.add(TextEditingController()));
+  }
+
+  void _removePollOption(int index) {
+    if (_pollOptions.length <= 2) return;
+    final controller = _pollOptions.removeAt(index);
+    controller.dispose();
+    setState(() {});
+  }
+
+  List<String> get _pollTexts => [
+        for (final controller in _pollOptions)
+          if (controller.text.trim().isNotEmpty) controller.text.trim(),
+      ];
+
   Future<void> _submit() async {
     if (_submitting) return;
     FocusScope.of(context).unfocus();
@@ -401,7 +430,12 @@ class _ComposePageState extends State<ComposePage> {
       setState(() => _error = '请填写标题');
       return;
     }
-    if (message.length < 4) {
+    final options = _pollTexts;
+    if (_poll && options.length < 2) {
+      setState(() => _error = '投票至少需要两个选项');
+      return;
+    }
+    if (!_poll && message.length < 4) {
       setState(() => _error = '正文内容太短');
       return;
     }
@@ -426,6 +460,9 @@ class _ComposePageState extends State<ComposePage> {
         orderDesc: _orderDesc,
         notify: _notify,
         useSignature: _useSignature,
+        poll: _poll,
+        pollOptions: options,
+        pollMultiple: _pollMultiple,
       );
       await _clearDraft();
       if (!mounted) return;
@@ -491,6 +528,8 @@ class _ComposePageState extends State<ComposePage> {
 
   List<Widget> _content(ColorScheme scheme) {
     return [
+      _modeTabs(scheme),
+      const SizedBox(height: 12),
       if (_loadingBoards)
         const Padding(
           padding: EdgeInsets.symmetric(vertical: 12),
@@ -525,16 +564,22 @@ class _ComposePageState extends State<ComposePage> {
         ),
       ),
       const SizedBox(height: 14),
+      if (_poll) ...[
+        _pollEditor(scheme),
+        const SizedBox(height: 14),
+      ],
       TextField(
         key: _messageKey,
         controller: _message,
         focusNode: _messageFocus,
-        minLines: 8,
+        minLines: _poll ? 3 : 8,
         maxLines: null,
         keyboardType: TextInputType.multiline,
         textInputAction: TextInputAction.newline,
-        decoration: const InputDecoration(
-          hintText: '想和大家分享点什么…\n\n支持 Discuz 常用 BBCode，可在下方工具栏插入表情、图片与链接。',
+        decoration: InputDecoration(
+          hintText: _poll
+              ? '投票说明（可选）'
+              : '想和大家分享点什么…\n\n支持 Discuz 常用 BBCode，可在下方工具栏插入表情、图片与链接。',
           alignLabelWithHint: true,
         ),
       ),
@@ -584,6 +629,125 @@ class _ComposePageState extends State<ComposePage> {
         style: TextStyle(fontSize: 11, color: scheme.outline),
       ),
     ];
+  }
+
+  Widget _modeTabs(ColorScheme scheme) {
+    Widget tab(String label, bool active, VoidCallback onTap) {
+      return Expanded(
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 9),
+            child: Column(
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                    color: active ? scheme.onSurface : scheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Container(
+                  width: 20,
+                  height: 2.5,
+                  decoration: BoxDecoration(
+                    color: active ? scheme.primary : Colors.transparent,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.55))),
+      ),
+      child: Row(
+        children: [
+          tab('发表帖子', !_poll, () => setState(() => _poll = false)),
+          tab('发投票', _poll, () => setState(() => _poll = true)),
+        ],
+      ),
+    );
+  }
+
+  Widget _pollEditor(ColorScheme scheme) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.7)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.how_to_vote_outlined, size: 18, color: scheme.primary),
+              const SizedBox(width: 6),
+              const Expanded(
+                child: Text('投票选项', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+              ),
+              Text('${_pollOptions.length}/10', style: TextStyle(fontSize: 11.5, color: scheme.outline)),
+            ],
+          ),
+          for (var i = 0; i < _pollOptions.length; i++)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _pollOptions[i],
+                      maxLength: 40,
+                      textInputAction: TextInputAction.next,
+                      decoration: InputDecoration(
+                        hintText: '选项 ${i + 1}',
+                        counterText: '',
+                        isDense: true,
+                        border: const OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
+                  if (_pollOptions.length > 2)
+                    IconButton(
+                      visualDensity: VisualDensity.compact,
+                      tooltip: '删除选项',
+                      onPressed: () => _removePollOption(i),
+                      icon: const Icon(Icons.close_rounded, size: 18),
+                    ),
+                ],
+              ),
+            ),
+          TextButton.icon(
+            onPressed: _addPollOption,
+            icon: const Icon(Icons.add_rounded, size: 18),
+            label: const Text('添加选项'),
+          ),
+          SwitchListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            title: const Text('允许多选', style: TextStyle(fontSize: 13.5)),
+            value: _pollMultiple,
+            onChanged: (value) => setState(() => _pollMultiple = value),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              '至少填写 2 个选项，提交后生成投票主题。',
+              style: TextStyle(fontSize: 11, color: scheme.outline),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _attachmentGrid(ColorScheme scheme) {
