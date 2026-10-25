@@ -61,7 +61,6 @@ class _ThreadPageState extends State<ThreadPage> {
   void initState() {
     super.initState();
     _scroll.addListener(_onScroll);
-    _replyFocus.addListener(_onReplyFocus);
     _load();
   }
 
@@ -80,19 +79,6 @@ class _ThreadPageState extends State<ThreadPage> {
     if (_scroll.position.pixels >= _scroll.position.maxScrollExtent - 420) {
       _loadMore();
     }
-  }
-
-  void _onReplyFocus() {
-    if (!_replyFocus.hasFocus) return;
-    if (_showEmoji) setState(() => _showEmoji = false);
-    Future<void>.delayed(const Duration(milliseconds: 320), () {
-      if (!mounted || !_scroll.hasClients) return;
-      _scroll.animateTo(
-        _scroll.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 240),
-        curve: Curves.easeOut,
-      );
-    });
   }
 
   Future<void> _load() async {
