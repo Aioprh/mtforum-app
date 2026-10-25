@@ -10,6 +10,7 @@ import '../widgets/state_views.dart';
 import '../widgets/thread_feed.dart';
 import '../widgets/user_avatar.dart';
 import 'login_page.dart';
+import 'pm_page.dart';
 
 /// 他人主页：资料、关注、私信与 TA 的主题 / 回复。
 class UserPage extends StatefulWidget {
@@ -94,15 +95,10 @@ class _UserPageState extends State<UserPage> {
   }
 
   Future<void> _openPm() async {
-    final uri = AppConfig.uri('home.php', {
-      'mod': 'spacecp',
-      'ac': 'pm',
-      'op': 'showmsg',
-      'handlekey': 'showmsg_${widget.uid}',
-      'touid': '${widget.uid}',
-      'mobile': '2',
-    });
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
+    final name = _profile?.username.isNotEmpty == true ? _profile!.username : widget.name;
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => PmPage(uid: widget.uid, name: name),
+    ));
   }
 
   @override

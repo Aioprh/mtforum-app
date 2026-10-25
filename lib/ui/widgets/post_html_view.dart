@@ -65,10 +65,11 @@ class _PostHtmlViewState extends State<PostHtmlView> {
 
   bool _isSmiley(dom.Element img) {
     final src = (img.attributes['src'] ?? img.attributes['comiis_loadimages'] ?? '').toLowerCase();
-    if (src.contains('smiley') || src.contains('smilies')) return true;
+    if (src.contains('/smiley/') || src.contains('smiley') || src.contains('smilies')) return true;
     final width = double.tryParse(img.attributes['width'] ?? '');
     final height = double.tryParse(img.attributes['height'] ?? '');
-    return (width != null && width <= 40) || (height != null && height <= 40);
+    if (width == null || height == null) return false;
+    return width > 0 && height > 0 && width <= 32 && height <= 32;
   }
 
   String _imageUrl(dom.Element img) {
@@ -131,6 +132,19 @@ class _PostHtmlViewState extends State<PostHtmlView> {
       final tag = node.localName ?? '';
       if (tag == 'br') {
         if (inline.isNotEmpty) inline.add(const TextSpan(text: '\n'));
+        continue;
+      }
+      // 附件图片常被 <a> 包裹，整块渲染，避免被当成行内元素丢掉。
+      if (tag == 'a' && node.querySelector('img') != null) {
+        final imgs = node.querySelectorAll('img');
+        flush();
+        for (final img in imgs) {
+          if (_isSmiley(img)) continue;
+          final image = _imageBlock(context, img);
+          if (image != null) widgets.add(image);
+        }
+        final text = node.text.trim();
+        if (text.isNotEmpty) inline.add(TextSpan(text: text));
         continue;
       }
       if (tag == 'img') {
@@ -491,8 +505,11 @@ class _PostHtmlViewState extends State<PostHtmlView> {
               ),
             ];
           }
+          return const [];
         }
-        return const [];
+        final image = _imageBlock(context, node);
+        if (image == null) return const [];
+        return [WidgetSpan(alignment: PlaceholderAlignment.middle, child: image)];
       default:
         return _inlineChildren(context, node, style);
     }

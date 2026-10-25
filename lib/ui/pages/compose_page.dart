@@ -78,6 +78,9 @@ class _ComposePageState extends State<ComposePage> {
   bool _notify = true;
   bool _useSignature = true;
 
+  final TextEditingController _readPerm = TextEditingController();
+  final TextEditingController _price = TextEditingController();
+
   @override
   void initState() {
     super.initState();
@@ -94,6 +97,8 @@ class _ComposePageState extends State<ComposePage> {
     _linkUrl.dispose();
     _linkText.dispose();
     _mediaUrl.dispose();
+    _readPerm.dispose();
+    _price.dispose();
     _messageFocus.dispose();
     _scroll.dispose();
     for (final controller in _pollOptions) {
@@ -462,6 +467,8 @@ class _ComposePageState extends State<ComposePage> {
         orderDesc: _orderDesc,
         notify: _notify,
         useSignature: _useSignature,
+        readPerm: _readPerm.text.trim(),
+        price: _price.text.trim(),
         poll: _poll,
         pollOptions: options,
         pollMultiple: _pollMultiple,
@@ -1103,6 +1110,38 @@ class _ComposePageState extends State<ComposePage> {
             title: const Text('使用个人签名', style: TextStyle(fontSize: 13.5)),
             value: _useSignature,
             onChanged: (value) => setState(() => _useSignature = value),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: 8, bottom: 4),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _readPerm,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: '阅读权限',
+                      hintText: '0 为不限制',
+                      isDense: true,
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: TextField(
+                    controller: _price,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: '售价（金币）',
+                      hintText: '0 为免费',
+                      isDense: true,
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),

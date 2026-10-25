@@ -1,8 +1,11 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/app_config.dart';
 import '../../core/http_session.dart';
+import '../../core/native_bridge.dart';
 
 class ImageViewerPage extends StatefulWidget {
   const ImageViewerPage({super.key, required this.images, this.initialIndex = 0});
@@ -17,11 +20,49 @@ class ImageViewerPage extends StatefulWidget {
 class _ImageViewerPageState extends State<ImageViewerPage> {
   late final PageController _controller = PageController(initialPage: widget.initialIndex);
   late int _index = widget.initialIndex;
+  bool _saving = false;
 
   @override
   void dispose() {
     _controller.dispose();
     super.dispose();
+  }
+
+  Future<void> _saveToGallery() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final url = widget.images[_index];
+      final client = HttpClient();
+      try {
+        final request = await client.getUrl(Uri.parse(url));
+        request.headers.set('Referer', AppConfig.base);
+        request.headers.set('User-Agent', AppConfig.userAgent);
+        final cookie = HttpSession.instance.cookieHeader;
+        if (cookie.isNotEmpty) request.headers.set('Cookie', cookie);
+        final response = await request.close();
+        if (response.statusCode != HttpStatus.ok) {
+          throw Exception('图片下载失败（${response.statusCode}）');
+        }
+        final builder = BytesBuilder(copy: false);
+        await for (final chunk in response) {
+          builder.add(chunk);
+        }
+        final bytes = builder.takeBytes();
+        final ok = await NativeBridge.saveImage(
+          bytes,
+          name: 'mt_forum_${DateTime.now().millisecondsSinceEpoch}.jpg',
+        );
+        messenger.showSnackBar(SnackBar(content: Text(ok ? '已保存到相册' : '保存失败，请检查存储权限')));
+      } finally {
+        client.close();
+      }
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('$e')));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   @override
@@ -84,15 +125,30 @@ class _ImageViewerPageState extends State<ImageViewerPage> {
               left: 0,
               right: 0,
               bottom: MediaQuery.of(context).padding.bottom + 18,
-              child: Center(
-                child: TextButton.icon(
-                  onPressed: () {
-                    Clipboard.setData(ClipboardData(text: widget.images[_index]));
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('图片链接已复制')));
-                  },
-                  icon: const Icon(Icons.link_rounded, color: Colors.white70),
-                  label: const Text('复制图片链接', style: TextStyle(color: Colors.white70)),
-                ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  TextButton.icon(
+                    onPressed: _saving ? null : _saveToGallery,
+                    icon: _saving
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white70),
+                          )
+                        : const Icon(Icons.download_rounded, color: Colors.white70),
+                    label: const Text('保存到相册', style: TextStyle(color: Colors.white70)),
+                  ),
+                  const SizedBox(width: 12),
+                  TextButton.icon(
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: widget.images[_index]));
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('图片链接已复制')));
+                    },
+                    icon: const Icon(Icons.link_rounded, color: Colors.white70),
+                    label: const Text('复制图片链接', style: TextStyle(color: Colors.white70)),
+                  ),
+                ],
               ),
             ),
           ],

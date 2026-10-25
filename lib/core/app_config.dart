@@ -23,6 +23,9 @@ class AppConfig {
   static const int postsPerPage = 10;
 
   static Uri uri(String path, [Map<String, String>? query]) {
+    if (path.startsWith('//')) {
+      return Uri.parse('https:$path').replace(queryParameters: query);
+    }
     if (path.startsWith('http://') || path.startsWith('https://')) {
       final parsed = Uri.parse(path);
       if (query == null || query.isEmpty) return parsed;

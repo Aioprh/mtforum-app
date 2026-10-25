@@ -248,8 +248,8 @@ class ForumRepository {
     if (location.isNotEmpty) time = time.replaceAll(location, '').trim();
     time = time.replaceAll(RegExp(r'来自\s*\S+$'), '').trim();
 
-    final contentEl = el.querySelector('.comiis_message_table') ??
-        el.querySelector('.comiis_messages') ??
+    final contentEl = el.querySelector('.comiis_messages') ??
+        el.querySelector('.comiis_message_table') ??
         el.querySelector('.message');
     if (contentEl == null) return null;
 
@@ -603,6 +603,103 @@ class ForumRepository {
     return '举报已提交';
   }
 
+  /// 给某个楼层评分（Discuz `misc&action=rate`）。
+  Future<String> rate({
+    required int tid,
+    required int pid,
+    required String formhash,
+    required int score,
+    String reason = '',
+  }) async {
+    final response = await _http.post(
+      'forum.php',
+      query: {
+        'mod': 'misc',
+        'action': 'rate',
+        'tid': '$tid',
+        'pid': '$pid',
+        'ratesubmit': 'yes',
+        'handlekey': 'rate',
+        'inajax': '1',
+        'mobile': '2',
+      },
+      referer: _threadReferer(tid),
+      form: {
+        'formhash': formhash,
+        'score1': '$score',
+        'reason': reason,
+      },
+    );
+    final msg = _pageMessage(parser.parse(response.body));
+    if (msg != null && _looksLikeError(msg)) throw SiteException(msg);
+    return msg?.replaceAll(RegExp(r'<[^>]+>'), '') ?? '评分成功';
+  }
+
+  /// 版主管理：关闭 / 置顶 / 精华 / 警告 / 删除。
+  Future<String> moderate({
+    required int tid,
+    required int fid,
+    required String formhash,
+    required String action,
+  }) async {
+    final response = await _http.post(
+      'forum.php',
+      query: {
+        'mod': 'topicadmin',
+        'action': action,
+        'fid': '$fid',
+        'tid': '$tid',
+        'handlekey': 'topicadmin',
+        'inajax': '1',
+        'mobile': '2',
+      },
+      referer: _threadReferer(tid),
+      form: {
+        'formhash': formhash,
+        'moderate[]': '$tid',
+        if (action == 'digest') 'digest': '1',
+      },
+    );
+    final msg = _pageMessage(parser.parse(response.body));
+    if (msg != null && _looksLikeError(msg)) throw SiteException(msg);
+    final labels = {
+      'close': '主题已关闭',
+      'stickreply': '已置顶',
+      'digest': '已设为精华',
+      'warn': '已警告',
+      'delete': '已删除',
+    };
+    return labels[action] ?? '操作成功';
+  }
+
+  /// 站内私信。
+  Future<String> sendPm({
+    required int uid,
+    required String formhash,
+    required String message,
+  }) async {
+    final response = await _http.post(
+      'home.php',
+      query: {
+        'mod': 'spacecp',
+        'ac': 'pm',
+        'op': 'send',
+        'touid': '$uid',
+        'pmsubmit': 'yes',
+        'inajax': '1',
+        'mobile': '2',
+      },
+      form: {
+        'formhash': formhash,
+        'touid': '$uid',
+        'message': message,
+      },
+    );
+    final msg = _pageMessage(parser.parse(response.body));
+    if (msg != null && _looksLikeError(msg)) throw SiteException(msg);
+    return '私信已发送';
+  }
+
   /// 他人主页资料。`hash` 为关注操作所需的 formhash。
   Future<(UserProfile, String)> fetchUserProfile(int uid) async {
     final result = await _http.get(
@@ -889,6 +986,8 @@ class ForumRepository {
     List<String> pollOptions = const [],
     bool pollMultiple = false,
     String tags = '',
+    String readPerm = '',
+    String price = '',
   }) async {
     var hash = formhash;
     if (hash.isEmpty) {
@@ -934,6 +1033,8 @@ class ForumRepository {
         'message': message,
         'tags': tags,
         'usesig': useSignature ? '1' : '0',
+        if (readPerm.isNotEmpty && readPerm != '0') 'readperm': readPerm,
+        if (price.isNotEmpty && price != '0') 'price': price,
         if (replyOnly) 'replyonly': '1',
         if (orderDesc) 'ordertype': '1',
         if (notify) 'emailnotify': '1',
@@ -1099,16 +1200,28 @@ class ForumRepository {
   }
 
   String _pickImage(Element img) {
-    final lazy = img.attributes['comiis_loadimages'] ??
-        img.attributes['data-src'] ??
-        img.attributes['file'] ??
-        '';
-    var src = lazy.isNotEmpty ? lazy : (img.attributes['src'] ?? '');
-    src = src.trim();
-    if (src.isEmpty || src.contains('none.png') || src.contains('none.gif') || src.contains('noavatar')) {
-      return lazy.trim();
+    const lazyAttrs = [
+      'comiis_loadimages',
+      'data-src',
+      'data-original',
+      'file',
+      'zoomfile',
+      'longdesc',
+    ];
+    String valueOf(String attr) => (img.attributes[attr] ?? '').trim();
+    bool usable(String value) =>
+        value.isNotEmpty &&
+        !value.contains('none.png') &&
+        !value.contains('none.gif') &&
+        !value.contains('imageloading.gif') &&
+        !value.contains('noavatar');
+
+    for (final attr in lazyAttrs) {
+      final value = valueOf(attr);
+      if (usable(value)) return _absolute(value);
     }
-    return _absolute(src);
+    final src = valueOf('src');
+    return usable(src) ? _absolute(src) : '';
   }
 
   String _sanitize(String html) {
@@ -1120,19 +1233,20 @@ class ForumRepository {
 
     final doc = parser.parseFragment(output);
     for (final img in doc.querySelectorAll('img')) {
-      final lazy = img.attributes['comiis_loadimages'] ?? img.attributes['data-src'] ?? img.attributes['file'];
-      if (lazy != null && lazy.trim().isNotEmpty) {
-        img.attributes['src'] = lazy.trim();
-      } else {
-        final src = img.attributes['src'] ?? '';
-        if (src.contains('none.png') || src.contains('none.gif')) {
-          img.attributes['src'] = '';
-        } else {
-          img.attributes['src'] = _absolute(src);
-        }
+      final src = _pickImage(img);
+      img.attributes['src'] = src;
+      if (src.isEmpty) {
+        img.attributes['data-empty'] = '1';
       }
+      final width = img.attributes['width'];
+      final height = img.attributes['height'];
+      if (width == '0' || width == '1') img.attributes.remove('width');
+      if (height == '0' || height == '1') img.attributes.remove('height');
       img.attributes.remove('comiis_loadimages');
       img.attributes.remove('data-src');
+      img.attributes.remove('data-original');
+      img.attributes.remove('zoomfile');
+      img.attributes.remove('longdesc');
     }
     for (final a in doc.querySelectorAll('a')) {
       final href = a.attributes['href'] ?? '';
