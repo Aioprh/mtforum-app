@@ -39,7 +39,7 @@ class _DraftAttachment {
 class _ComposePageState extends State<ComposePage> {
   static const String _draftSubject = 'mt_compose_draft_subject';
   static const String _draftMessage = 'mt_compose_draft_message';
-  static const String _draftFid = 'mt_compose_draft_fid';
+  static const String _draftFidKey = 'mt_compose_draft_fid';
   static const String _draftAt = 'mt_compose_draft_at';
 
   final TextEditingController _subject = TextEditingController();
@@ -110,7 +110,7 @@ class _ComposePageState extends State<ComposePage> {
     }
     _subject.text = subject;
     _message.text = message;
-    _draftFid = prefs.getInt(_draftFid);
+    _draftFid = prefs.getInt(_draftFidKey);
     _restoredDraft = true;
   }
 
@@ -120,7 +120,7 @@ class _ComposePageState extends State<ComposePage> {
     await prefs.setString(_draftMessage, _message.text);
     await prefs.setInt(_draftAt, DateTime.now().millisecondsSinceEpoch);
     final fid = _fid;
-    if (fid != null) await prefs.setInt(_draftFid, fid);
+    if (fid != null) await prefs.setInt(_draftFidKey, fid);
     _toast('草稿已保存，下次进入发帖页会自动恢复');
   }
 
@@ -128,7 +128,7 @@ class _ComposePageState extends State<ComposePage> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_draftSubject);
     await prefs.remove(_draftMessage);
-    await prefs.remove(_draftFid);
+    await prefs.remove(_draftFidKey);
     await prefs.remove(_draftAt);
   }
 
@@ -260,15 +260,18 @@ class _ComposePageState extends State<ComposePage> {
   Future<void> _pickFiles() async {
     final info = await _ensureInfo();
     if (info == null) return;
-    final result = await FilePicker.platform.pickFiles(allowMultiple: true, withData: true);
-    if (result == null) return;
+    final files = await FilePicker.pickFiles();
+    if (files.isEmpty) return;
     if (!mounted) return;
-    for (final file in result.files) {
-      final bytes = file.bytes;
-      if (bytes == null) {
+    for (final file in files) {
+      final Uint8List bytes;
+      try {
+        bytes = await file.readAsBytes();
+      } catch (_) {
         _toast('${file.name} 读取失败');
         continue;
       }
+      if (!mounted) return;
       if (bytes.length > 1024 * 1024) {
         _toast('${file.name} 超过 1MB，无法上传');
         continue;
