@@ -28,6 +28,21 @@ class HttpResult {
   bool get ok => statusCode >= 200 && statusCode < 400;
 }
 
+/// multipart/form-data 上传负载。
+class HttpUpload {
+  const HttpUpload({
+    required this.field,
+    required this.filename,
+    required this.bytes,
+    this.fields = const {},
+  });
+
+  final String field;
+  final String filename;
+  final List<int> bytes;
+  final Map<String, String> fields;
+}
+
 /// 带 Cookie、重定向、gzip 与 WAF 自动处理的 HTTP 会话。
 class HttpSession {
   HttpSession._();
@@ -130,16 +145,39 @@ class HttpSession {
   }) =>
       _request('POST', AppConfig.uri(url, query), form: form, referer: referer);
 
+  /// 上传单个文件（multipart/form-data），用于论坛附件与图片。
+  Future<HttpResult> postFile(
+    String url, {
+    required String field,
+    required String filename,
+    required List<int> bytes,
+    Map<String, String>? fields,
+    Map<String, String>? query,
+    String? referer,
+  }) =>
+      _request(
+        'POST',
+        AppConfig.uri(url, query),
+        upload: HttpUpload(
+          field: field,
+          filename: filename,
+          bytes: bytes,
+          fields: fields ?? const {},
+        ),
+        referer: referer,
+      );
+
   Future<HttpResult> _request(
     String method,
     Uri uri, {
     Map<String, String>? form,
+    HttpUpload? upload,
     String? referer,
     bool retryWaf = true,
   }) async {
     for (var attempt = 0; attempt < 3; attempt++) {
       try {
-        final result = await _send(method, uri, form: form, referer: referer);
+        final result = await _send(method, uri, form: form, upload: upload, referer: referer);
         if (WafSolver.isChallenge(result.body)) {
           final cookie = WafSolver.solve(result.body);
           if (cookie != null && cookie.isNotEmpty) {
@@ -176,20 +214,37 @@ class HttpSession {
     String method,
     Uri uri, {
     Map<String, String>? form,
+    HttpUpload? upload,
     String? referer,
   }) async {
     var currentMethod = method;
     var currentUri = uri;
     var currentForm = form;
+    var currentUpload = upload;
 
     for (var hop = 0; hop < 6; hop++) {
-      final request = http.Request(currentMethod, currentUri);
-      request.followRedirects = false;
-      request.headers.addAll(_headers(referer: referer));
-      if (currentForm != null) {
-        request.headers['Content-Type'] = 'application/x-www-form-urlencoded';
-        request.bodyFields = currentForm;
+      final requestHeaders = _headers(referer: referer);
+      final http.BaseRequest request;
+      if (currentUpload != null && currentMethod.toUpperCase() == 'POST') {
+        final multipart = http.MultipartRequest(currentMethod, currentUri);
+        multipart.headers.addAll(requestHeaders);
+        multipart.fields.addAll(currentUpload.fields);
+        multipart.files.add(http.MultipartFile.fromBytes(
+          currentUpload.field,
+          currentUpload.bytes,
+          filename: currentUpload.filename,
+        ));
+        request = multipart;
+      } else {
+        final plain = http.Request(currentMethod, currentUri);
+        plain.headers.addAll(requestHeaders);
+        if (currentForm != null) {
+          plain.headers['Content-Type'] = 'application/x-www-form-urlencoded';
+          plain.bodyFields = currentForm;
+        }
+        request = plain;
       }
+      request.followRedirects = false;
 
       final streamed = await _client.send(request).timeout(_timeout);
       final bytes = await streamed.stream.toBytes().timeout(_timeout);
@@ -202,6 +257,7 @@ class HttpSession {
         if (status == 301 || status == 302 || status == 303) {
           currentMethod = 'GET';
           currentForm = null;
+          currentUpload = null;
         }
         continue;
       }

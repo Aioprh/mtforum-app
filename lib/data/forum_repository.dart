@@ -156,6 +156,10 @@ class ForumRepository {
       formhash: formhash,
       hasMore: page * AppConfig.postsPerPage < total,
       isLoggedIn: loggedIn,
+      likes: _intOf(doc.querySelector('.comiis_recommend_num')?.text ?? doc.querySelector('#recommendv_add')?.text),
+      dislikes: _intOf(doc.querySelector('#recommendv_subtract')?.text),
+      uploadHash: _findUploadHash(html),
+      uid: _findUid(html),
       notice: notice,
     );
   }
@@ -166,6 +170,8 @@ class ForumRepository {
     final pid = int.tryParse(pidMatch.group(1)!) ?? 0;
 
     final author = _clean(el.querySelector('.top_user')?.text ?? '');
+    final avatarLink = el.querySelector('a[href*="uid="]');
+    final uid = _firstInt(RegExp(r'[?&]uid=(\d+)').firstMatch(avatarLink?.attributes['href'] ?? '')?.group(1)) ?? 0;
     final avatar = _absolute(
       el.querySelector('img.top_tximg')?.attributes['src'] ??
           el.querySelector('.postli_top_tximg img')?.attributes['src'],
@@ -195,11 +201,36 @@ class ForumRepository {
       time: time,
       html: _sanitize(contentEl.innerHtml),
       floor: floor,
+      uid: uid,
       level: level,
       location: location,
       isOp: floor == 1,
+      likes: _intOf(el.querySelector('.comiis_recommend_num')?.text),
       images: images,
+      comments: _parseComments(el),
     );
+  }
+
+  /// 楼中楼点评：兼容 Discuz 手机模板与桌面模板的几种容器。
+  List<ForumComment> _parseComments(Element el) {
+    final comments = <ForumComment>[];
+    for (final container in el.querySelectorAll('.cm, .comiis_comment, .comment')) {
+      var items = container.querySelectorAll('.cm_item');
+      if (items.isEmpty) {
+        items = container.children.where((child) => _clean(child.text).isNotEmpty).toList();
+      }
+      for (final item in items) {
+        final text = _clean(item.querySelector('.cm_text')?.text ?? item.text);
+        if (text.isEmpty || text.length > 600) continue;
+        final authorLink = item.querySelector('.cm_name, a[href*="uid="]');
+        final author = _clean(authorLink?.text ?? '');
+        final uid = _firstInt(RegExp(r'[?&]uid=(\d+)').firstMatch(authorLink?.attributes['href'] ?? '')?.group(1)) ?? 0;
+        final time = _clean(item.querySelector('.cm_time')?.text ?? '');
+        comments.add(ForumComment(author: author, text: text, uid: uid, time: time));
+        if (comments.length >= 30) return comments;
+      }
+    }
+    return comments;
   }
 
   // ---------------------------------------------------------------- 账号
@@ -300,28 +331,115 @@ class ForumRepository {
     _http.clear();
   }
 
+  Future<ComposeInfo> fetchComposeInfo(int fid) async {
+    final page = await _http.get(
+      'forum.php',
+      query: {'mod': 'post', 'action': 'newthread', 'fid': '$fid', 'mobile': '2'},
+    );
+    _ensureOk(page);
+    final formhash = _findFormhash(page.body);
+    if (formhash.isEmpty) {
+      throw SiteException(_pageMessage(parser.parse(page.body)) ?? '请先登录后再发帖');
+    }
+    return ComposeInfo(
+      formhash: formhash,
+      uploadHash: _findUploadHash(page.body),
+      uid: _findUid(page.body),
+    );
+  }
+
+  /// 上传图片 / 附件，返回服务器分配的 aid，用于 `[attachimg]aid[/attachimg]`。
+  Future<int> uploadAttachment({
+    required List<int> bytes,
+    required String filename,
+    required String uploadHash,
+    required int uid,
+    required String referer,
+    bool image = true,
+  }) async {
+    if (uploadHash.isEmpty) throw SiteException('上传凭证已失效，请返回后重试');
+    final result = await _http.postFile(
+      'misc.php',
+      query: {
+        'mod': 'swfupload',
+        'operation': 'upload',
+        'type': image ? 'image' : 'attach',
+        'inajax': 'yes',
+        'infloat': 'yes',
+        'simple': '2',
+      },
+      field: 'Filedata',
+      filename: filename,
+      bytes: bytes,
+      fields: {'uid': '$uid', 'hash': uploadHash},
+      referer: referer,
+    );
+    final match = RegExp(r'DISCUZUPLOAD\|(\d*)\|(-?\d+)\|(\d+)').firstMatch(result.body);
+    if (match == null) {
+      final msg = _pageMessage(parser.parse(result.body));
+      throw SiteException(msg ?? '上传失败，请稍后重试');
+    }
+    final status = int.tryParse(match.group(2)!) ?? -1;
+    final aid = int.tryParse(match.group(3)!) ?? 0;
+    if (status != 0 || aid <= 0) throw SiteException(_uploadMessage(status));
+    return aid;
+  }
+
+  /// 点赞 / 踩。Discuz 的 recommend 接口需要页面 formhash。
+  Future<void> recommend({
+    required int tid,
+    required String formhash,
+    required bool up,
+  }) async {
+    if (formhash.isEmpty) throw SiteException('操作凭证已失效，请下拉刷新后重试');
+    final result = await _http.get(
+      'forum.php',
+      query: {
+        'mod': 'misc',
+        'action': 'recommend',
+        'do': up ? 'add' : 'subtract',
+        'tid': '$tid',
+        'hash': formhash,
+        'mobile': '2',
+      },
+    );
+    _ensureOk(result);
+    if (result.body.contains('成功') || result.body.contains('感谢')) return;
+    final msg = _pageMessage(parser.parse(result.body));
+    throw SiteException(msg ?? (up ? '点赞失败，请稍后重试' : '操作失败，请稍后重试'));
+  }
+
   Future<String> reply({
     required int tid,
     required int fid,
     required String formhash,
     required String message,
+    int? replyToPid,
+    bool quote = false,
+    List<int> attachmentIds = const [],
+    bool useSignature = true,
   }) async {
+    final query = <String, String>{
+      'mod': 'post',
+      'action': 'reply',
+      'fid': '$fid',
+      'tid': '$tid',
+      'replysubmit': 'yes',
+      'mobile': '2',
+    };
+    if (replyToPid != null && replyToPid > 0) {
+      query[quote ? 'repquote' : 'reppost'] = '$replyToPid';
+    }
     final response = await _http.post(
       'forum.php',
       referer: AppConfig.uri('forum.php', {'mod': 'viewthread', 'tid': '$tid', 'mobile': '2'}).toString(),
-      query: {
-        'mod': 'post',
-        'action': 'reply',
-        'fid': '$fid',
-        'tid': '$tid',
-        'replysubmit': 'yes',
-        'mobile': '2',
-      },
+      query: query,
       form: {
         'formhash': formhash,
         'message': message,
         'posttime': '${DateTime.now().millisecondsSinceEpoch ~/ 1000}',
-        'usesig': '1',
+        'usesig': useSignature ? '1' : '0',
+        for (final aid in attachmentIds) 'attachnew[$aid][description]': '',
       },
     );
     final doc = parser.parse(response.body);
@@ -333,19 +451,58 @@ class ForumRepository {
     return '回复成功';
   }
 
+  /// 楼中楼点评：Discuz 的 `action=comment`，直接挂在指定楼层下。
+  Future<String> addComment({
+    required int tid,
+    required int pid,
+    required String message,
+    required String formhash,
+  }) async {
+    if (formhash.isEmpty) throw SiteException('点评凭证已失效，请下拉刷新后重试');
+    final response = await _http.post(
+      'forum.php',
+      referer: AppConfig.uri('forum.php', {'mod': 'viewthread', 'tid': '$tid', 'mobile': '2'}).toString(),
+      query: {
+        'mod': 'post',
+        'action': 'comment',
+        'tid': '$tid',
+        'pid': '$pid',
+        'commentsubmit': 'yes',
+        'mobile': '2',
+      },
+      form: {
+        'formhash': formhash,
+        'message': message,
+        'posttime': '${DateTime.now().millisecondsSinceEpoch ~/ 1000}',
+      },
+    );
+    final msg = _pageMessage(parser.parse(response.body));
+    if (msg != null && _looksLikeError(msg)) throw SiteException(msg);
+    return '点评成功';
+  }
+
   Future<String> createThread({
     required int fid,
     required String subject,
     required String message,
+    String formhash = '',
+    List<int> attachmentIds = const [],
+    bool replyOnly = false,
+    bool orderDesc = false,
+    bool notify = false,
+    bool useSignature = true,
   }) async {
-    final page = await _http.get(
-      'forum.php',
-      query: {'mod': 'post', 'action': 'newthread', 'fid': '$fid', 'mobile': '2'},
-    );
-    _ensureOk(page);
-    final formhash = _findFormhash(page.body);
-    if (formhash.isEmpty) {
-      throw SiteException(_pageMessage(parser.parse(page.body)) ?? '无法进入发帖页面');
+    var hash = formhash;
+    if (hash.isEmpty) {
+      final page = await _http.get(
+        'forum.php',
+        query: {'mod': 'post', 'action': 'newthread', 'fid': '$fid', 'mobile': '2'},
+      );
+      _ensureOk(page);
+      hash = _findFormhash(page.body);
+    }
+    if (hash.isEmpty) {
+      throw SiteException('无法进入发帖页面');
     }
 
     final response = await _http.post(
@@ -359,13 +516,17 @@ class ForumRepository {
         'mobile': '2',
       },
       form: {
-        'formhash': formhash,
+        'formhash': hash,
         'posttime': '${DateTime.now().millisecondsSinceEpoch ~/ 1000}',
         'wysiwyg': '1',
         'subject': subject,
         'message': message,
         'tags': '',
-        'usesig': '1',
+        'usesig': useSignature ? '1' : '0',
+        if (replyOnly) 'replyonly': '1',
+        if (orderDesc) 'ordertype': '1',
+        if (notify) 'emailnotify': '1',
+        for (final aid in attachmentIds) 'attachnew[$aid][description]': '',
         'save': '',
       },
     );
@@ -588,6 +749,46 @@ class ForumRepository {
     final match = RegExp(r"discuz_uid\s*=\s*'(\d+)'").firstMatch(html);
     return match != null && match.group(1) != '0';
   }
+
+  /// 手机模板的附件上传凭证：`uploadformdata:{uid:"0", hash:"..."}`。
+  String _findUploadHash(String html) {
+    final patterns = [
+      RegExp(r'''hash\s*:\s*["']([0-9a-zA-Z]{16,40})["']'''),
+      RegExp(r'''name=["']hash["'][^>]*?value=["']([0-9a-zA-Z]{16,40})["']''', caseSensitive: false),
+    ];
+    for (final pattern in patterns) {
+      final match = pattern.firstMatch(html);
+      if (match != null) return match.group(1)!;
+    }
+    return '';
+  }
+
+  int _findUid(String html) {
+    final patterns = [
+      RegExp(r"discuz_uid\s*=\s*'(\d+)'"),
+      RegExp(r"\buid\s*=\s*'(\d+)'"),
+    ];
+    for (final pattern in patterns) {
+      final match = pattern.firstMatch(html);
+      final value = int.tryParse(match?.group(1) ?? '') ?? 0;
+      if (value > 0) return value;
+    }
+    return 0;
+  }
+
+  int _intOf(String? text) =>
+      int.tryParse(_clean(text ?? '').replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+
+  String _uploadMessage(int status) => switch (status) {
+        1 || 4 => '不支持此类扩展名的文件',
+        2 || 3 || 5 => '文件超过服务器允许的大小',
+        6 || 11 => '今日已无法上传更多附件',
+        7 => '请选择图片文件',
+        8 => '附件文件无法保存',
+        9 => '没有合法的文件被上传',
+        10 => '非法操作，请重新登录后再试',
+        _ => '上传失败，请稍后重试',
+      };
 
   String? _pageMessage(Document doc) {
     for (final selector in [

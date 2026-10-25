@@ -47,6 +47,20 @@ class ThreadSummary {
   final int views;
 }
 
+class ForumComment {
+  const ForumComment({
+    required this.author,
+    required this.text,
+    this.uid = 0,
+    this.time = '',
+  });
+
+  final String author;
+  final String text;
+  final int uid;
+  final String time;
+}
+
 class ForumPost {
   ForumPost({
     required this.pid,
@@ -55,10 +69,13 @@ class ForumPost {
     required this.time,
     required this.html,
     required this.floor,
+    this.uid = 0,
     this.level = '',
     this.location = '',
     this.isOp = false,
+    this.likes = 0,
     this.images = const <String>[],
+    this.comments = const <ForumComment>[],
   });
 
   final int pid;
@@ -67,12 +84,31 @@ class ForumPost {
   final String time;
   final String html;
   final int floor;
+  final int uid;
   final String level;
   final String location;
   final bool isOp;
+  final int likes;
   final List<String> images;
+  final List<ForumComment> comments;
 
   String get floorLabel => floor == 1 ? '楼主' : '$floor 楼';
+
+  ForumPost copyWith({int? floor}) => ForumPost(
+        pid: pid,
+        author: author,
+        avatar: avatar,
+        time: time,
+        html: html,
+        floor: floor ?? this.floor,
+        uid: uid,
+        level: level,
+        location: location,
+        isOp: isOp,
+        likes: likes,
+        images: images,
+        comments: comments,
+      );
 }
 
 class ThreadDetail {
@@ -89,6 +125,10 @@ class ThreadDetail {
     required this.formhash,
     required this.hasMore,
     required this.isLoggedIn,
+    this.likes = 0,
+    this.dislikes = 0,
+    this.uploadHash = '',
+    this.uid = 0,
     this.notice = '',
   });
 
@@ -104,9 +144,15 @@ class ThreadDetail {
   final String formhash;
   final bool hasMore;
   final bool isLoggedIn;
+  final int likes;
+  final int dislikes;
+
+  /// 当前页面用于附件上传的 hash 与 uid（游客为 0）。
+  final String uploadHash;
+  final int uid;
   final String notice;
 
-  ThreadDetail copyWith({List<ForumPost>? posts, bool? hasMore}) => ThreadDetail(
+  ThreadDetail copyWith({List<ForumPost>? posts, bool? hasMore, int? likes, int? dislikes}) => ThreadDetail(
         tid: tid,
         title: title,
         fid: fid,
@@ -119,8 +165,24 @@ class ThreadDetail {
         formhash: formhash,
         hasMore: hasMore ?? this.hasMore,
         isLoggedIn: isLoggedIn,
+        likes: likes ?? this.likes,
+        dislikes: dislikes ?? this.dislikes,
+        uploadHash: uploadHash,
+        uid: uid,
         notice: notice,
       );
+}
+
+class ComposeInfo {
+  const ComposeInfo({
+    required this.formhash,
+    required this.uploadHash,
+    required this.uid,
+  });
+
+  final String formhash;
+  final String uploadHash;
+  final int uid;
 }
 
 class UserProfile {
