@@ -888,6 +888,7 @@ class ForumRepository {
     bool poll = false,
     List<String> pollOptions = const [],
     bool pollMultiple = false,
+    String tags = '',
   }) async {
     var hash = formhash;
     if (hash.isEmpty) {
@@ -931,7 +932,7 @@ class ForumRepository {
         'wysiwyg': '1',
         'subject': subject,
         'message': message,
-        'tags': '',
+        'tags': tags,
         'usesig': useSignature ? '1' : '0',
         if (replyOnly) 'replyonly': '1',
         if (orderDesc) 'ordertype': '1',

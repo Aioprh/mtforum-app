@@ -43,6 +43,7 @@ class _ComposePageState extends State<ComposePage> {
   static const String _draftAt = 'mt_compose_draft_at';
 
   final TextEditingController _subject = TextEditingController();
+  final TextEditingController _tags = TextEditingController();
   final TextEditingController _message = TextEditingController();
   final TextEditingController _mention = TextEditingController();
   final TextEditingController _linkUrl = TextEditingController();
@@ -87,6 +88,7 @@ class _ComposePageState extends State<ComposePage> {
   @override
   void dispose() {
     _subject.dispose();
+    _tags.dispose();
     _message.dispose();
     _mention.dispose();
     _linkUrl.dispose();
@@ -463,6 +465,7 @@ class _ComposePageState extends State<ComposePage> {
         poll: _poll,
         pollOptions: options,
         pollMultiple: _pollMultiple,
+        tags: _tags.text.trim(),
       );
       await _clearDraft();
       if (!mounted) return;
@@ -561,6 +564,17 @@ class _ComposePageState extends State<ComposePage> {
           hintText: '一句话说明你的主题',
           counterText: '',
           prefixIcon: Icon(Icons.title_rounded),
+        ),
+      ),
+      const SizedBox(height: 14),
+      TextField(
+        controller: _tags,
+        maxLength: 60,
+        decoration: const InputDecoration(
+          labelText: '主题标签（可选）',
+          hintText: '多个标签用空格分隔',
+          counterText: '',
+          prefixIcon: Icon(Icons.sell_outlined),
         ),
       ),
       const SizedBox(height: 14),
