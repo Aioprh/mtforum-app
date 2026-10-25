@@ -204,75 +204,16 @@ class _ThreadPageState extends State<ThreadPage> {
     final detail = _detail;
     if (detail == null) return;
     if (!mounted) return;
-    final controller = TextEditingController();
-    final ok = await showModalBottomSheet<bool>(
+    final text = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      builder: (sheetContext) {
-        final scheme = Theme.of(sheetContext).colorScheme;
-        return Padding(
-          padding: EdgeInsets.only(
-            left: 16,
-            right: 16,
-            top: 12,
-            bottom: MediaQuery.viewInsetsOf(sheetContext).bottom + 14,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      '点评 · ${post.floorLabel}',
-                      style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                  IconButton(
-                    visualDensity: VisualDensity.compact,
-                    onPressed: () => Navigator.of(sheetContext).pop(false),
-                    icon: const Icon(Icons.close_rounded, size: 18),
-                  ),
-                ],
-              ),
-              TextField(
-                controller: controller,
-                autofocus: true,
-                minLines: 1,
-                maxLines: 4,
-                maxLength: 200,
-                textInputAction: TextInputAction.newline,
-                decoration: InputDecoration(
-                  hintText: replyTo.isEmpty ? '说点什么…' : '回复 @$replyTo…',
-                  isDense: true,
-                  border: const OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      '点评会直接显示在该楼层下方',
-                      style: TextStyle(fontSize: 11, color: scheme.outline),
-                    ),
-                  ),
-                  FilledButton(
-                    onPressed: () => Navigator.of(sheetContext).pop(true),
-                    child: const Text('发送'),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        );
-      },
+      builder: (_) => _CommentSheet(
+        title: '点评 · ${post.floorLabel}',
+        hint: replyTo.isEmpty ? '说点什么…' : '回复 @$replyTo…',
+      ),
     );
-    final text = controller.text.trim();
-    controller.dispose();
-    if (ok != true || text.isEmpty || !mounted) return;
+    if (text == null || text.isEmpty || !mounted) return;
     try {
       final message = await _repo.addComment(
         tid: widget.tid,
@@ -1000,4 +941,90 @@ class _ThreadPageState extends State<ThreadPage> {
       .replaceAll('&amp;', '&')
       .replaceAll(RegExp(r'\n{3,}'), '\n\n')
       .trim();
+}
+
+/// 楼中楼点评输入面板：自带键盘避让，返回输入的文本。
+class _CommentSheet extends StatefulWidget {
+  const _CommentSheet({required this.title, required this.hint});
+
+  final String title;
+  final String hint;
+
+  @override
+  State<_CommentSheet> createState() => _CommentSheetState();
+}
+
+class _CommentSheetState extends State<_CommentSheet> {
+  final TextEditingController _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _send() {
+    final text = _controller.text.trim();
+    if (text.isEmpty) return;
+    Navigator.of(context).pop(text);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 16,
+        right: 16,
+        top: 12,
+        bottom: MediaQuery.viewInsetsOf(context).bottom + 14,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  widget.title,
+                  style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700),
+                ),
+              ),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                onPressed: () => Navigator.of(context).pop(),
+                icon: const Icon(Icons.close_rounded, size: 18),
+              ),
+            ],
+          ),
+          TextField(
+            controller: _controller,
+            autofocus: true,
+            minLines: 1,
+            maxLines: 4,
+            maxLength: 200,
+            textInputAction: TextInputAction.newline,
+            decoration: InputDecoration(
+              hintText: widget.hint,
+              isDense: true,
+              border: const OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '点评会直接显示在该楼层下方',
+                  style: TextStyle(fontSize: 11, color: scheme.outline),
+                ),
+              ),
+              FilledButton(onPressed: _send, child: const Text('发送')),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 }
