@@ -74,11 +74,27 @@ class _PostHtmlViewState extends State<PostHtmlView> {
   String _imageUrl(dom.Element img) {
     final raw = (img.attributes['comiis_loadimages'] ??
             img.attributes['data-src'] ??
+            img.attributes['data-original'] ??
             img.attributes['file'] ??
             img.attributes['src'] ??
+            img.attributes['longdesc'] ??
             '')
         .trim();
     if (raw.isEmpty) return '';
+    if (raw.contains('none.png') || raw.contains('imageloading.gif') || raw.contains('noavatar')) {
+      final candidates = <String>[
+        img.attributes['data-src']?.trim() ?? '',
+        img.attributes['data-original']?.trim() ?? '',
+        img.attributes['file']?.trim() ?? '',
+        img.attributes['comiis_loadimages']?.trim() ?? '',
+        img.attributes['longdesc']?.trim() ?? '',
+      ];
+      for (final candidate in candidates) {
+        if (candidate.isNotEmpty && !candidate.contains('none.png') && !candidate.contains('imageloading.gif') && !candidate.contains('noavatar')) {
+          return AppConfig.uri(candidate).toString();
+        }
+      }
+    }
     return AppConfig.uri(raw).toString();
   }
 
