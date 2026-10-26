@@ -148,10 +148,17 @@ class RateField {
 }
 
 class RateOptions {
-  const RateOptions({this.fields = const <RateField>[], this.canNotify = false});
+  const RateOptions({
+    this.fields = const <RateField>[],
+    this.canNotify = false,
+    this.notice = '',
+  });
 
   final List<RateField> fields;
   final bool canNotify;
+
+  /// 站点返回的不可打赏提示（如 24 小时内额度已用完）。
+  final String notice;
 
   /// 解析失败时的兜底：站点普通用户组每项每天上限均为 1。
   static const RateOptions fallback = RateOptions(

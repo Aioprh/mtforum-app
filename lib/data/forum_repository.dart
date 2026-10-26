@@ -649,10 +649,10 @@ class ForumRepository {
     return '举报已提交';
   }
 
-  /// 读取当前用户组可用的打赏项（好评 / 金币等）与分值范围。
+  /// 读取当前用户组可用的打赏项（好评 / 金币等）、单次范围与今日剩余额度。
   ///
   /// 评分弹窗由站点按用户组动态生成，这里直接解析 `showratetip` 试读页；
-  /// 失败时回退到常见的好评 / 金币两项。
+  /// 站点下拉（`#scoreoption*`）已按 24 小时剩余额度裁剪，是最准确的来源。
   Future<RateOptions> fetchRateOptions({required int tid, required int pid}) async {
     try {
       final result = await _http.get(
@@ -670,29 +670,84 @@ class ForumRepository {
       _ensureOk(result);
       final doc = parser.parse(result.body);
       final fields = <RateField>[];
-      for (final input in doc.querySelectorAll('input[name^="score"]')) {
-        final name = input.attributes['name'] ?? '';
+      final seen = <int>{};
+      for (final control in doc.querySelectorAll('input[name^="score"], select[name^="score"]')) {
+        final name = control.attributes['name'] ?? '';
         final id = int.tryParse(name.replaceFirst('score', '')) ?? 0;
-        if (id <= 0) continue;
+        if (id <= 0 || !seen.add(id)) continue;
+
+        // 站点给出的可选分值，已按 24 小时剩余额度裁剪。
+        final presets = <int>[];
+        if (control.localName == 'select') {
+          for (final option in control.querySelectorAll('option')) {
+            final value = int.tryParse(
+              _clean(option.attributes['value'] ?? option.text).replaceAll('+', ''),
+            );
+            if (value != null && !presets.contains(value)) presets.add(value);
+          }
+        } else {
+          for (final item in doc.querySelectorAll('#scoreoption$id li')) {
+            final value = int.tryParse(_clean(item.text).replaceAll('+', ''));
+            if (value != null && !presets.contains(value)) presets.add(value);
+          }
+        }
+        presets.sort();
+
         Element? row;
         for (final candidate in doc.querySelectorAll('tr')) {
-          if (candidate.querySelector('input[name="$name"]') != null) {
+          if (candidate.querySelector('[name="$name"]') != null) {
             row = candidate;
             break;
           }
         }
-        var label = _clean(row != null && row.children.isNotEmpty ? row.children.first.text : '');
-        label = label.replaceAll(RegExp(r'[0-9\s]'), '');
-        if (label.isEmpty || label.length > 8) label = '积分 $id';
-        final text = _clean(row?.text ?? input.parent?.text ?? '');
+
+        final text = _clean(row?.text ?? control.parent?.text ?? '');
         final range = RegExp(r'(-?\d+)\s*~\s*(-?\d+)').firstMatch(text);
         var min = int.tryParse(range?.group(1) ?? '') ?? 0;
-        var max = int.tryParse(range?.group(2) ?? '') ?? 10;
+        var max = int.tryParse(range?.group(2) ?? '') ?? 1;
+        if (presets.isNotEmpty) {
+          min = presets.first;
+          max = presets.last;
+        }
         if (max < min) max = min;
         if (max > 100) max = 100;
-        fields.add(RateField(id: id, label: label, min: min, max: max));
+
+        // 评分表第 4 列为「今日剩余」；部分模板只在文案里给出。
+        final cells = row?.querySelectorAll('td') ?? const <Element>[];
+        var left = max;
+        final leftMatch = RegExp(r'剩余\s*[:：]?\s*(\d+)').firstMatch(text);
+        if (leftMatch != null) {
+          left = int.tryParse(leftMatch.group(1) ?? '') ?? max;
+        } else if (cells.length >= 4) {
+          left = int.tryParse(
+                RegExp(r'\d+').firstMatch(_clean(cells[3].text))?.group(1) ?? '',
+              ) ??
+              max;
+        }
+        if (left < 0) left = 0;
+
+        final labelSource = row != null && row.children.isNotEmpty
+            ? row.children.first.text
+            : (control.parent?.text ?? '');
+        var label = _clean(labelSource).replaceAll(RegExp(r'[0-9\s]'), '');
+        if (label.isEmpty || label.length > 8) label = '积分 $id';
+
+        fields.add(RateField(
+          id: id,
+          label: label,
+          min: min,
+          max: max,
+          left: left,
+          presets: presets,
+        ));
       }
-      if (fields.isEmpty) return RateOptions.fallback;
+      if (fields.isEmpty) {
+        final notice = _rateNotice(result.body);
+        if (notice.isNotEmpty) {
+          return RateOptions(fields: RateOptions.fallback.fields, notice: notice);
+        }
+        return RateOptions.fallback;
+      }
       return RateOptions(
         fields: fields,
         canNotify: doc.querySelector('input[name="sendreasonpm"]') != null,
@@ -736,17 +791,52 @@ class ForumRepository {
     );
     _ensureOk(response);
     final msg = _rateMessage(response.body);
-    if (msg.isNotEmpty && _looksLikeRateError(msg)) throw SiteException(msg);
+    if (msg.isNotEmpty && _looksLikeRateError(msg)) {
+      throw SiteException(_rateErrorText(msg));
+    }
     return msg.isEmpty ? '打赏成功' : msg;
   }
 
+  /// 提取站点评分页 / 评分提交响应里的提示文案。
+  ///
+  /// `inajax` 返回的通常是 `errorhandle_rate('提示')` 这类脚本，
+  /// 必须只取引号内的提示，避免把整段 JS 弹给用户。
   String _rateMessage(String body) {
-    if (body.contains('<![CDATA[')) return _inajaxMessage(body);
-    return _pageMessage(parser.parse(body)) ?? '';
+    final cdata = RegExp(r'<!\[CDATA\[(.*?)\]\]>', dotAll: true).firstMatch(body)?.group(1);
+    final raw = cdata ?? body;
+    final quoted = RegExp(
+      r"(?:errorhandle_\w+|succeedhandle_\w+|showmessage|showDialog)\(\s*'([^']*)'",
+    ).firstMatch(raw)?.group(1);
+    if (quoted != null && _clean(quoted).isNotEmpty) return _clean(quoted);
+    final page = _pageMessage(parser.parse(body)) ?? '';
+    if (page.isNotEmpty) return page;
+    final text = _clean(raw.replaceAll(RegExp(r'<[^>]+>'), ' '));
+    if (_looksLikeRateError(text) && text.length < 80) return text;
+    return '';
+  }
+
+  /// 评分页本身返回的错误提示（权限不足等）。
+  String _rateNotice(String body) {
+    final page = _pageMessage(parser.parse(body)) ?? '';
+    return _looksLikeRateError(page) ? page : '';
+  }
+
+  String _rateErrorText(String message) {
+    if (RegExp(r'24\s*小时评分数超过限制').hasMatch(message)) {
+      return '24 小时内该积分项的评分额度已用完，请明天再试';
+    }
+    if (message.contains('不能给自己评分') || message.contains('不能评分自己')) {
+      return '不能打赏自己的帖子';
+    }
+    if (message.contains('没有权限') || message.contains('无权')) {
+      return '当前账号没有打赏权限';
+    }
+    return message;
   }
 
   bool _looksLikeRateError(String text) =>
-      RegExp(r'(抱歉|错误|失败|不能|无权|权限|非法|禁止|请先登录|间隔|重复)').hasMatch(text);
+      RegExp(r'(抱歉|错误|失败|不能|无权|权限|非法|禁止|请先登录|间隔|重复|超过限制)')
+          .hasMatch(text);
 
   /// 踢帖：站点插件 `bin_post_report` 的确认页可能带有表单，按其字段原样提交。
   Future<String> kickThread({

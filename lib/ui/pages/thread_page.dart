@@ -435,6 +435,14 @@ class _ThreadPageState extends State<ThreadPage> {
       // 读取失败时按好评 / 金币的常见范围兜底。
     }
     if (!mounted) return;
+    if (options.notice.isNotEmpty) {
+      _toast(options.notice);
+      return;
+    }
+    if (options.fields.every((field) => field.ceiling <= 0)) {
+      _toast('24 小时内可用的打赏额度已用完，请明天再试');
+      return;
+    }
     final result = await showModalBottomSheet<_RateResult>(
       context: context,
       isScrollControlled: true,
@@ -2062,11 +2070,25 @@ class _RateSheetState extends State<_RateSheet> {
   }
 
   Widget _fieldRow(RateField field, ColorScheme scheme) {
-    final start = field.min <= 0 ? field.min : 0;
-    final end = field.max < 0 ? 0 : field.max;
-    final value = (_scores[field.id] ?? 0).clamp(start, end).toInt();
+    final ceiling = field.ceiling;
+    final exhausted = ceiling <= 0;
+    var start = field.min <= 0 ? field.min : 0;
+    if (start > ceiling) start = 0;
+    final values = <int>{0};
+    if (!exhausted) {
+      if (field.presets.isNotEmpty) {
+        values.addAll(field.presets.where((score) => score >= start && score <= ceiling));
+      } else {
+        for (var score = start; score <= ceiling; score++) {
+          values.add(score);
+        }
+      }
+    }
+    final options = values.toList()..sort();
+    final current = _scores[field.id] ?? 0;
+    final value = options.contains(current) ? current : 0;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
       child: Row(
         children: [
           Text(field.label, style: const TextStyle(fontSize: 14.5)),
@@ -2078,13 +2100,27 @@ class _RateSheetState extends State<_RateSheet> {
                 isDense: true,
                 isExpanded: true,
                 icon: Icon(Icons.keyboard_arrow_down_rounded, size: 20, color: scheme.outline),
-                style: TextStyle(fontSize: 15, color: scheme.onSurface, fontWeight: FontWeight.w700),
+                style: TextStyle(
+                  fontSize: 15,
+                  color: exhausted ? scheme.outline : scheme.onSurface,
+                  fontWeight: FontWeight.w700,
+                ),
                 items: [
-                  for (var score = start; score <= end; score++)
+                  for (final score in options)
                     DropdownMenuItem<int>(value: score, child: Text('$score')),
                 ],
-                onChanged: (score) => setState(() => _scores[field.id] = score ?? 0),
+                onChanged: exhausted
+                    ? null
+                    : (score) => setState(() => _scores[field.id] = score ?? 0),
               ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            exhausted ? '已用完' : '剩 ${field.left}',
+            style: TextStyle(
+              fontSize: 10.5,
+              color: exhausted ? scheme.error : scheme.outline,
             ),
           ),
         ],
