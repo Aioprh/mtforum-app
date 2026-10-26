@@ -995,17 +995,31 @@ class ForumRepository {
         },
       );
 
-  Future<List<ThreadSummary>> fetchUserReplies(int uid, {int page = 1}) => fetchPersonalList(
-        'home.php',
-        query: {
-          'mod': 'space',
-          'uid': '$uid',
-          'do': 'reply',
-          'view': 'me',
-          'mobile': '2',
-          'page': '$page',
-        },
-      );
+  /// 回复列表。Discuz 没有 `do=reply`，正确入口是
+  /// `do=thread&view=me&type=reply`，且回复行只有 findpost 链接、没有 thread- 链接。
+  Future<List<ThreadSummary>> fetchUserReplies(int uid, {int page = 1}) async {
+    final query = <String, String>{
+      'mod': 'space',
+      'do': 'thread',
+      'view': 'me',
+      'type': 'reply',
+      'from': 'space',
+      'page': '$page',
+      if (uid > 0) 'uid': '$uid',
+    };
+    // 桌面模板会额外输出每条回复的正文摘要，结构也更稳定，优先使用。
+    final desktop = await _getDesktopPage('home.php', query);
+    if (desktop.ok) {
+      final parsed = _parseSpaceReplies(desktop.body);
+      if (parsed.isNotEmpty) return parsed;
+    }
+    final mobile = await _http.get('home.php', query: {...query, 'mobile': '2'});
+    _ensureOk(mobile);
+    return _parseSpaceReplies(mobile.body);
+  }
+
+  /// 我的回复（不带 uid，服务端自动取当前登录用户）。
+  Future<List<ThreadSummary>> fetchMyReplies({int page = 1}) => fetchUserReplies(0, page: page);
 
   /// 关注 / 取消关注用户。
   Future<bool> followUser({required int uid, required bool follow, required String hash}) async {
@@ -1770,6 +1784,59 @@ class ForumRepository {
     return items;
   }
 
+  /// 个人空间回复列表（`type=reply`）：标题走 findpost 链接，
+  /// 桌面模板另有一行 `<td class="xg1">` 存放回复正文摘要。
+  List<ThreadSummary> _parseSpaceReplies(String html) {
+    final doc = parser.parse(html);
+
+    // pid -> 回复正文摘要。
+    final excerpts = <int, String>{};
+    for (final cell in doc.querySelectorAll('td.xg1')) {
+      final link = cell.querySelector('a[href*="goto=findpost"]');
+      if (link == null) continue;
+      final pid = _firstInt(RegExp(r'pid=(\d+)').firstMatch(link.attributes['href'] ?? '')?.group(1));
+      final text = _clean(link.text);
+      if (pid == null || text.isEmpty || text == '......') continue;
+      excerpts.putIfAbsent(pid, () => text);
+    }
+
+    final items = <ThreadSummary>[];
+    final seen = <int>{};
+
+    // 桌面模板：回复标题固定在 <th> 内，避免误取页面其它 findpost 跳转链接。
+    final anchors = <Element>[];
+    for (final row in doc.querySelectorAll('#delform tr')) {
+      final link = row.querySelector('th a[href*="goto=findpost"]');
+      if (link != null) anchors.add(link);
+    }
+    // 移动模板：<div class="bm_c"><a href="...goto=findpost...">标题</a></div>。
+    if (anchors.isEmpty) {
+      for (final anchor in doc.querySelectorAll('a[href*="goto=findpost"]')) {
+        if (anchor.parent?.classes.contains('xg1') == true) continue;
+        anchors.add(anchor);
+      }
+    }
+
+    for (final anchor in anchors) {
+      final href = anchor.attributes['href'] ?? '';
+      final tid = _firstInt(RegExp(r'ptid=(\d+)').firstMatch(href)?.group(1)) ??
+          _firstInt(RegExp(r'[?&]tid=(\d+)').firstMatch(href)?.group(1));
+      if (tid == null || tid <= 0 || !seen.add(tid)) continue;
+      final title = _clean(anchor.text);
+      if (title.isEmpty) continue;
+      final pid = _firstInt(RegExp(r'pid=(\d+)').firstMatch(href)?.group(1)) ?? 0;
+      final row = anchor.parent?.parent;
+      items.add(ThreadSummary(
+        tid: tid,
+        title: title,
+        url: _absolute(href),
+        excerpt: excerpts[pid] ?? '',
+        boardName: _clean(row?.querySelector('td a[href*="mod=forumdisplay"]')?.text ?? ''),
+      ));
+    }
+    return items;
+  }
+
   /// 楼层作者 uid：优先取作者名 / 头像链接，再退回到楼层内任意资料链接。
   int _postUid(Element el) {
     final hrefs = <String?>[
@@ -2073,12 +2140,51 @@ class ForumRepository {
       posts: counts['帖子'] ?? counts['主题'] ?? '',
       replies: counts['回复'] ?? '',
       followers: counts['粉丝'] ?? '',
-      regTime: RegExp(r'注册时间\s*[:：]?\s*([0-9]{4}-[0-9]{1,2}-[0-9]{1,2}(?:\s+[0-9]{1,2}:[0-9]{2})?)')
-              .firstMatch(bodyText)
-              ?.group(1) ??
-          '',
+      regTime: _parseRegTime(doc, bodyText),
       group: _clean(info?.querySelector('.kmlev:not(.kmlevs)')?.text ?? doc.querySelector('.comiis_space_group')?.text ?? ''),
     );
+  }
+
+  /// 注册时间。comiis 移动模板把值放在前面、标签放在后面：
+  /// `<li><div class="profile_rs">2022-7-7 13:22</div><span>注册时间</span></li>`，
+  /// 若按整页文本取「注册时间」后面的日期，会误取到下一条「最后访问」的时间。
+  String _parseRegTime(Document doc, String bodyText) {
+    final datePattern = RegExp(
+      r'[0-9]{4}-[0-9]{1,2}-[0-9]{1,2}(?:\s+[0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?)?',
+    );
+    String extract(String text) => datePattern.firstMatch(text)?.group(0) ?? '';
+    bool isLabel(String text) {
+      final normalized = _clean(text).replaceAll(RegExp(r'[:：\s]'), '');
+      return normalized == '注册时间' || normalized == '注册于' || normalized == '注册日期';
+    }
+
+    // comiis 移动模板 / 桌面 #pbbs：值在前或在同一行。
+    for (final li in doc.querySelectorAll('li')) {
+      final labelEl = li.querySelector('span, em, dt, strong');
+      if (labelEl == null || !isLabel(labelEl.text)) continue;
+      final value = extract(li.text.replaceFirst(labelEl.text, ''));
+      if (value.isNotEmpty) return value;
+    }
+
+    // 默认移动模板的表格：<tr><td>注册时间: </td><td>值</td></tr>。
+    for (final tr in doc.querySelectorAll('tr')) {
+      final cells = tr.querySelectorAll('td, th');
+      if (cells.isEmpty || !isLabel(cells.first.text)) continue;
+      final value = extract(cells.length > 1 ? cells[1].text : cells.first.text);
+      if (value.isNotEmpty) return value;
+    }
+
+    // 兜底：标签前后的日期，优先「值 + 标签」的写法（comiis 的排列顺序）。
+    for (final candidate in [
+      '${datePattern.pattern}\\s*(?:注册时间|注册于|注册日期)',
+      '(?:注册时间|注册于|注册日期)\\s*[:：]?\\s*${datePattern.pattern}',
+    ]) {
+      final match = RegExp(candidate).firstMatch(bodyText);
+      if (match == null) continue;
+      final value = datePattern.firstMatch(match.group(0) ?? '')?.group(0) ?? '';
+      if (value.isNotEmpty) return value;
+    }
+    return '';
   }
 
   /// 头像地址是否属于指定 uid（静态头像路径或 avatar.php?uid=）。
@@ -2090,36 +2196,44 @@ class ForumRepository {
   }
 
   /// 小黑屋（forum.php?mod=misc&action=showdarkroom，桌面模板表格）。
+  /// 站点每页只给 11 条，底部「更多」按钮带 cid，需要顺着 cid 连续翻页才能取全。
   Future<List<DarkRoomEntry>> fetchDarkRoom() async {
-    // 该页没有移动模板，移动 UA 会被引导页拦截，必须用桌面 UA。
-    final result = await _http.get(
-      'forum.php',
-      query: {'mod': 'misc', 'action': 'showdarkroom'},
-      userAgent: _desktopUserAgent,
-    );
-    _ensureOk(result);
-    final doc = parser.parse(result.body);
     final entries = <DarkRoomEntry>[];
-    for (final tr in doc.querySelectorAll('#darkroomtable tr')) {
-      final cells = tr.querySelectorAll('td');
-      if (cells.length < 4) continue;
-      final link = cells[0].querySelector('a[href]');
-      final href = link?.attributes['href'] ?? '';
-      final uid = int.tryParse(
-            RegExp(r'space-uid-(\d+)\.html').firstMatch(href)?.group(1) ??
-                RegExp(r'[?&]uid=(\d+)').firstMatch(href)?.group(1) ??
-                '',
-          ) ??
-          0;
-      final name = _clean(link?.text ?? cells[0].text);
-      if (name.isEmpty) continue;
-      entries.add(DarkRoomEntry(
-        uid: uid,
-        name: name,
-        action: _clean(cells[1].text),
-        expiry: _clean(cells[2].text),
-        time: _clean(cells[3].text),
-      ));
+    final seen = <String>{};
+    String? cid;
+    for (var page = 0; page < 20; page++) {
+      // 该页没有移动模板，移动 UA 会被引导页拦截，必须用桌面模板。
+      final query = <String, String>{'mod': 'misc', 'action': 'showdarkroom'};
+      if (cid != null) query['cid'] = cid;
+      final result = await _getDesktopPage('forum.php', query);
+      _ensureOk(result);
+      final doc = parser.parse(result.body);
+      final before = entries.length;
+      for (final tr in doc.querySelectorAll('#darkroomtable tr')) {
+        final cells = tr.querySelectorAll('td');
+        if (cells.length < 4) continue;
+        final link = cells[0].querySelector('a[href]');
+        final href = link?.attributes['href'] ?? '';
+        final uid = int.tryParse(
+              RegExp(r'space-uid-(\d+)\.html').firstMatch(href)?.group(1) ??
+                  RegExp(r'[?&]uid=(\d+)').firstMatch(href)?.group(1) ??
+                  '',
+            ) ??
+            0;
+        final name = _clean(link?.text ?? cells[0].text);
+        if (name.isEmpty || !seen.add('$uid|$name')) continue;
+        entries.add(DarkRoomEntry(
+          uid: uid,
+          name: name,
+          action: _clean(cells[1].text),
+          expiry: _clean(cells[2].text),
+          time: _clean(cells[3].text),
+        ));
+      }
+      final next = _clean(doc.querySelector('#darkroommore')?.attributes['cid'] ?? '');
+      // 没有「更多」、cid 不再变化或本页没有新记录时结束。
+      if (next.isEmpty || next == cid || entries.length == before) break;
+      cid = next;
     }
     return entries;
   }

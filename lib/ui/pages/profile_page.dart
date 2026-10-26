@@ -100,9 +100,16 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
     if (mode != null) await AppState.instance.setThemeMode(mode);
   }
 
-  void _openPersonal(String title, String path, Map<String, String> query, String emptyText) {
+  void _openPersonal(String title, String path, Map<String, String> query, String emptyText,
+      {bool replies = false}) {
     Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => _PersonalThreadsPage(title: title, path: path, query: query, emptyText: emptyText),
+      builder: (_) => _PersonalThreadsPage(
+        title: title,
+        path: path,
+        query: query,
+        emptyText: emptyText,
+        replies: replies,
+      ),
     ));
   }
 
@@ -187,7 +194,7 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
                         'type': 'reply',
                         'from': 'space',
                         'mobile': '2',
-                      }, '你还没有回复过帖子');
+                      }, '你还没有回复过帖子', replies: true);
                     }),
                     _MenuItem(Icons.star_outline_rounded, '我的收藏', () {
                       _openPersonal('我的收藏', 'home.php', {
@@ -424,12 +431,16 @@ class _PersonalThreadsPage extends StatelessWidget {
     required this.path,
     required this.query,
     required this.emptyText,
+    this.replies = false,
   });
 
   final String title;
   final String path;
   final Map<String, String> query;
   final String emptyText;
+
+  /// 回复列表的结构与主题列表不同（链接是 findpost），单独走回复解析。
+  final bool replies;
 
   @override
   Widget build(BuildContext context) {
@@ -438,10 +449,12 @@ class _PersonalThreadsPage extends StatelessWidget {
       body: SafeArea(
         top: false,
         child: ThreadFeed(
-          loader: (page) => AppState.instance.repo.fetchPersonalList(
-            path,
-            query: {...query, 'page': '$page'},
-          ),
+          loader: (page) => replies
+              ? AppState.instance.repo.fetchMyReplies(page: page)
+              : AppState.instance.repo.fetchPersonalList(
+                  path,
+                  query: {...query, 'page': '$page'},
+                ),
           emptyText: emptyText,
           padding: const EdgeInsets.fromLTRB(14, 10, 14, 24),
         ),

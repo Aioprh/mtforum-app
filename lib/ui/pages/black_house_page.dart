@@ -105,7 +105,9 @@ class _BlackHousePageState extends State<BlackHousePage> {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              '此处公示被禁言或禁止访问的用户，处罚由版主执行。',
+              _items.isEmpty
+                  ? '站点只公示被禁言或禁止访问的用户，处罚由版主执行。'
+                  : '共 ${_items.length} 条公示记录。站点只公示操作行为、过期时间与操作时间，未公开具体处罚原因。',
               style: TextStyle(fontSize: 12, height: 1.5, color: scheme.onSurfaceVariant),
             ),
           ),
