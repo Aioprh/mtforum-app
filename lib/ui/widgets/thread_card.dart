@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../data/models.dart';
+import '../pages/user_page.dart';
 import 'smart_image.dart';
 import 'user_avatar.dart';
 
@@ -26,17 +27,37 @@ class ThreadCard extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  UserAvatar(url: thread.avatar, name: thread.author, size: 30),
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: thread.uid > 0
+                        ? () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => UserPage(uid: thread.uid, name: thread.author),
+                              ),
+                            )
+                        : null,
+                    child: UserAvatar(url: thread.avatar, name: thread.author, size: 30),
+                  ),
                   const SizedBox(width: 9),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          thread.author.isEmpty ? 'MT论坛' : thread.author,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: thread.uid > 0
+                              ? () => Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => UserPage(uid: thread.uid, name: thread.author),
+                                    ),
+                                  )
+                              : null,
+                          child: Text(
+                            thread.author.isEmpty ? 'MT论坛' : thread.author,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
+                          ),
                         ),
                         const SizedBox(height: 2),
                         Text(

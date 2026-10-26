@@ -140,6 +140,18 @@ class ForumRepository {
       final post = _parsePost(el, posts.length + 1);
       if (post != null) posts.add(post);
     }
+    // 楼主楼层偶发取不到 uid，退回用楼顶作者区再补一次。
+    if (posts.isNotEmpty && posts.first.uid == 0) {
+      final href = doc.querySelector('.comiis_postli_top a[href*="uid="]')?.attributes['href'] ?? '';
+      final uid = int.tryParse(RegExp(r'[?&]uid=(\d+)').firstMatch(href)?.group(1) ?? '') ?? 0;
+      if (uid > 0) {
+        final first = posts.first;
+        posts[0] = first.copyWith(
+          uid: uid,
+          avatar: first.avatar.isEmpty ? _avatarForUid(uid) : null,
+        );
+      }
+    }
 
     var total = posts.length;
     final commentNode = doc.querySelector('.comiis_pltit h2');
@@ -235,12 +247,9 @@ class ForumRepository {
     final pid = int.tryParse(pidMatch.group(1)!) ?? 0;
 
     final author = _clean(el.querySelector('.top_user')?.text ?? '');
-    final avatarLink = el.querySelector('a[href*="uid="]');
-    final uid = _firstInt(RegExp(r'[?&]uid=(\d+)').firstMatch(avatarLink?.attributes['href'] ?? '')?.group(1)) ?? 0;
-    final avatar = _absolute(
-      el.querySelector('img.top_tximg')?.attributes['src'] ??
-          el.querySelector('.postli_top_tximg img')?.attributes['src'],
-    );
+    final uid = _postUid(el);
+    var avatar = _postAvatar(el);
+    if (avatar.isEmpty && uid > 0) avatar = _avatarForUid(uid);
     final level = _clean(el.querySelector('.top_lev')?.text ?? '');
     final timeNode = el.querySelector('.comiis_postli_time') ?? el.querySelector('.comiis_postli_times');
     var time = _clean(timeNode?.text ?? '');
@@ -367,9 +376,10 @@ class ForumRepository {
 
     var avatar = _absolute(
       doc.querySelector('.comiis_space_tximg img')?.attributes['src'] ??
+          doc.querySelector('a.comiis_space_tximg img')?.attributes['src'] ??
           doc.querySelector('img[src*="/avatar/"]')?.attributes['src'],
     );
-    if (avatar.isEmpty && uid > 0) avatar = _avatarForUid(uid);
+    if ((avatar.isEmpty || _isPlaceholderImage(avatar)) && uid > 0) avatar = _avatarForUid(uid);
 
     final bodyText = _clean(doc.body?.text ?? '');
     final level = RegExp(r'(Lv\.\s*\d+[^\s]{0,8})').firstMatch(bodyText)?.group(1) ?? '';
@@ -724,9 +734,10 @@ class ForumRepository {
     );
     var avatar = _absolute(
       doc.querySelector('.comiis_space_tximg img')?.attributes['src'] ??
+          doc.querySelector('a.comiis_space_tximg img')?.attributes['src'] ??
           doc.querySelector('img[src*="/avatar/"]')?.attributes['src'],
     );
-    if (avatar.isEmpty && uid > 0) avatar = _avatarForUid(uid);
+    if ((avatar.isEmpty || _isPlaceholderImage(avatar)) && uid > 0) avatar = _avatarForUid(uid);
     final level = RegExp(r'(Lv\.\s*\d+[^\s]{0,8})').firstMatch(bodyText)?.group(1) ?? '';
 
     return (
@@ -1163,7 +1174,8 @@ class ForumRepository {
         url: _absolute(href),
         excerpt: _clean(li.querySelector('.list_body')?.text ?? ''),
         author: _clean(li.querySelector('.top_user')?.text ?? ''),
-        avatar: _absolute(li.querySelector('img.top_tximg')?.attributes['src']),
+        avatar: _postAvatar(li),
+        uid: _postUid(li),
         time: _clean(li.querySelector('.forumlist_li_time')?.text ?? ''),
         boardName: _clean(li.querySelector('.comiis_xznalist_bk a')?.text ?? ''),
         images: images.take(3).toList(),
@@ -1191,12 +1203,63 @@ class ForumRepository {
         url: _absolute(a.attributes['href']),
         excerpt: _clean(container?.querySelector('.list_body')?.text ?? ''),
         author: _clean(container?.querySelector('.top_user')?.text ?? ''),
-        avatar: _absolute(container?.querySelector('img.top_tximg')?.attributes['src']),
+        avatar: container == null ? '' : _postAvatar(container),
+        uid: container == null ? 0 : _postUid(container),
         time: _clean(container?.querySelector('.comiis_postli_times, .forumlist_li_time')?.text ?? ''),
         boardName: _clean(container?.querySelector('.comiis_xznalist_bk a')?.text ?? ''),
       ));
     }
     return items;
+  }
+
+  /// 楼层作者 uid：优先取作者名 / 头像链接，再退回到楼层内任意资料链接。
+  int _postUid(Element el) {
+    final hrefs = <String?>[
+      el.querySelector('a.top_user')?.attributes['href'],
+      el.querySelector('a.postli_top_tximg')?.attributes['href'],
+      el.querySelector('img.top_tximg')?.attributes['src'],
+      el.querySelector('a[href*="mod=space"][href*="uid="]')?.attributes['href'],
+      el.querySelector('a[href*="uid="]')?.attributes['href'],
+      el.querySelector('[data-uid]')?.attributes['data-uid'],
+    ];
+    for (final href in hrefs) {
+      final raw = (href ?? '').trim();
+      if (raw.isEmpty) continue;
+      final match = RegExp(r'[?&]uid=(\d+)').firstMatch(raw);
+      final uid = int.tryParse(match?.group(1) ?? raw) ?? 0;
+      if (uid > 0) return uid;
+    }
+    final match = RegExp(r'''authorid[=:"']\s*(\d+)''').firstMatch(el.innerHtml);
+    return int.tryParse(match?.group(1) ?? '') ?? 0;
+  }
+
+  /// 楼层头像：兼容普通头像、懒加载属性与背景图三种写法。
+  String _postAvatar(Element el) {
+    final img = el.querySelector('img.top_tximg') ??
+        el.querySelector('.postli_top_tximg img') ??
+        el.querySelector('img[class*="tximg"]') ??
+        el.querySelector('a[href*="uid="] img') ??
+        el.querySelector('img[src*="/avatar/"]');
+    for (final attr in const ['src', 'data-src', 'data-original', 'file']) {
+      final value = (img?.attributes[attr] ?? '').trim();
+      if (value.isEmpty || _isPlaceholderImage(value)) continue;
+      return _absolute(value);
+    }
+    final link = el.querySelector('a.postli_top_tximg') ?? el.querySelector('.comiis_postli_top a');
+    final style = link?.attributes['style'] ?? '';
+    final background = RegExp(r'''url\(["']?([^)"']+)["']?\)''').firstMatch(style)?.group(1) ?? '';
+    if (background.isNotEmpty && !_isPlaceholderImage(background)) return _absolute(background);
+    return '';
+  }
+
+  bool _isPlaceholderImage(String url) {
+    final value = url.toLowerCase();
+    return value.contains('none.gif') ||
+        value.contains('none.png') ||
+        value.contains('imageloading') ||
+        value.contains('avatar_bg') ||
+        // uid=0 的头像地址会被服务端当成「当前登录用户」，必须丢弃后按 uid 重新拼接。
+        RegExp(r'[?&]uid=0(?:&|$)').hasMatch(value);
   }
 
   String _pickImage(Element img) {

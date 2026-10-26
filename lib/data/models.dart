@@ -27,6 +27,7 @@ class ThreadSummary {
     this.excerpt = '',
     this.author = '',
     this.avatar = '',
+    this.uid = 0,
     this.time = '',
     this.boardName = '',
     this.images = const <String>[],
@@ -40,6 +41,7 @@ class ThreadSummary {
   final String excerpt;
   final String author;
   final String avatar;
+  final int uid;
   final String time;
   final String boardName;
   final List<String> images;
@@ -137,14 +139,14 @@ class ForumPost {
 
   String get floorLabel => floor == 1 ? '楼主' : '$floor 楼';
 
-  ForumPost copyWith({int? floor}) => ForumPost(
+  ForumPost copyWith({int? floor, int? uid, String? avatar}) => ForumPost(
         pid: pid,
         author: author,
-        avatar: avatar,
+        avatar: avatar ?? this.avatar,
         time: time,
         html: html,
         floor: floor ?? this.floor,
-        uid: uid,
+        uid: uid ?? this.uid,
         level: level,
         location: location,
         isOp: isOp,
