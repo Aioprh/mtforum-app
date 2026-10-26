@@ -4,6 +4,9 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/app_config.dart';
+import '../core/http_session.dart';
+
 class DownloadRecord {
   const DownloadRecord({required this.url, required this.path, required this.name, required this.time});
 
@@ -67,7 +70,10 @@ class DownloadManager {
     final client = HttpClient();
     try {
       final request = await client.getUrl(uri);
-      request.headers.set(HttpHeaders.userAgentHeader, 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/124 Mobile Safari/537.36');
+      request.headers.set(HttpHeaders.userAgentHeader, AppConfig.userAgent);
+      request.headers.set(HttpHeaders.refererHeader, AppConfig.base);
+      final cookie = HttpSession.instance.cookieHeader;
+      if (cookie.isNotEmpty) request.headers.set(HttpHeaders.cookieHeader, cookie);
       final response = await request.close();
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw HttpException('下载失败：HTTP ${response.statusCode}', uri: uri);
