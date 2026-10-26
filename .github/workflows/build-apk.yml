@@ -49,6 +49,11 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Generate launcher icons
+        run: |
+          python3 -m pip install --user Pillow
+          python3 tool/generate_launcher_icon.py
+
       - name: Analyze
         run: flutter analyze
 
