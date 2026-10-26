@@ -127,13 +127,24 @@ class RateField {
     required this.id,
     required this.label,
     this.min = 0,
-    this.max = 10,
+    this.max = 1,
+    this.left = 1,
+    this.presets = const <int>[],
   });
 
   final int id;
   final String label;
   final int min;
   final int max;
+
+  /// 今日剩余可评分额度（站点评分表「今日剩余」）。
+  final int left;
+
+  /// 站点下拉实际给出的可选分值（已按今日剩余裁剪）。
+  final List<int> presets;
+
+  /// 本次实际可选的最大分值。
+  int get ceiling => max < left ? max : left;
 }
 
 class RateOptions {
@@ -142,10 +153,11 @@ class RateOptions {
   final List<RateField> fields;
   final bool canNotify;
 
+  /// 解析失败时的兜底：站点普通用户组每项每天上限均为 1。
   static const RateOptions fallback = RateOptions(
     fields: <RateField>[
-      RateField(id: 1, label: '好评', max: 10),
-      RateField(id: 2, label: '金币', max: 5),
+      RateField(id: 1, label: '好评', max: 1),
+      RateField(id: 2, label: '金币', max: 1),
     ],
   );
 }
