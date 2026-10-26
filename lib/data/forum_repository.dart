@@ -1046,6 +1046,7 @@ class ForumRepository {
         'type': 'thread',
         'id': '$tid',
         'favoritesubmit': 'yes',
+        'formhash': formhash,
         'handlekey': 'favorite',
         'mobile': '2',
       },
@@ -1057,70 +1058,167 @@ class ForumRepository {
     return msg == null || msg.length > 40 ? '已加入收藏' : msg;
   }
 
-  /// 收藏 / 取消收藏。已收藏时用页面给出的 op=delete 链接，必要时回收藏夹查 favid。
+  /// 收藏 / 取消收藏。
+  ///
+  /// Discuz 的取消收藏必须 POST 提交 deletesubmit；X3.4 支持直接按 tid 定位收藏，
+  /// 老版本再退回收藏夹里的 favid。
   Future<String> toggleFavorite({
     required int tid,
     required String formhash,
     required bool favorited,
     String href = '',
   }) async {
-    if (!favorited) return addFavorite(tid: tid, formhash: formhash);
+    if (!favorited) {
+      try {
+        return await addFavorite(tid: tid, formhash: formhash);
+      } catch (e) {
+        final message = e is SiteException ? e.message : '';
+        if (message.contains('重复收藏') || message.contains('已经收藏') || message.contains('收藏过')) {
+          return '该主题已在收藏中';
+        }
+        rethrow;
+      }
+    }
 
-    var deleteHref = href;
-    if (!deleteHref.contains('op=delete')) {
-      final favid = await _findFavoriteId(tid);
-      if (favid == null) throw SiteException('未找到收藏记录，请下拉刷新后重试');
-      deleteHref = AppConfig.uri('home.php', {
+    var message = await _deleteFavorite(tid: tid, formhash: formhash);
+    if (!await _favoriteExists(tid)) return '已取消收藏';
+
+    // 兼容旧版：从收藏夹里取真实 favid 后再删一次。
+    var favid = await _findFavoriteFavid(tid);
+    if (favid.isEmpty) favid = RegExp(r'favid=(\d+)').firstMatch(href)?.group(1) ?? '';
+    if (favid.isNotEmpty) {
+      message = await _deleteFavorite(tid: tid, formhash: formhash, favid: favid) ?? message;
+    }
+    if (await _favoriteExists(tid)) {
+      throw SiteException(message ?? '取消收藏失败，请稍后重试');
+    }
+    return '已取消收藏';
+  }
+
+  /// 提交删除收藏；返回页面提示（失败时用于告知用户）。
+  Future<String?> _deleteFavorite({
+    required int tid,
+    required String formhash,
+    String favid = '',
+  }) async {
+    final target = <String, String>{};
+    if (favid.isEmpty) {
+      target['id'] = '$tid';
+    } else {
+      target['favid'] = favid;
+    }
+    final result = await _http.post(
+      'home.php',
+      query: {
         'mod': 'spacecp',
         'ac': 'favorite',
         'op': 'delete',
         'type': 'thread',
-        'favid': '$favid',
+        ...target,
         'formhash': formhash,
+        'deletesubmit': 'yes',
         'handlekey': 'favorite',
         'mobile': '2',
-      }).toString();
-    }
-
-    final result = await _http.get(
-      deleteHref,
-      referer: _threadReferer(tid),
+      },
+      form: {'formhash': formhash, 'deletesubmit': 'yes', ...target},
+      referer: AppConfig.uri('home.php', {'mod': 'space', 'do': 'favorite', 'view': 'me'}).toString(),
     );
     _ensureOk(result);
-    final msg = _pageMessage(parser.parse(result.body));
-    if (msg != null && _looksLikeError(msg)) throw SiteException(msg);
-    return '已取消收藏';
+    final message = _pageMessage(parser.parse(result.body));
+    if (message != null && _looksLikeError(message) && !message.contains('不存在')) {
+      throw SiteException(message);
+    }
+    return message;
   }
 
-  /// 从收藏夹中找出该主题对应的 favid。
-  Future<int?> _findFavoriteId(int tid) async {
-    for (var page = 1; page <= 3; page++) {
-      final result = await _http.get(
-        'home.php',
-        query: {'mod': 'space', 'do': 'favorite', 'view': 'me', 'page': '$page', 'mobile': '2'},
-      );
-      _ensureOk(result);
-      final doc = parser.parse(result.body);
-      final links = doc.querySelectorAll('a[href*="favid="]');
-      if (links.isEmpty) break;
-      for (final link in links) {
-        final href = link.attributes['href'] ?? '';
-        final favid = int.tryParse(RegExp(r'favid=(\d+)').firstMatch(href)?.group(1) ?? '');
-        if (favid == null) continue;
-        Element? row = link;
-        for (var i = 0; i < 5 && row != null; i++) {
-          if (row.localName == 'li' || (row.attributes['class'] ?? '').contains('comiis_fav')) break;
-          row = row.parent;
-        }
-        final scope = row?.innerHtml ?? '';
-        if (scope.contains('thread-$tid-1-1.html') ||
-            scope.contains('tid=$tid') ||
-            scope.contains('viewthread&tid=$tid')) {
-          return favid;
+  /// 打开删除确认页：仍能打开说明该主题还在收藏夹里。
+  Future<bool> _favoriteExists(int tid) async {
+    final result = await _http.get(
+      'home.php',
+      query: {
+        'mod': 'spacecp',
+        'ac': 'favorite',
+        'op': 'delete',
+        'type': 'thread',
+        'id': '$tid',
+        'handlekey': 'favorite',
+        'mobile': '2',
+      },
+    );
+    _ensureOk(result);
+    final doc = parser.parse(result.body);
+    return doc.querySelector('input[name="deletesubmit"]') != null ||
+        doc.querySelector('form[id^="favoriteform_"]') != null ||
+        result.body.contains('name="deletesubmit"');
+  }
+
+  /// 在收藏夹中按主题 tid 定位 favid；找不到返回空串。
+  Future<String> _findFavoriteFavid(int tid) async {
+    for (final userAgent in <String?>[_desktopUserAgent, null]) {
+      for (var page = 1; page <= 3; page++) {
+        final body = await _favoritePage(page, userAgent);
+        if (!body.contains('favid=') && !body.contains('favorite[]')) break;
+        final doc = parser.parse(body);
+        for (final marker in _favoriteMarkers(doc)) {
+          final favid = _favoriteMarkerFavid(marker);
+          if (favid == null) continue;
+          if (_favoriteRowHasThread(marker, tid)) return favid;
         }
       }
     }
-    return null;
+    return '';
+  }
+
+  /// 收藏项里的 favid 标记：删除链接或批量删除复选框。
+  Iterable<Element> _favoriteMarkers(Document doc) sync* {
+    yield* doc.querySelectorAll('a[href*="favid="]');
+    yield* doc.querySelectorAll('input[type="checkbox"][name*="favorite"]');
+  }
+
+  String? _favoriteMarkerFavid(Element marker) {
+    final href = marker.attributes['href'] ?? '';
+    final fromHref = RegExp(r'favid=(\d+)').firstMatch(href)?.group(1);
+    if (fromHref != null) return fromHref;
+    final value = marker.attributes['value'] ?? '';
+    return RegExp(r'^\d+$').hasMatch(value) ? value : null;
+  }
+
+  Future<String> _favoritePage(int page, String? userAgent) async {
+    final result = await _http.get(
+      'home.php',
+      query: {'mod': 'space', 'do': 'favorite', 'view': 'me', 'type': 'thread', 'page': '$page'},
+      userAgent: userAgent,
+    );
+    _ensureOk(result);
+    return result.body;
+  }
+
+  /// 从收藏项内的标记（删除链接 / 复选框）向上找到行容器，判断该行收藏的主题是否为 tid。
+  bool _favoriteRowHasThread(Element marker, int tid) {
+    Element? node = marker;
+    for (var depth = 0; depth < 10 && node != null; depth++) {
+      if (_containsThreadHref(node, tid)) return true;
+      // 出现别的主题说明已经越过当前收藏项。
+      if (_containsOtherThreadHref(node, tid)) return false;
+      node = node.parent;
+    }
+    return false;
+  }
+
+  bool _containsThreadHref(Element node, int tid) {
+    for (final a in node.querySelectorAll('a[href]')) {
+      final match = RegExp(r'(?:tid=|thread-)(\d+)').firstMatch(a.attributes['href'] ?? '');
+      if (match != null && int.tryParse(match.group(1)!) == tid) return true;
+    }
+    return false;
+  }
+
+  bool _containsOtherThreadHref(Element node, int tid) {
+    for (final a in node.querySelectorAll('a[href]')) {
+      final match = RegExp(r'(?:tid=|thread-)(\d+)').firstMatch(a.attributes['href'] ?? '');
+      if (match != null && int.tryParse(match.group(1)!) != tid) return true;
+    }
+    return false;
   }
 
   /// Discuz 原生搜索：formhash -> POST 关键词 -> searchid 翻页。
