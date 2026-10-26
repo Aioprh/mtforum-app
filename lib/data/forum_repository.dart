@@ -1045,34 +1045,34 @@ class ForumRepository {
     final doc = parser.parse(result.body);
     final items = <FriendItem>[];
     final seen = <int>{};
-    for (final selector in [
-      '#friend_ul li',
-      '.comiis_friendlist li',
-      '.friend_list li',
-      '.comiis_friend li',
-      '.bm_c',
-    ]) {
+    // 移动端 comiis 模板：div.comiis_userlist01 > li；桌面模板回落 ul.buddy / #friend_ul。
+    for (final selector in ['.comiis_userlist01 li', '#friend_ul li', 'ul.buddy li']) {
       for (final element in doc.querySelectorAll(selector)) {
         // 无好友时页面会推荐好友 / 在线成员，带「加好友」按钮的不是已有好友。
         if (element.querySelector('a[href*="ac=friend&op=add"]') != null) continue;
-        final nameLink = element.querySelector('h4 a[href*="mod=space&uid="]') ??
-            element.querySelector('a[href*="mod=space&uid="]');
-        final anyLink = element.querySelector('a[href*="uid="]');
-        final uid = _firstInt(
-          RegExp(r'[?&](?:amp;)?uid=(\d+)')
-              .firstMatch(anyLink?.attributes['href'] ?? '')
-              ?.group(1),
-        );
-        if (uid == null || uid <= 0 || !seen.add(uid)) continue;
-        final name = _clean(
-          nameLink?.text ?? element.querySelector('.comiis_friend_name, .name')?.text ?? '',
-        );
+        final nameLink = element.querySelector('p.tit a[href*="mod=space&uid="]') ??
+            element.querySelector('p.tit a') ??
+            element.querySelector('h4 a[href*="mod=space&uid="]') ??
+            element.querySelector('h4 a') ??
+            element.querySelector('.comiis_friend_name, .name');
+        final name = _clean(nameLink?.text ?? '');
         if (name.isEmpty) continue;
+        var uid = 0;
+        for (final link in element.querySelectorAll('a[href]')) {
+          uid = _uidFromHref(link.attributes['href'] ?? '');
+          if (uid > 0) break;
+        }
+        if (uid <= 0 || !seen.add(uid)) continue;
+        final avatarEl = element.querySelector('a.list01_limg img') ??
+            element.querySelector('dd.avt img') ??
+            element.querySelector('img');
         items.add(FriendItem(
           uid: uid,
           username: name,
-          avatar: _absolute(element.querySelector('img')?.attributes['src'] ?? ''),
-          note: _clean(element.querySelector('.note, .comiis_friend_note')?.text ?? ''),
+          avatar: avatarEl == null ? '' : _pickImage(avatarEl),
+          note: _clean(
+            element.querySelector('p.txt, .note, .comiis_friend_note')?.text ?? '',
+          ),
         ));
         if (items.length >= 80) break;
       }
@@ -1081,47 +1081,48 @@ class ForumRepository {
     return items;
   }
 
-  /// 私信会话列表。
-  Future<List<PmConversation>> fetchPmConversations({int page = 1}) async {
+  /// 以桌面模板读取页面：结构稳定，读取后立即清掉服务端写入的 mobile=no Cookie，
+  /// 避免后续请求也跟着切到桌面模板。
+  Future<HttpResult> _getDesktopPage(String path, Map<String, String> query) async {
     final result = await _http.get(
-      'home.php',
-      query: {
-        'mod': 'space',
-        'do': 'pm',
-        'filter': 'privatepm',
-        'mobile': '2',
-        'page': '$page',
-      },
+      path,
+      query: {...query, 'mobile': 'no'},
+      userAgent: _desktopUserAgent,
     );
+    _http.removeCookie('mobile');
+    return result;
+  }
+
+  /// 私信会话列表。桌面模板结构固定，避免移动端模板差异导致昵称/头像解析失败。
+  Future<List<PmConversation>> fetchPmConversations({int page = 1}) async {
+    final result = await _getDesktopPage('home.php', {
+      'mod': 'space',
+      'do': 'pm',
+      'filter': 'privatepm',
+      'page': '$page',
+    });
     _ensureOk(result);
     final doc = parser.parse(result.body);
     final items = <PmConversation>[];
     final seen = <int>{};
-    for (final link in doc.querySelectorAll('a[href*="subop=view"]')) {
-      final href = link.attributes['href'] ?? '';
-      final uid = _firstInt(RegExp(r'[?&](?:amp;)?touid=(\d+)').firstMatch(href)?.group(1));
+    for (final node in doc.querySelectorAll('dl[id^="pmlist_"]')) {
+      final link = node.querySelector('a[href*="subop=view"][href*="touid="]');
+      final uid = _firstInt(
+        RegExp(r'[?&](?:amp;)?touid=(\d+)').firstMatch(link?.attributes['href'] ?? '')?.group(1),
+      );
       if (uid == null || uid <= 0 || !seen.add(uid)) continue;
-      final box = link.parent?.parent ?? link.parent;
-      final spans = box?.querySelectorAll('span.xg1') ?? const <Element>[];
-      final info = spans.isEmpty ? '' : _clean(spans.first.text);
-      var name = _clean(box?.querySelector('a[href*="mod=space&uid="]')?.text ?? '');
-      if (name.isEmpty) {
-        // 移动端会话列表只输出「我对 XX 说 / XX 对我说」的说明文字。
-        name = _clean(
-          RegExp(r'我对(.+?)说').firstMatch(info)?.group(1) ??
-              RegExp(r'(.+?)对我说').firstMatch(info)?.group(1) ??
-              '',
-        );
-      }
-      final preview = _clean(link.text);
-      if (preview.isEmpty) continue;
+      final name = _clean(node.querySelector('dd.ptm a[href*="mod=space&uid="]')?.text ?? '');
+      final avatarEl = node.querySelector('dd.avt img');
+      final preview = _pmNodeText(node);
+      if (name.isEmpty && preview.isEmpty) continue;
       items.add(PmConversation(
         uid: uid,
         name: name,
-        avatar: _absolute(box?.querySelector('img[src*="avatar"], img')?.attributes['src'] ?? ''),
+        avatar: avatarEl == null ? '' : _pickImage(avatarEl),
         preview: preview,
-        time: spans.isEmpty ? '' : _clean(spans.last.text),
-        unread: box?.querySelector('img[src*="new_pm"], .unread, .comiis_new') != null,
+        time: _clean(node.querySelector('dd.ptm span.xg1')?.text ?? ''),
+        // newpm_avt 在每条会话里都会输出，靠 CSS 控制显示，不能用它判断未读。
+        unread: node.classes.contains('newpm'),
       ));
       if (items.length >= 40) break;
     }
@@ -1130,49 +1131,33 @@ class ForumRepository {
 
   /// 与某个用户的私信记录，返回（消息、formhash、对方昵称）。
   Future<(List<PmMessage>, String, String)> fetchPmMessages(int uid, {int myUid = 0}) async {
-    final result = await _http.get(
-      'home.php',
-      query: {
-        'mod': 'space',
-        'do': 'pm',
-        'subop': 'view',
-        'touid': '$uid',
-        'mobile': '2',
-      },
-    );
+    final result = await _getDesktopPage('home.php', {
+      'mod': 'space',
+      'do': 'pm',
+      'subop': 'view',
+      'touid': '$uid',
+    });
     _ensureOk(result);
     final html = result.body;
     final doc = parser.parse(html);
     final messages = <PmMessage>[];
     var peer = '';
-    for (final selector in [
-      '.comiis_pmlist li',
-      '.pm_list li',
-      '.comiis_chat li',
-      '.comiis_pm li',
-      '.bm_c',
-    ]) {
-      for (final element in doc.querySelectorAll(selector)) {
-        final authorLink = element.querySelector('a[href*="mod=space&uid="]');
-        final text = _clean(
-          element.querySelector('dd.xs1, .message, .comiis_pm_text')?.text ?? '',
-        );
-        if (text.isEmpty) continue;
-        final author = _clean(authorLink?.text ?? '');
-        final authorUid = _firstInt(
-          RegExp(r'[?&](?:amp;)?uid=(\d+)').firstMatch(authorLink?.attributes['href'] ?? '')?.group(1),
-        ) ?? 0;
-        final mine = myUid > 0 && authorUid == myUid;
-        if (!mine && author.isNotEmpty && peer.isEmpty) peer = author;
-        messages.add(PmMessage(
-          text: text,
-          author: author,
-          uid: authorUid,
-          time: _clean(element.querySelector('.xg1, .time, .comiis_time')?.text ?? ''),
-          mine: mine,
-        ));
-      }
-      if (messages.isNotEmpty) break;
+    for (final node in doc.querySelectorAll('dl[id^="pmlist_"]')) {
+      final text = _pmNodeText(node);
+      if (text.isEmpty) continue;
+      final authorLink = node.querySelector('dd.ptm a[href*="mod=space&uid="]');
+      final author = _clean(authorLink?.text ?? '');
+      final authorUid = _uidFromHref(authorLink?.attributes['href'] ?? '');
+      // 自己的消息在模板里只显示「您」，没有作者链接。
+      final mine = authorLink == null || (myUid > 0 && authorUid == myUid);
+      if (!mine && author.isNotEmpty && peer.isEmpty) peer = author;
+      messages.add(PmMessage(
+        text: text,
+        author: author,
+        uid: authorUid,
+        time: _clean(node.querySelector('dd.ptm span.xg1')?.text ?? ''),
+        mine: mine,
+      ));
     }
     if (peer.isEmpty) {
       peer = _clean(
@@ -1180,6 +1165,36 @@ class ForumRepository {
       );
     }
     return (messages, _findFormhash(html), peer);
+  }
+
+  /// 从链接里取用户 uid：兼容 home.php?...&uid=1 与 space-uid-1.html 两种写法。
+  int _uidFromHref(String href) {
+    final match = RegExp(r'(?:[?&](?:amp;)?uid=|space-uid-)(\d+)').firstMatch(href);
+    return _firstInt(match?.group(1)) ?? 0;
+  }
+
+  /// 私信节点正文：取第一个 <br> 之后的内容，跳过时间与操作菜单。
+  String _pmNodeText(Element node) {
+    final body = node.querySelector('dd.ptm') ?? node;
+    final buffer = StringBuffer();
+    var afterBreak = false;
+    for (final child in body.nodes) {
+      if (child is Element) {
+        if (child.localName == 'br') {
+          afterBreak = true;
+          continue;
+        }
+        if (!afterBreak) continue;
+        final classes = child.classes;
+        if (classes.contains('xg1') || classes.contains('pm_o') || child.localName == 'script') {
+          continue;
+        }
+        buffer.write(child.text);
+      } else if (afterBreak) {
+        buffer.write(child.text);
+      }
+    }
+    return _clean(buffer.toString());
   }
 
   /// 消息通知：回复提醒 / @提醒 / 系统通知。
