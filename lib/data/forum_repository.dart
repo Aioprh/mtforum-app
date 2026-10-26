@@ -425,7 +425,10 @@ class ForumRepository {
 
   /// 页面中收藏 / 取消收藏的原始链接（已收藏时 Discuz 会输出 op=delete&favid=xx）。
   String _favoriteHref(String html) {
-    final matches = RegExp(r'href=[\'"]([^\'"]*ac=favorite[^\'"]*)[\'"]', caseSensitive: false).allMatches(html);
+    final matches = RegExp(
+      'href=[\'"]([^\'"]*ac=favorite[^\'"]*)[\'"]',
+      caseSensitive: false,
+    ).allMatches(html);
     var first = '';
     for (final match in matches) {
       final href = match.group(1) ?? '';
