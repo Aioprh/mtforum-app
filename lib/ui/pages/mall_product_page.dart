@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/http_session.dart';
@@ -239,18 +241,9 @@ class _MallProductPageState extends State<MallProductPage> {
                             if (product.views.isNotEmpty) _chip(scheme, '浏览 ${product.views}'),
                           ],
                         ),
-                        if (product.countdown.isNotEmpty) ...[
+                        if (product.startAt != null || product.endAt != null) ...[
                           const SizedBox(height: 12),
-                          Row(
-                            children: [
-                              Icon(Icons.timer_outlined, size: 16, color: scheme.primary),
-                              const SizedBox(width: 6),
-                              Text(
-                                '剩余时间 ${product.countdown}',
-                                style: TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant),
-                              ),
-                            ],
-                          ),
+                          _CountdownLine(start: product.startAt, end: product.endAt),
                         ],
                         if (product.warning.isNotEmpty) ...[
                           const SizedBox(height: 12),
@@ -354,6 +347,67 @@ class _MallProductPageState extends State<MallProductPage> {
         borderRadius: BorderRadius.circular(8),
       ),
       child: Text(text, style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)),
+    );
+  }
+}
+
+/// 剩余时间：站点只输出 00 天占位，这里按开始 / 结束时间实时计算。
+class _CountdownLine extends StatefulWidget {
+  const _CountdownLine({this.start, this.end});
+
+  final DateTime? start;
+  final DateTime? end;
+
+  @override
+  State<_CountdownLine> createState() => _CountdownLineState();
+}
+
+class _CountdownLineState extends State<_CountdownLine> {
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  String _two(int value) => value.toString().padLeft(2, '0');
+
+  String get _text {
+    final now = DateTime.now();
+    final start = widget.start;
+    final end = widget.end;
+    if (start != null && now.isBefore(start)) {
+      return '${start.month}月${start.day}日 ${_two(start.hour)}:${_two(start.minute)} 开抢';
+    }
+    if (end == null) return '';
+    final left = end.difference(now);
+    if (left.isNegative) {
+      return '已结束 ${end.year}/${end.month}/${end.day} ${_two(end.hour)}:${_two(end.minute)}';
+    }
+    return '剩余时间 ${left.inDays}天${_two(left.inHours % 24)}小时'
+        '${_two(left.inMinutes % 60)}分${_two(left.inSeconds % 60)}秒';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final text = _text;
+    if (text.isEmpty) return const SizedBox.shrink();
+    final scheme = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Icon(Icons.timer_outlined, size: 16, color: scheme.primary),
+        const SizedBox(width: 6),
+        Text(text, style: TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant)),
+      ],
     );
   }
 }

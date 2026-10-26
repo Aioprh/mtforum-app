@@ -2103,6 +2103,58 @@ class ForumRepository {
     return AppConfig.uri(value).toString();
   }
 
+  /// 解析站点输出的时间（`2026/12/31 02:52:00`、`2026-12-31 02:52:00`）。
+  DateTime? _parseSiteDate(String? raw) {
+    final value = (raw ?? '').trim();
+    if (value.isEmpty) return null;
+    final match = RegExp(
+      r'(\d{4})[/-](\d{1,2})[/-](\d{1,2})(?:\s+|T)(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?',
+    ).firstMatch(value);
+    if (match == null) return null;
+    return DateTime(
+      int.parse(match.group(1)!),
+      int.parse(match.group(2)!),
+      int.parse(match.group(3)!),
+      int.parse(match.group(4)!),
+      int.parse(match.group(5)!),
+      int.tryParse(match.group(6) ?? '') ?? 0,
+    );
+  }
+
+  /// 读取页面 JS 里的 `var etime = new Date('...')`。
+  DateTime? _jsDate(String html, String name) {
+    final match = RegExp(
+      'var\\s+$name\\s*=\\s*new\\s+Date\\(\\s*["\']([^"\']+)["\']\\s*\\)',
+    ).firstMatch(html);
+    return _parseSiteDate(match?.group(1));
+  }
+
+  String? _attrIgnoreCase(Element element, String name) {
+    final target = name.toLowerCase();
+    for (final entry in element.attributes.entries) {
+      if (entry.key.toString().toLowerCase() == target) return entry.value;
+    }
+    return null;
+  }
+
+  String _two(int value) => value.toString().padLeft(2, '0');
+
+  /// 商城列表里的剩余时间文案（站点自身只输出 00 天 00 小时占位）。
+  String _mallTimeLabel(Element? element) {
+    if (element == null) return '';
+    final start = _parseSiteDate(_attrIgnoreCase(element, 'startTime'));
+    final end = _parseSiteDate(_attrIgnoreCase(element, 'endTime'));
+    final now = DateTime.now();
+    if (start != null && now.isBefore(start)) {
+      return '${start.month}月${start.day}日 ${_two(start.hour)}:${_two(start.minute)} 开抢';
+    }
+    if (end == null) return '';
+    final left = end.difference(now);
+    if (left.isNegative) return '已结束';
+    return '剩余 ${left.inDays}天${_two(left.inHours % 24)}小时'
+        '${_two(left.inMinutes % 60)}分${_two(left.inSeconds % 60)}秒';
+  }
+
   String _avatarForUid(int uid) {
     final padded = uid.toString().padLeft(9, '0');
     return 'https://cdn.binmt.cc/uc_server/data/avatar/'
@@ -2819,7 +2871,11 @@ class ForumRepository {
         li.querySelector('.tit, .title, h3, h4, strong')?.text ?? link?.text ?? text,
       );
       if (title.isEmpty || !seen.add('$title|$href')) continue;
-      final rest = _clean(text.replaceFirst(title, ''));
+      var rest = _clean(text.replaceFirst(title, ''));
+      // 插件列表的倒计时由页面脚本填充，静态 HTML 里只有 00 天占位，改用真实时间。
+      final timeLabel = _mallTimeLabel(li.querySelector('span.time'));
+      rest = _clean(rest.replaceFirst(RegExp(r'\d+\s*天\s*\d+\s*小时\s*\d+\s*分\s*\d+\s*秒'), ''));
+      if (timeLabel.isNotEmpty) rest = rest.isEmpty ? timeLabel : '$timeLabel · $rest';
       rows.add(SiteRow(
         title: title,
         subtitle: rest,
@@ -2844,18 +2900,32 @@ class ForumRepository {
 
     final records = <SiteRow>[];
     final seen = <String>{};
-    for (final tr in doc.querySelectorAll('.comiis_bodybox tr')) {
-      final cells = tr.querySelectorAll('td');
-      if (cells.length < 3) continue;
-      final values = <String>[];
-      for (final cell in cells) {
-        final value = _clean(cell.text);
-        if (value.isNotEmpty) values.add(value);
-      }
-      if (values.length < 3) continue;
-      if (!seen.add(values.join('|'))) continue;
-      records.add(SiteRow(title: values.first, subtitle: values.skip(1).join(' · ')));
+    // 移动模板的兑换记录：div.dhlist li（时间 / 状态 / 用户名 / 金额）。
+    for (final li in doc.querySelectorAll('.dhlist li')) {
+      if ((li.attributes['class'] ?? '').contains('dhtitle')) continue;
+      final name = _clean(li.querySelector('.dhname')?.text ?? '');
+      if (name.isEmpty) continue;
+      final time = _clean(li.querySelector('.ac')?.text ?? '');
+      final amount = _clean(li.querySelector('.jyje')?.text ?? '');
+      final meta = [time, amount].where((value) => value.isNotEmpty).join(' · ');
+      if (!seen.add('$name|$meta')) continue;
+      records.add(SiteRow(title: name, subtitle: meta));
       if (records.length >= 20) break;
+    }
+    if (records.isEmpty) {
+      for (final tr in doc.querySelectorAll('.comiis_bodybox tr')) {
+        final cells = tr.querySelectorAll('td');
+        if (cells.length < 3) continue;
+        final values = <String>[];
+        for (final cell in cells) {
+          final value = _clean(cell.text);
+          if (value.isNotEmpty) values.add(value);
+        }
+        if (values.length < 3) continue;
+        if (!seen.add(values.join('|'))) continue;
+        records.add(SiteRow(title: values.first, subtitle: values.skip(1).join(' · ')));
+        if (records.length >= 20) break;
+      }
     }
 
     return MallProduct(
@@ -2875,7 +2945,8 @@ class ForumRepository {
       marketPrice: pick('.price-sell'),
       stock: pick('.count-take'),
       sold: pick('.count-rest'),
-      countdown: pick('#countdown'),
+      startAt: _jsDate(result.body, 'stime'),
+      endAt: _jsDate(result.body, 'etime'),
       views: pick('.item-assure b'),
       warning: pick('.item-warning'),
       buyHref: _absolute(doc.querySelector('a.buy-btn')?.attributes['href']),

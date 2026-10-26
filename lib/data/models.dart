@@ -639,7 +639,8 @@ class MallProduct {
     this.marketPrice = '',
     this.stock = '',
     this.sold = '',
-    this.countdown = '',
+    this.startAt,
+    this.endAt,
     this.views = '',
     this.warning = '',
     this.buyHref = '',
@@ -654,7 +655,10 @@ class MallProduct {
   final String marketPrice;
   final String stock;
   final String sold;
-  final String countdown;
+
+  /// 抢购开始 / 结束时间，剩余时间由客户端实时计算。
+  final DateTime? startAt;
+  final DateTime? endAt;
   final String views;
   final String warning;
   final String buyHref;
