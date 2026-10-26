@@ -121,10 +121,11 @@ class _InternalBrowserPageState extends State<InternalBrowserPage> {
           IconButton(tooltip: '外部浏览器打开', onPressed: _openExternal, icon: const Icon(Icons.open_in_browser_rounded)),
           PopupMenuButton<String>(
             onSelected: (value) async {
+              final messenger = ScaffoldMessenger.of(context);
               if (value == 'refresh') await _controller.reload();
               if (value == 'copy') {
                 await Clipboard.setData(ClipboardData(text: _url));
-                if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('链接已复制')));
+                messenger.showSnackBar(const SnackBar(content: Text('链接已复制')));
               }
             },
             itemBuilder: (_) => const [
