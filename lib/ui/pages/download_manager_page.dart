@@ -65,9 +65,10 @@ class _DownloadManagerPageState extends State<DownloadManagerPage> {
                       },
                       trailing: PopupMenuButton<String>(
                         onSelected: (value) async {
+                          final messenger = ScaffoldMessenger.of(context);
                           if (value == 'copy') {
                             await Clipboard.setData(ClipboardData(text: record.path));
-                            if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('文件路径已复制')));
+                            messenger.showSnackBar(const SnackBar(content: Text('文件路径已复制')));
                           } else if (value == 'delete') {
                             final yes = await showDialog<bool>(context: context, builder: (context) => AlertDialog(
                               title: const Text('删除下载记录'),
