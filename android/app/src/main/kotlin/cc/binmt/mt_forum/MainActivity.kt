@@ -2,12 +2,15 @@ package cc.binmt.mt_forum
 
 import android.content.ContentValues
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import java.io.File
 import java.util.concurrent.Executors
 
 class MainActivity : FlutterActivity() {
@@ -39,8 +42,72 @@ class MainActivity : FlutterActivity() {
                         }
                     }
                 }
+                "openDownloadedFile" -> {
+                    val path = call.argument<String>("path")
+                    val name = call.argument<String>("name") ?: path?.let { File(it).name }
+                    if (path.isNullOrBlank() || name.isNullOrBlank()) {
+                        result.error("invalid-file", "文件路径无效", null)
+                    } else {
+                        runCatching { openDownloadedFile(path, name) }
+                            .onSuccess { result.success(true) }
+                            .onFailure { error ->
+                                result.error("open-file-failed", error.message ?: "没有找到可打开此文件的应用", null)
+                            }
+                    }
+                }
                 else -> result.notImplemented()
             }
+        }
+    }
+
+    private fun openDownloadedFile(path: String, name: String) {
+        val source = File(path)
+        if (!source.isFile) throw IllegalArgumentException("文件不存在")
+        // FileProvider only exposes a temporary copy under cache/opened_downloads.
+        val openDir = File(cacheDir, "opened_downloads").apply { mkdirs() }
+        val safeName = name.substringAfterLast('/').substringAfterLast('\\\\')
+            .replace(Regex("[^A-Za-z0-9._-]"), "_")
+            .ifBlank { "download" }
+        val sharedFile = File(openDir, safeName)
+        source.copyTo(sharedFile, overwrite = true)
+        val contentUri: Uri = FileProvider.getUriForFile(
+            this,
+            "${applicationContext.packageName}.fileprovider",
+            sharedFile
+        )
+        val extension = safeName.substringAfterLast('.', "").lowercase()
+        val mimeType = when (extension) {
+            "apk" -> "application/vnd.android.package-archive"
+            "zip" -> "application/zip"
+            "rar" -> "application/vnd.rar"
+            "7z" -> "application/x-7z-compressed"
+            "tar" -> "application/x-tar"
+            "gz" -> "application/gzip"
+            "pdf" -> "application/pdf"
+            "txt", "log" -> "text/plain"
+            "jpg", "jpeg" -> "image/jpeg"
+            "png" -> "image/png"
+            "gif" -> "image/gif"
+            "webp" -> "image/webp"
+            "mp4" -> "video/mp4"
+            "mp3" -> "audio/mpeg"
+            "doc" -> "application/msword"
+            "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            "xls" -> "application/vnd.ms-excel"
+            "xlsx" -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            else -> "*/*"
+        }
+        val viewIntent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(contentUri, mimeType)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            clipData = android.content.ClipData.newUri(contentResolver, safeName, contentUri)
+        }
+        if (extension == "apk") {
+            // Hand APKs directly to Android's package installer, not a browser or chooser.
+            startActivity(viewIntent)
+        } else {
+            // Archives and other files ask Android which installed app should handle them.
+            startActivity(Intent.createChooser(viewIntent, "选择打开方式"))
         }
     }
 
