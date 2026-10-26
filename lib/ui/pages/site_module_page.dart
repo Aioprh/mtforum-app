@@ -279,11 +279,9 @@ class _LiveCountdownSubtitleState extends State<_LiveCountdownSubtitle> {
     final hours = int.tryParse(match.group(2)!) ?? 0;
     final minutes = int.tryParse(match.group(3)!) ?? 0;
     final seconds = int.tryParse(match.group(4)!) ?? 0;
-    final totalSeconds = days * Duration.secondsPerDay +
-        hours * Duration.secondsPerHour +
-        minutes * Duration.secondsPerMinute +
-        seconds;
-    _deadline = DateTime.now().add(Duration(seconds: totalSeconds));
+    _deadline = DateTime.now().add(
+      Duration(days: days, hours: hours, minutes: minutes, seconds: seconds),
+    );
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() {});
     });
