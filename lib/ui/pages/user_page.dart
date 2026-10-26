@@ -10,7 +10,7 @@ import '../widgets/state_views.dart';
 import '../widgets/thread_feed.dart';
 import '../widgets/user_avatar.dart';
 import 'login_page.dart';
-import 'pm_page.dart';
+import 'pm_chat_page.dart';
 
 /// 他人主页：资料、关注、私信与 TA 的主题 / 回复。
 class UserPage extends StatefulWidget {
@@ -32,6 +32,8 @@ class _UserPageState extends State<UserPage> {
   String? _error;
 
   ForumRepository get _repo => AppState.instance.repo;
+
+  bool get _isSelf => AppState.instance.profile?.uid == widget.uid;
 
   @override
   void initState() {
@@ -96,8 +98,15 @@ class _UserPageState extends State<UserPage> {
 
   Future<void> _openPm() async {
     final name = _profile?.username.isNotEmpty == true ? _profile!.username : widget.name;
+    if (!AppState.instance.isLoggedIn) {
+      await Navigator.of(context).push<bool>(
+        MaterialPageRoute(builder: (_) => const LoginPage()),
+      );
+      return;
+    }
+    if (!mounted) return;
     await Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => PmPage(uid: widget.uid, name: name),
+      builder: (_) => PmChatPage(uid: widget.uid, name: name),
     ));
   }
 
@@ -109,7 +118,11 @@ class _UserPageState extends State<UserPage> {
       length: 2,
       child: Scaffold(
         appBar: AppBar(
-          title: Text(name.isEmpty ? '用户主页' : name, maxLines: 1, overflow: TextOverflow.ellipsis),
+          title: Text(
+            _isSelf ? '我的主页' : (name.isEmpty ? '用户主页' : name),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
           actions: [
             IconButton(
               tooltip: '在浏览器打开',
@@ -130,7 +143,10 @@ class _UserPageState extends State<UserPage> {
                       _header(scheme, name),
                       TabBar(
                         labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
-                        tabs: const [Tab(text: 'TA的主题'), Tab(text: 'TA的回复')],
+                        tabs: [
+                          Tab(text: _isSelf ? '我的主题' : 'TA的主题'),
+                          Tab(text: _isSelf ? '我的回复' : 'TA的回复'),
+                        ],
                         indicatorColor: scheme.primary,
                       ),
                       Expanded(
@@ -227,30 +243,32 @@ class _UserPageState extends State<UserPage> {
                 ),
             ],
           ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: FilledButton.icon(
-                  onPressed: _followBusy ? null : _toggleFollow,
-                  icon: _followBusy
-                      ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                      : Icon(_following ? Icons.check_rounded : Icons.person_add_alt_1_rounded, size: 17),
-                  label: Text(_following ? '已关注' : '关注'),
-                  style: FilledButton.styleFrom(minimumSize: const Size(0, 36)),
+          if (!_isSelf) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: _followBusy ? null : _toggleFollow,
+                    icon: _followBusy
+                        ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                        : Icon(_following ? Icons.check_rounded : Icons.person_add_alt_1_rounded, size: 17),
+                    label: Text(_following ? '已关注' : '关注'),
+                    style: FilledButton.styleFrom(minimumSize: const Size(0, 36)),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _openPm,
-                  icon: const Icon(Icons.mail_outline_rounded, size: 17),
-                  label: const Text('发消息'),
-                  style: OutlinedButton.styleFrom(minimumSize: const Size(0, 36)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _openPm,
+                    icon: const Icon(Icons.mail_outline_rounded, size: 17),
+                    label: const Text('发消息'),
+                    style: OutlinedButton.styleFrom(minimumSize: const Size(0, 36)),
+                  ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            ),
+          ],
         ],
       ),
     );

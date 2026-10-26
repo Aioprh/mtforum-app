@@ -106,6 +106,57 @@ class NoticeItem {
   final String kind;
 }
 
+/// 好友（空间好友列表）。
+class FriendItem {
+  const FriendItem({
+    required this.uid,
+    required this.username,
+    this.avatar = '',
+    this.note = '',
+  });
+
+  final int uid;
+  final String username;
+  final String avatar;
+  final String note;
+}
+
+/// 私信会话摘要。
+class PmConversation {
+  const PmConversation({
+    required this.uid,
+    required this.name,
+    this.avatar = '',
+    this.preview = '',
+    this.time = '',
+    this.unread = false,
+  });
+
+  final int uid;
+  final String name;
+  final String avatar;
+  final String preview;
+  final String time;
+  final bool unread;
+}
+
+/// 单条私信。
+class PmMessage {
+  const PmMessage({
+    required this.text,
+    this.author = '',
+    this.uid = 0,
+    this.time = '',
+    this.mine = false,
+  });
+
+  final String text;
+  final String author;
+  final int uid;
+  final String time;
+  final bool mine;
+}
+
 /// 一次打赏记录（Discuz 评分日志）。
 class RateRecord {
   const RateRecord({

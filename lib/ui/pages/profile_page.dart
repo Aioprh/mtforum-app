@@ -7,11 +7,14 @@ import '../widgets/thread_feed.dart';
 import '../widgets/user_avatar.dart';
 import 'about_page.dart';
 import 'black_house_page.dart';
+import 'friends_page.dart';
 import 'login_page.dart';
 import 'notifications_page.dart';
+import 'pm_list_page.dart';
 import 'rankings_page.dart';
 import 'site_features_page.dart';
 import 'tags_page.dart';
+import 'user_page.dart';
 
 /// 个人中心：账号信息、我的主题 / 回复 / 收藏、外观与退出。
 class ProfilePage extends StatefulWidget {
@@ -107,6 +110,16 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
   }
 
+  void _openMySpace() {
+    final profile = AppState.instance.profile;
+    if (profile == null || profile.uid <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('资料加载中，请稍后重试')));
+      _refresh();
+      return;
+    }
+    _openPage(UserPage(uid: profile.uid, name: profile.username));
+  }
+
   Future<void> _signIn() async {
     if (!AppState.instance.isLoggedIn) {
       await _openLogin();
@@ -149,7 +162,11 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
               padding: const EdgeInsets.fromLTRB(16, 6, 16, 30),
               children: [
                 if (state.isLoggedIn) ...[
-                  _profileHeader(scheme, profile, state.profileLoading),
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _openMySpace,
+                    child: _profileHeader(scheme, profile, state.profileLoading),
+                  ),
                   const SizedBox(height: 18),
                   _menuGroup(scheme, [
                     _MenuItem(Icons.article_outlined, '我的主题', () {
@@ -185,6 +202,12 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
                   _menuGroup(scheme, [
                     _MenuItem(Icons.notifications_none_rounded, '消息通知', () {
                       _openPage(const NotificationsPage());
+                    }),
+                    _MenuItem(Icons.mail_outline_rounded, '私信', () {
+                      _openPage(const PmListPage());
+                    }),
+                    _MenuItem(Icons.group_outlined, '我的好友', () {
+                      _openPage(const FriendsPage());
                     }),
                     _MenuItem(Icons.event_available_outlined, '每日签到', _signIn),
                     _MenuItem(Icons.gavel_rounded, '小黑屋', () {
@@ -321,6 +344,7 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
               ),
               if (loading)
                 const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+              Icon(Icons.chevron_right_rounded, size: 20, color: scheme.outline),
             ],
           ),
           const SizedBox(height: 16),

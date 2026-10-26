@@ -1029,6 +1029,159 @@ class ForumRepository {
     return follow;
   }
 
+  /// 我的好友列表。
+  Future<List<FriendItem>> fetchFriends({int page = 1}) async {
+    final result = await _http.get(
+      'home.php',
+      query: {
+        'mod': 'space',
+        'do': 'friend',
+        'view': 'me',
+        'mobile': '2',
+        'page': '$page',
+      },
+    );
+    _ensureOk(result);
+    final doc = parser.parse(result.body);
+    final items = <FriendItem>[];
+    final seen = <int>{};
+    for (final selector in [
+      '#friend_ul li',
+      '.comiis_friendlist li',
+      '.friend_list li',
+      '.comiis_friend li',
+      '.bm_c',
+    ]) {
+      for (final element in doc.querySelectorAll(selector)) {
+        // 无好友时页面会推荐好友 / 在线成员，带「加好友」按钮的不是已有好友。
+        if (element.querySelector('a[href*="ac=friend&op=add"]') != null) continue;
+        final nameLink = element.querySelector('h4 a[href*="mod=space&uid="]') ??
+            element.querySelector('a[href*="mod=space&uid="]');
+        final anyLink = element.querySelector('a[href*="uid="]');
+        final uid = _firstInt(
+          RegExp(r'[?&](?:amp;)?uid=(\d+)')
+              .firstMatch(anyLink?.attributes['href'] ?? '')
+              ?.group(1),
+        );
+        if (uid == null || uid <= 0 || !seen.add(uid)) continue;
+        final name = _clean(
+          nameLink?.text ?? element.querySelector('.comiis_friend_name, .name')?.text ?? '',
+        );
+        if (name.isEmpty) continue;
+        items.add(FriendItem(
+          uid: uid,
+          username: name,
+          avatar: _absolute(element.querySelector('img')?.attributes['src'] ?? ''),
+          note: _clean(element.querySelector('.note, .comiis_friend_note')?.text ?? ''),
+        ));
+        if (items.length >= 80) break;
+      }
+      if (items.isNotEmpty) break;
+    }
+    return items;
+  }
+
+  /// 私信会话列表。
+  Future<List<PmConversation>> fetchPmConversations({int page = 1}) async {
+    final result = await _http.get(
+      'home.php',
+      query: {
+        'mod': 'space',
+        'do': 'pm',
+        'filter': 'privatepm',
+        'mobile': '2',
+        'page': '$page',
+      },
+    );
+    _ensureOk(result);
+    final doc = parser.parse(result.body);
+    final items = <PmConversation>[];
+    final seen = <int>{};
+    for (final link in doc.querySelectorAll('a[href*="subop=view"]')) {
+      final href = link.attributes['href'] ?? '';
+      final uid = _firstInt(RegExp(r'[?&](?:amp;)?touid=(\d+)').firstMatch(href)?.group(1));
+      if (uid == null || uid <= 0 || !seen.add(uid)) continue;
+      final box = link.parent?.parent ?? link.parent;
+      final spans = box?.querySelectorAll('span.xg1') ?? const <Element>[];
+      final info = spans.isEmpty ? '' : _clean(spans.first.text);
+      var name = _clean(box?.querySelector('a[href*="mod=space&uid="]')?.text ?? '');
+      if (name.isEmpty) {
+        // 移动端会话列表只输出「我对 XX 说 / XX 对我说」的说明文字。
+        name = _clean(
+          RegExp(r'我对(.+?)说').firstMatch(info)?.group(1) ??
+              RegExp(r'(.+?)对我说').firstMatch(info)?.group(1) ??
+              '',
+        );
+      }
+      final preview = _clean(link.text);
+      if (preview.isEmpty) continue;
+      items.add(PmConversation(
+        uid: uid,
+        name: name,
+        avatar: _absolute(box?.querySelector('img[src*="avatar"], img")?.attributes['src'] ?? ''),
+        preview: preview,
+        time: spans.isEmpty ? '' : _clean(spans.last.text),
+        unread: box?.querySelector('img[src*="new_pm"], .unread, .comiis_new') != null,
+      ));
+      if (items.length >= 40) break;
+    }
+    return items;
+  }
+
+  /// 与某个用户的私信记录，返回（消息、formhash、对方昵称）。
+  Future<(List<PmMessage>, String, String)> fetchPmMessages(int uid, {int myUid = 0}) async {
+    final result = await _http.get(
+      'home.php',
+      query: {
+        'mod': 'space',
+        'do': 'pm',
+        'subop': 'view',
+        'touid': '$uid',
+        'mobile': '2',
+      },
+    );
+    _ensureOk(result);
+    final html = result.body;
+    final doc = parser.parse(html);
+    final messages = <PmMessage>[];
+    var peer = '';
+    for (final selector in [
+      '.comiis_pmlist li',
+      '.pm_list li',
+      '.comiis_chat li',
+      '.comiis_pm li',
+      '.bm_c',
+    ]) {
+      for (final element in doc.querySelectorAll(selector)) {
+        final authorLink = element.querySelector('a[href*="mod=space&uid="]');
+        final text = _clean(
+          element.querySelector('dd.xs1, .message, .comiis_pm_text')?.text ?? '',
+        );
+        if (text.isEmpty) continue;
+        final author = _clean(authorLink?.text ?? '');
+        final authorUid = _firstInt(
+          RegExp(r'[?&](?:amp;)?uid=(\d+)').firstMatch(authorLink?.attributes['href'] ?? '')?.group(1),
+        ) ?? 0;
+        final mine = myUid > 0 && authorUid == myUid;
+        if (!mine && author.isNotEmpty && peer.isEmpty) peer = author;
+        messages.add(PmMessage(
+          text: text,
+          author: author,
+          uid: authorUid,
+          time: _clean(element.querySelector('.xg1, .time, .comiis_time')?.text ?? ''),
+          mine: mine,
+        ));
+      }
+      if (messages.isNotEmpty) break;
+    }
+    if (peer.isEmpty) {
+      peer = _clean(
+        RegExp(r'与\s*(\S+)\s*的短消息').firstMatch(doc.querySelector('title')?.text ?? '')?.group(1) ?? '',
+      );
+    }
+    return (messages, _findFormhash(html), peer);
+  }
+
   /// 消息通知：回复提醒 / @提醒 / 系统通知。
   Future<List<NoticeItem>> fetchNotices({int page = 1}) async {
     final result = await _http.get(

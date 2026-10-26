@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """生成浅色拟态（Neumorphism）风格的 MT 论坛启动图标。
 
-构图：柔光底 + 内嵌浮雕面板 + 单线描边 MT 字标。
+构图：柔光底 + 层层内嵌的圆角方块 + 最内层单线描边 MT 字标。
 所有尺寸由同一张 1024px 母版缩放，并输出自适应图标的前景 / 背景图层。
 """
 from pathlib import Path
@@ -22,10 +22,14 @@ LINE = (115, 145, 185)
 
 OUTER_INSET = 16          # 1024 坐标系下的边距
 OUTER_RADIUS = 232
-PLATE_BOX = (212, 206, 812, 806)
-PLATE_RADIUS = 128
-LETTER_SCALE = 0.82   # 字标相对面板中心的缩放
-LETTER_STROKE = 21
+
+# 从大到小嵌套的圆角方块：外层面板 → 中间面板 → 最内小方块。
+PLATES = [
+    ((206, 200, 818, 812), 176),
+    ((356, 350, 668, 662), 104),
+]
+LETTER_SCALE = 0.55   # 字标相对原始字形的缩放（保证落在最内方块中）
+LETTER_STROKE = 13.5
 
 M_PATH = [(311, 632), (311, 380), (421, 620), (531, 380), (531, 632)]
 T_BAR = [(587, 380), (713, 380)]
@@ -69,21 +73,23 @@ def render_background(rounded):
     return img
 
 
-def plate_geometry(scale):
-    def point(x, y):
-        return (512 + (x - 512) * scale, 506 + (y - 506) * scale)
-
-    x0, y0, x1, y1 = [point(PLATE_BOX[0], PLATE_BOX[1])[0],
-                      point(PLATE_BOX[0], PLATE_BOX[1])[1],
-                      point(PLATE_BOX[2], PLATE_BOX[3])[0],
-                      point(PLATE_BOX[2], PLATE_BOX[3])[1]]
-    return (x0, y0, x1, y1), int(PLATE_RADIUS * scale), point
+def scale_point(x, y, scale):
+    """以图标视觉中心为原点等比缩放。"""
+    return (CANVAS / 2 + (x - CANVAS / 2) * scale,
+            CANVAS / 2 + (y - CANVAS / 2) * scale)
 
 
-def render_plate(scale=1.0):
-    """内嵌面板：投影 + 白色到浅蓝渐变 + 上缘高光 + 下缘内阴影。"""
+def scaled_box(box, scale):
+    x0, y0 = scale_point(box[0], box[1], scale)
+    x1, y1 = scale_point(box[2], box[3], scale)
+    return (x0, y0, x1, y1)
+
+
+def render_plate(box, radius, scale=1.0, bottom=PLATE_BOTTOM):
+    """一块内嵌面板：投影 + 白色到浅蓝渐变 + 上缘高光 + 下缘内阴影。"""
     k = WORK / CANVAS
-    box, radius, point = plate_geometry(scale)
+    box = scaled_box(box, scale)
+    radius = radius * scale
     mask = rounded_mask(WORK, tuple(v * k for v in box), int(radius * k))
     out = Image.new("RGBA", (WORK, WORK), (0, 0, 0, 0))
 
@@ -91,15 +97,15 @@ def render_plate(scale=1.0):
     shadow = Image.new("RGBA", (WORK, WORK), SHADOW + (0,))
     shadow.putalpha(mask.point(lambda a: int(a * 0.46)))
     shadow = shadow.filter(ImageFilter.GaussianBlur(42 * scale * k))
-    shadow = ImageChops.offset(shadow, int(4 * scale * k), int(28 * scale * k))
+    shadow = ImageChops.offset(shadow, int(4 * scale * k), int(26 * scale * k))
     contact = Image.new("RGBA", (WORK, WORK), SHADOW + (0,))
     contact.putalpha(mask.point(lambda a: int(a * 0.3)))
     contact = contact.filter(ImageFilter.GaussianBlur(16 * scale * k))
-    contact = ImageChops.offset(contact, 0, int(10 * scale * k))
+    contact = ImageChops.offset(contact, 0, int(9 * scale * k))
     out = Image.alpha_composite(out, shadow)
     out = Image.alpha_composite(out, contact)
 
-    body = vertical_gradient(WORK, PLATE_TOP, PLATE_BOTTOM)
+    body = vertical_gradient(WORK, PLATE_TOP, bottom)
     body = Image.alpha_composite(body, soft_blob(WORK, (-200, -260, 1250, 900), (255, 255, 255), 260, 90))
     body = Image.alpha_composite(body, soft_blob(WORK, (500, 900, 1900, 2000), SHADOW, 260, 46))
     body.putalpha(mask)
@@ -123,16 +129,23 @@ def render_plate(scale=1.0):
     return out
 
 
+def render_plate_stack(scale=1.0):
+    layer = Image.new("RGBA", (WORK, WORK), (0, 0, 0, 0))
+    for index, (box, radius) in enumerate(PLATES):
+        bottom = PLATE_BOTTOM if index == 0 else (211, 226, 246)
+        layer = Image.alpha_composite(layer, render_plate(box, radius, scale, bottom=bottom))
+    return layer
+
+
 def render_letters(scale=1.0):
-    """单线描边的 MT 字标，圆头圆角，和参考图的线性图标一致。"""
+    """单线描边的 MT 字标，圆头圆角，落在最内层小方块中。"""
     k = WORK / CANVAS
-    _, _, point = plate_geometry(scale)
     stroke = max(1, int(LETTER_STROKE * scale * k))
 
     def letter_point(x, y):
-        lx = 512 + (x - 512) * LETTER_SCALE
-        ly = 506 + (y - 506) * LETTER_SCALE
-        return point(lx, ly)
+        lx = CANVAS / 2 + (x - CANVAS / 2) * LETTER_SCALE
+        ly = CANVAS / 2 + (y - CANVAS / 2) * LETTER_SCALE
+        return scale_point(lx, ly, scale)
 
     def path(points):
         return [tuple(v * k for v in letter_point(x, y)) for x, y in points]
@@ -172,9 +185,10 @@ def sizes_for(base):
 def main():
     legacy = downscale(Image.alpha_composite(
         render_background(rounded=True),
-        Image.alpha_composite(render_plate(), render_letters())))
+        Image.alpha_composite(render_plate_stack(), render_letters())))
     background = downscale(render_background(rounded=False))
-    foreground = downscale(Image.alpha_composite(render_plate(0.93), render_letters(0.93)))
+    foreground = downscale(Image.alpha_composite(
+        render_plate_stack(0.93), render_letters(0.93)))
 
     save(legacy, ROOT / "icon_1024.png")
 
@@ -186,7 +200,7 @@ def main():
              res / f"mipmap-{density}/ic_launcher_background.png")
         save(foreground.resize((size, size), Image.LANCZOS),
              res / f"mipmap-{density}/ic_launcher_foreground.png")
-    print("Generated neumorphic launcher icons (legacy + adaptive foreground/background).")
+    print("Generated neumorphic launcher icons (nested plates + MT).")
 
 
 if __name__ == "__main__":
