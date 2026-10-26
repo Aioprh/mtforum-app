@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../services/download_manager.dart';
 
@@ -14,6 +13,7 @@ class DownloadManagerPage extends StatefulWidget {
 }
 
 class _DownloadManagerPageState extends State<DownloadManagerPage> {
+  static const _native = MethodChannel('cc.binmt.mt_forum/native');
   bool _loading = true;
 
   @override
@@ -47,6 +47,29 @@ class _DownloadManagerPageState extends State<DownloadManagerPage> {
         return record.error.isEmpty ? '下载中断' : record.error;
       default:
         return record.status;
+    }
+  }
+
+  Future<void> _openDownloadedFile(DownloadRecord record) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final file = File(record.path);
+    if (record.status != 'completed' || !await file.exists()) {
+      messenger.showSnackBar(const SnackBar(content: Text('文件尚未下载完成或已不存在')));
+      return;
+    }
+    try {
+      await _native.invokeMethod<bool>('openDownloadedFile', {
+        'path': record.path,
+        'name': record.name,
+      });
+    } on PlatformException catch (e) {
+      if (mounted) {
+        messenger.showSnackBar(SnackBar(content: Text(e.message ?? '没有找到可打开此文件的应用')));
+      }
+    } catch (e) {
+      if (mounted) {
+        messenger.showSnackBar(SnackBar(content: Text('打开文件失败：$e')));
+      }
     }
   }
 
@@ -96,9 +119,11 @@ class _DownloadManagerPageState extends State<DownloadManagerPage> {
               return Card(
                 child: ListTile(
                   leading: Icon(
-                    downloading ? Icons.downloading_rounded : record.status == 'completed'
-                        ? Icons.insert_drive_file_outlined
-                        : Icons.error_outline_rounded,
+                    downloading
+                        ? Icons.downloading_rounded
+                        : record.status == 'completed'
+                            ? Icons.insert_drive_file_outlined
+                            : Icons.error_outline_rounded,
                   ),
                   title: Text(record.name, maxLines: 1, overflow: TextOverflow.ellipsis),
                   subtitle: Column(
@@ -116,23 +141,13 @@ class _DownloadManagerPageState extends State<DownloadManagerPage> {
                         FutureBuilder<bool>(
                           future: file.exists(),
                           builder: (context, snapshot) => Text(
-                            snapshot.data == true ? '已保存到应用私有目录' : '文件不存在或已被删除',
+                            snapshot.data == true ? '点击选择应用打开' : '文件不存在或已被删除',
                             style: Theme.of(context).textTheme.bodySmall,
                           ),
                         ),
                     ],
                   ),
-                  onTap: () async {
-                    if (record.status == 'completed' && await file.exists()) {
-                      final uri = Uri.tryParse(record.url);
-                      if (uri != null) await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
-                    } else if (record.status != 'downloading') {
-                      await Clipboard.setData(ClipboardData(text: record.url));
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('下载链接已复制，可重新打开后下载')));
-                      }
-                    }
-                  },
+                  onTap: () => _openDownloadedFile(record),
                   trailing: PopupMenuButton<String>(
                     onSelected: (value) async {
                       final messenger = ScaffoldMessenger.of(context);
@@ -155,12 +170,11 @@ class _DownloadManagerPageState extends State<DownloadManagerPage> {
                           await DownloadManager.instance.remove(record, deleteFile: true);
                         }
                       } else if (value == 'open') {
-                        final uri = Uri.tryParse(record.url);
-                        if (uri != null) await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
+                        await _openDownloadedFile(record);
                       }
                     },
                     itemBuilder: (_) => const [
-                      PopupMenuItem(value: 'open', child: Text('重新打开链接')),
+                      PopupMenuItem(value: 'open', child: Text('用其他应用打开')),
                       PopupMenuItem(value: 'copy', child: Text('复制文件路径')),
                       PopupMenuItem(value: 'delete', child: Text('删除记录/文件')),
                     ],
