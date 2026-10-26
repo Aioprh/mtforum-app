@@ -65,7 +65,7 @@ class MainActivity : FlutterActivity() {
         if (!source.isFile) throw IllegalArgumentException("文件不存在")
         // FileProvider only exposes a temporary copy under cache/opened_downloads.
         val openDir = File(cacheDir, "opened_downloads").apply { mkdirs() }
-        val safeName = name.substringAfterLast('/').substringAfterLast('\\\\')
+        val safeName = name.substringAfterLast('/')
             .replace(Regex("[^A-Za-z0-9._-]"), "_")
             .ifBlank { "download" }
         val sharedFile = File(openDir, safeName)
