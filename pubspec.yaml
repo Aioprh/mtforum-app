@@ -18,7 +18,7 @@ dependencies:
   url_launcher: ^6.3.2
   image_picker: ^1.2.4
   file_picker: ^13.2.0
-  flutter_inappwebview: ^6.1.5
+  in_app_webview_flutter: ^1.1.0
   path_provider: ^2.1.5
 
 dev_dependencies:
