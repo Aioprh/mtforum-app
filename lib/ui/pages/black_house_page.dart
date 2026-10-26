@@ -169,7 +169,7 @@ class _BlackHousePageState extends State<BlackHousePage> {
                     const SizedBox(height: 4),
                     Text(
                       [
-                        if (item.expiry.isNotEmpty) '${item.expiry}',
+                        if (item.expiry.isNotEmpty) item.expiry,
                         if (item.time.isNotEmpty) '操作于 ${item.time}',
                       ].join(' · '),
                       style: TextStyle(fontSize: 11, color: scheme.outline),

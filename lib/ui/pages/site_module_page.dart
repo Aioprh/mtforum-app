@@ -99,7 +99,7 @@ class _SiteModulePageState extends State<SiteModulePage> {
         ],
       ),
     );
-    if (confirmed != true) return;
+    if (confirmed != true || !mounted) return;
     final messenger = ScaffoldMessenger.of(context);
     try {
       final message = await AppState.instance.repo.performModuleAction(href);
