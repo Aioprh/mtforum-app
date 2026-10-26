@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""生成拟态（Neumorphism）风格的原生质感 MT 论坛启动图标。
+"""生成浅色拟态（Neumorphism）风格的 MT 论坛启动图标。
 
-所有尺寸都从同一张 1024px 母版缩小，保证不同密度下视觉一致；
-同时输出自适应图标（Android 8.0+）的前景 / 背景图层。
+构图：柔光底 + 内嵌浮雕面板 + 单线描边 MT 字标。
+所有尺寸由同一张 1024px 母版缩放，并输出自适应图标的前景 / 背景图层。
 """
 from pathlib import Path
 
@@ -10,28 +10,25 @@ from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
 ROOT = Path(__file__).resolve().parents[1]
 CANVAS = 1024
+WORK = CANVAS * 2  # 先按 2 倍尺寸绘制，再缩回母版，边缘更干净
 
-# 表面：品牌绿的柔和渐变，顶部受光、底部压暗。
-SURFACE_TOP = (30, 200, 128)
-SURFACE_BOTTOM = (8, 136, 80)
-DEPTH = (2, 48, 30)
-LIGHT = (228, 255, 241)
+# 浅蓝灰拟态配色。
+BG_TOP = (250, 253, 255)
+BG_BOTTOM = (226, 239, 252)
+PLATE_TOP = (255, 255, 255)
+PLATE_BOTTOM = (216, 230, 247)
+SHADOW = (163, 189, 221)
+LINE = (115, 145, 185)
 
-# 气泡：白色到冷灰绿，模拟亚光材质。
-BUBBLE_TOP = (255, 255, 255)
-BUBBLE_BOTTOM = (237, 246, 241)
-BUBBLE_BOX = (196, 224, 828, 694)
-BUBBLE_RADIUS = 108
-BUBBLE_TAIL = [(352, 660), (316, 806), (526, 686)]
+OUTER_INSET = 16          # 1024 坐标系下的边距
+OUTER_RADIUS = 232
+PLATE_BOX = (212, 206, 812, 806)
+PLATE_RADIUS = 128
+STROKE = 24
 
-# MT 字标：内凹雕刻，上深下浅。
-LETTER_TOP = (6, 101, 59)
-LETTER_BOTTOM = (17, 160, 98)
-MT_M = [(280, 330), (380, 330), (450, 485), (520, 330), (620, 330),
-        (620, 585), (550, 585), (550, 445), (490, 585), (435, 585),
-        (375, 445), (375, 585), (280, 585)]
-MT_T = [(635, 330), (760, 330), (760, 395), (730, 395), (730, 585),
-        (665, 585), (665, 395), (635, 395)]
+M_PATH = [(311, 632), (311, 380), (421, 620), (531, 380), (531, 632)]
+T_BAR = [(587, 380), (713, 380)]
+T_STEM = [(650, 380), (650, 632)]
 
 
 def vertical_gradient(size, top, bottom):
@@ -50,99 +47,105 @@ def soft_blob(size, box, color, blur, alpha):
     return layer.filter(ImageFilter.GaussianBlur(blur))
 
 
-def rounded_mask(size, inset, radius):
+def rounded_mask(size, box, radius):
     mask = Image.new("L", (size, size), 0)
-    ImageDraw.Draw(mask).rounded_rectangle(
-        (inset, inset, size - inset - 1, size - inset - 1), radius=radius, fill=255)
+    ImageDraw.Draw(mask).rounded_rectangle(box, radius=radius, fill=255)
     return mask
 
 
-def render_surface(size, rounded):
-    img = vertical_gradient(size, SURFACE_TOP, SURFACE_BOTTOM)
-    # 左上角受光，制造柔和的隆起感。
-    img = Image.alpha_composite(img, soft_blob(size, (-340, -440, 800, 540), (255, 255, 255), 175, 42))
-    # 右下角压暗，收出体积。
-    img = Image.alpha_composite(img, soft_blob(size, (-260, 620, 1300, 1470), DEPTH, 200, 62))
-    # 底边一条极淡的反光，避免边缘发死。
-    img = Image.alpha_composite(img, soft_blob(size, (40, 910, 984, 1160), (255, 255, 255), 95, 14))
+def render_background(rounded):
+    """底：极浅的蓝白渐变，左上受光、右下略深。"""
+    img = vertical_gradient(WORK, BG_TOP, BG_BOTTOM)
+    k = WORK / CANVAS
+    img = Image.alpha_composite(img, soft_blob(WORK, (-400, -520, 1100, 780), (255, 255, 255), 320, 40))
+    img = Image.alpha_composite(img, soft_blob(WORK, (-300, 1200, 1500, 2100), SHADOW, 360, 26))
     if rounded:
-        img.putalpha(rounded_mask(size, 26, 232))
+        inset = OUTER_INSET * k
+        img.putalpha(rounded_mask(
+            WORK,
+            (inset, inset, WORK - inset - 1, WORK - inset - 1),
+            int(OUTER_RADIUS * k)))
     return img
 
 
-def bubble_mask(size, scale):
-    mask = Image.new("L", (size, size), 0)
-    draw = ImageDraw.Draw(mask)
-
+def plate_geometry(scale):
     def point(x, y):
-        return (512 + (x - 512) * scale, 515 + (y - 515) * scale)
+        return (512 + (x - 512) * scale, 506 + (y - 506) * scale)
 
-    draw.rounded_rectangle(
-        (*point(BUBBLE_BOX[0], BUBBLE_BOX[1]), *point(BUBBLE_BOX[2], BUBBLE_BOX[3])),
-        radius=int(BUBBLE_RADIUS * scale), fill=255)
-    draw.polygon([point(x, y) for x, y in BUBBLE_TAIL], fill=255)
-    return mask
+    x0, y0, x1, y1 = [point(PLATE_BOX[0], PLATE_BOX[1])[0],
+                      point(PLATE_BOX[0], PLATE_BOX[1])[1],
+                      point(PLATE_BOX[2], PLATE_BOX[3])[0],
+                      point(PLATE_BOX[2], PLATE_BOX[3])[1]]
+    return (x0, y0, x1, y1), int(PLATE_RADIUS * scale), point
 
 
-def render_bubble(size, scale=1.0):
-    mask = bubble_mask(size, scale)
-    out = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+def render_plate(scale=1.0):
+    """内嵌面板：投影 + 白色到浅蓝渐变 + 上缘高光 + 下缘内阴影。"""
+    k = WORK / CANVAS
+    box, radius, point = plate_geometry(scale)
+    mask = rounded_mask(WORK, tuple(v * k for v in box), int(radius * k))
+    out = Image.new("RGBA", (WORK, WORK), (0, 0, 0, 0))
 
-    # 外投影：拟态的核心，让气泡浮在表面之上。
-    shadow = Image.new("RGBA", (size, size), DEPTH + (0,))
-    shadow.putalpha(mask.point(lambda a: int(a * 0.5)))
-    shadow = shadow.filter(ImageFilter.GaussianBlur(36 * scale))
-    shadow = ImageChops.offset(shadow, 0, int(24 * scale))
+    # 落地投影：让面板从底色中浮起。
+    shadow = Image.new("RGBA", (WORK, WORK), SHADOW + (0,))
+    shadow.putalpha(mask.point(lambda a: int(a * 0.46)))
+    shadow = shadow.filter(ImageFilter.GaussianBlur(42 * scale * k))
+    shadow = ImageChops.offset(shadow, int(4 * scale * k), int(28 * scale * k))
+    contact = Image.new("RGBA", (WORK, WORK), SHADOW + (0,))
+    contact.putalpha(mask.point(lambda a: int(a * 0.3)))
+    contact = contact.filter(ImageFilter.GaussianBlur(16 * scale * k))
+    contact = ImageChops.offset(contact, 0, int(10 * scale * k))
     out = Image.alpha_composite(out, shadow)
+    out = Image.alpha_composite(out, contact)
 
-    body = vertical_gradient(size, BUBBLE_TOP, BUBBLE_BOTTOM)
+    body = vertical_gradient(WORK, PLATE_TOP, PLATE_BOTTOM)
+    body = Image.alpha_composite(body, soft_blob(WORK, (-200, -260, 1250, 900), (255, 255, 255), 260, 90))
+    body = Image.alpha_composite(body, soft_blob(WORK, (500, 900, 1900, 2000), SHADOW, 260, 46))
     body.putalpha(mask)
     out = Image.alpha_composite(out, body)
 
-    # 气泡内部上缘高光（只保留边缘一条，避免整体发灰）。
-    top_rim = ImageChops.subtract(mask, ImageChops.offset(mask, 0, int(26 * scale)))
-    top_rim = top_rim.filter(ImageFilter.GaussianBlur(10 * scale))
+    # 上缘高光条。
+    top_rim = ImageChops.subtract(mask, ImageChops.offset(mask, int(18 * k), int(20 * k)))
+    top_rim = top_rim.filter(ImageFilter.GaussianBlur(9 * k))
     top_rim = ImageChops.multiply(top_rim, mask)
-    highlight = Image.new("RGBA", (size, size), (255, 255, 255, 0))
-    highlight.putalpha(top_rim.point(lambda a: int(a * 0.6)))
+    highlight = Image.new("RGBA", (WORK, WORK), (255, 255, 255, 0))
+    highlight.putalpha(top_rim.point(lambda a: int(a * 0.72)))
     out = Image.alpha_composite(out, highlight)
 
-    # 气泡内部下缘暗部。
-    bottom_rim = ImageChops.subtract(mask, ImageChops.offset(mask, 0, -int(38 * scale)))
-    bottom_rim = bottom_rim.filter(ImageFilter.GaussianBlur(16 * scale))
+    # 下缘内阴影，收出厚度。
+    bottom_rim = ImageChops.subtract(mask, ImageChops.offset(mask, -int(16 * k), -int(22 * k)))
+    bottom_rim = bottom_rim.filter(ImageFilter.GaussianBlur(18 * k))
     bottom_rim = ImageChops.multiply(bottom_rim, mask)
-    inner = Image.new("RGBA", (size, size), DEPTH + (0,))
-    inner.putalpha(bottom_rim.point(lambda a: int(a * 0.42)))
+    inner = Image.new("RGBA", (WORK, WORK), SHADOW + (0,))
+    inner.putalpha(bottom_rim.point(lambda a: int(a * 0.5)))
     out = Image.alpha_composite(out, inner)
-
-    # MT 字标：内凹雕刻——上缘压暗、下缘提亮，保持边缘清晰。
-    letters = Image.new("L", (size, size), 0)
-    draw = ImageDraw.Draw(letters)
-
-    def point(x, y):
-        return (512 + (x - 512) * scale, 515 + (y - 515) * scale)
-
-    draw.polygon([point(x, y) for x, y in MT_M], fill=255)
-    draw.polygon([point(x, y) for x, y in MT_T], fill=255)
-
-    letter_fill = vertical_gradient(size, LETTER_TOP, LETTER_BOTTOM)
-    letter_fill.putalpha(letters)
-    out = Image.alpha_composite(out, letter_fill)
-
-    # 左上内阴影 + 右下内高光，模拟字体被压入亚光表面。
-    upper = ImageChops.offset(letters, int(3 * scale), int(4 * scale))
-    lower = ImageChops.offset(letters, -int(3 * scale), -int(4 * scale))
-    top_edge = ImageChops.subtract(letters, upper).filter(ImageFilter.GaussianBlur(3 * scale))
-    bottom_edge = ImageChops.subtract(letters, lower).filter(ImageFilter.GaussianBlur(3 * scale))
-
-    shade = Image.new("RGBA", (size, size), DEPTH + (0,))
-    shade.putalpha(top_edge.point(lambda a: int(a * 0.5)))
-    out = Image.alpha_composite(out, shade)
-
-    sheen = Image.new("RGBA", (size, size), LIGHT + (0,))
-    sheen.putalpha(bottom_edge.point(lambda a: int(a * 0.55)))
-    out = Image.alpha_composite(out, sheen)
     return out
+
+
+def render_letters(scale=1.0):
+    """单线描边的 MT 字标，圆头圆角，和参考图的线性图标一致。"""
+    k = WORK / CANVAS
+    _, _, point = plate_geometry(scale)
+    stroke = max(1, int(STROKE * scale * k))
+
+    def path(points):
+        return [tuple(v * k for v in point(x, y)) for x, y in points]
+
+    layer = Image.new("RGBA", (WORK, WORK), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(layer)
+    for points in (M_PATH, T_BAR, T_STEM):
+        draw.line(path(points), fill=LINE + (255,), width=stroke, joint="curve")
+    # PIL 的线段是平头，补圆点模拟圆头。
+    for x, y in (M_PATH[0], M_PATH[-1], T_BAR[0], T_BAR[-1], T_STEM[-1]):
+        cx, cy = point(x, y)
+        cx, cy = cx * k, cy * k
+        r = stroke / 2
+        draw.ellipse((cx - r, cy - r, cx + r, cy + r), fill=LINE + (255,))
+    return layer
+
+
+def downscale(image):
+    return image.resize((CANVAS, CANVAS), Image.LANCZOS)
 
 
 def save(image, path):
@@ -161,9 +164,11 @@ def sizes_for(base):
 
 
 def main():
-    legacy = Image.alpha_composite(render_surface(CANVAS, rounded=True), render_bubble(CANVAS))
-    background = render_surface(CANVAS, rounded=False)
-    foreground = render_bubble(CANVAS, 0.86)
+    legacy = downscale(Image.alpha_composite(
+        render_background(rounded=True),
+        Image.alpha_composite(render_plate(), render_letters())))
+    background = downscale(render_background(rounded=False))
+    foreground = downscale(Image.alpha_composite(render_plate(0.93), render_letters(0.93)))
 
     save(legacy, ROOT / "icon_1024.png")
 
