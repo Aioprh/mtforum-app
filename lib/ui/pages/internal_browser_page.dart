@@ -23,7 +23,7 @@ class _InternalBrowserPageState extends State<InternalBrowserPage> {
   String _title = '正在加载…';
   int _progress = 0;
   bool _loading = true;
-  bool _handlingDownload = false;
+  final Set<String> _activeDownloads = <String>{};
 
   @override
   void initState() {
@@ -82,21 +82,21 @@ class _InternalBrowserPageState extends State<InternalBrowserPage> {
       }
       return;
     }
-    if (_handlingDownload) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已有下载任务正在启动，请稍候')));
-      }
+    if (!_activeDownloads.add(rawUrl)) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('该文件已在下载中')));
       return;
     }
-    _handlingDownload = true;
     try {
+      final cookies = await CookieManager.instance().getCookies(url: WebUri(rawUrl));
+      final webCookieHeader = cookies.map((cookie) => '${cookie.name}=${cookie.value}').join('; ');
       final record = await DownloadManager.instance.download(
         rawUrl,
         suggestedFilename: suggestedFilename,
         headers: {
           'User-Agent': (userAgent?.trim().isNotEmpty ?? false) ? userAgent!.trim() : AppConfig.userAgent,
           'Referer': _url,
-          if (HttpSession.instance.cookieHeader.isNotEmpty && uri.host == Uri.parse(AppConfig.base).host)
+          if (webCookieHeader.isNotEmpty) 'Cookie': webCookieHeader,
+          if (webCookieHeader.isEmpty && HttpSession.instance.cookieHeader.isNotEmpty && uri.host == Uri.parse(AppConfig.base).host)
             'Cookie': HttpSession.instance.cookieHeader,
         },
       );
@@ -108,7 +108,7 @@ class _InternalBrowserPageState extends State<InternalBrowserPage> {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('下载失败：$e')));
       }
     } finally {
-      _handlingDownload = false;
+      _activeDownloads.remove(rawUrl);
     }
   }
 
