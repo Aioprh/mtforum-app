@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../core/http_session.dart';
 import '../../data/models.dart';
 import '../../state/app_state.dart';
 import '../widgets/thread_feed.dart';
