@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -213,11 +215,9 @@ class _SiteModulePageState extends State<SiteModulePage> {
                     ),
                     if (row.subtitle.isNotEmpty) ...[
                       const SizedBox(height: 3),
-                      Text(
-                        row.subtitle,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 11.5, height: 1.4, color: scheme.onSurfaceVariant),
+                      _LiveCountdownSubtitle(
+                        text: row.subtitle,
+                        color: scheme.onSurfaceVariant,
                       ),
                     ],
                   ],
@@ -228,6 +228,94 @@ class _SiteModulePageState extends State<SiteModulePage> {
           ),
         ),
       ),
+    );
+  }
+}
+
+
+/// 积分商城列表的倒计时：以页面加载时站点返回的剩余时长建立本地截止时间，
+/// 每秒按当前时间重新计算，避免简单递减造成后台恢复后计时漂移。
+class _LiveCountdownSubtitle extends StatefulWidget {
+  const _LiveCountdownSubtitle({
+    required this.text,
+    required this.color,
+  });
+
+  final String text;
+  final Color color;
+
+  @override
+  State<_LiveCountdownSubtitle> createState() => _LiveCountdownSubtitleState();
+}
+
+class _LiveCountdownSubtitleState extends State<_LiveCountdownSubtitle> {
+  static final RegExp _countdownPattern = RegExp(
+    r'剩余\s*(\d+)\s*天\s*(\d+)\s*小时\s*(\d+)\s*分\s*(\d+)\s*秒',
+  );
+
+  Timer? _timer;
+  DateTime? _deadline;
+
+  @override
+  void initState() {
+    super.initState();
+    _startCountdown();
+  }
+
+  @override
+  void didUpdateWidget(covariant _LiveCountdownSubtitle oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.text != widget.text) {
+      _timer?.cancel();
+      _deadline = null;
+      _startCountdown();
+    }
+  }
+
+  void _startCountdown() {
+    final match = _countdownPattern.firstMatch(widget.text);
+    if (match == null) return;
+    final days = int.tryParse(match.group(1)!) ?? 0;
+    final hours = int.tryParse(match.group(2)!) ?? 0;
+    final minutes = int.tryParse(match.group(3)!) ?? 0;
+    final seconds = int.tryParse(match.group(4)!) ?? 0;
+    _deadline = DateTime.now().add(
+      Duration(days: days, hours: hours, minutes: minutes, seconds: seconds),
+    );
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  String _displayText() {
+    final deadline = _deadline;
+    if (deadline == null) return widget.text;
+    final left = deadline.difference(DateTime.now());
+    if (left <= Duration.zero) {
+      return widget.text.replaceFirst(_countdownPattern, '活动已结束');
+    }
+    final days = left.inDays;
+    final hours = left.inHours % 24;
+    final minutes = left.inMinutes % 60;
+    final seconds = left.inSeconds % 60;
+    String two(int value) => value.toString().padLeft(2, '0');
+    final value = '剩余 ${days}天${two(hours)}小时${two(minutes)}分${two(seconds)}秒';
+    return widget.text.replaceFirst(_countdownPattern, value);
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      _displayText(),
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(fontSize: 11.5, height: 1.4, color: widget.color),
     );
   }
 }
