@@ -2050,6 +2050,51 @@ class ForumRepository {
       .replaceAll(RegExp(r'\s+'), ' ')
       .trim();
 
+  /// 取可见文本：跳过 script / style 等源码节点，保留换行。
+  /// 插件页面常把内联脚本写在正文容器里，直接取 `.text` 会把源码当成正文。
+  String _visibleText(Element? root, {int limit = 1600}) {
+    if (root == null) return '';
+    const skipped = {'script', 'style', 'noscript', 'iframe', 'link', 'meta', 'template', 'head'};
+    const blocks = {
+      'p', 'div', 'li', 'tr', 'br', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+      'table', 'section', 'ul', 'ol', 'dd', 'dt', 'td', 'th',
+    };
+    final buffer = StringBuffer();
+    var truncated = false;
+
+    void walk(Node node) {
+      if (truncated) return;
+      if (node is Element) {
+        final tag = node.localName?.toLowerCase() ?? '';
+        if (skipped.contains(tag)) return;
+        final isBlock = blocks.contains(tag);
+        if (isBlock) buffer.write('\n');
+        for (final child in node.nodes) {
+          walk(child);
+          if (buffer.length > limit * 4) {
+            truncated = true;
+            return;
+          }
+        }
+        if (isBlock) buffer.write('\n');
+        return;
+      }
+      if (node is Text) buffer.write(node.text);
+    }
+
+    walk(root);
+    final lines = buffer
+        .toString()
+        .replaceAll('\r', '')
+        .replaceAll('\u00a0', ' ')
+        .split('\n')
+        .map((line) => line.replaceAll(RegExp(r'[ \t]+'), ' ').trim())
+        .where((line) => line.isNotEmpty)
+        .toList();
+    final text = lines.join('\n');
+    return text.length > limit ? '${text.substring(0, limit)}…' : text;
+  }
+
   String _absolute(String? url) {
     final value = (url ?? '').trim();
     if (value.isEmpty) return '';
@@ -2830,10 +2875,29 @@ class ForumRepository {
     final result = await _http.get(uri.path.replaceFirst('/', ''), query: uri.queryParameters);
     _ensureOk(result);
     final doc = parser.parse(result.body);
-    final text = _clean((doc.querySelector('.comiis_bodybox') ?? doc.body)?.text ?? '');
-    final message = _pageMessage(doc);
-    final output = text.isEmpty ? (message ?? '') : text;
-    return output.length > 800 ? '${output.substring(0, 800)}…' : output;
+
+    final container = doc.querySelector('.comiis_bodybox') ??
+        doc.querySelector('#ct') ??
+        doc.querySelector('.comiis_body') ??
+        doc.body;
+
+    // 表格型结果（订单 / 卡密列表）按行拼接，避免各列粘连。
+    final rows = <String>[];
+    for (final tr in (container?.querySelectorAll('tr') ?? const <Element>[])) {
+      final values = tr
+          .querySelectorAll('td, th')
+          .map((cell) => _visibleText(cell, limit: 400))
+          .where((value) => value.isNotEmpty)
+          .toList();
+      if (values.isEmpty) continue;
+      final line = values.join(' · ');
+      if (!rows.contains(line)) rows.add(line);
+      if (rows.length >= 60) break;
+    }
+
+    var output = rows.isNotEmpty ? rows.join('\n') : _visibleText(container);
+    if (output.isEmpty) output = _pageMessage(doc) ?? '';
+    return output.length > 1200 ? '${output.substring(0, 1200)}…' : output;
   }
 
   /// 执行站点模块行上的原生操作（GET，例如领取勋章、购买道具）。

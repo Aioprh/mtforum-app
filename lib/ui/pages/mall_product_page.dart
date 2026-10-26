@@ -106,7 +106,10 @@ class _MallProductPageState extends State<MallProductPage> {
         builder: (dialogContext) => AlertDialog(
           title: const Text('卡密状态'),
           content: SingleChildScrollView(
-            child: Text(text.isEmpty ? '暂无记录' : text, style: const TextStyle(fontSize: 13, height: 1.6)),
+            child: SelectableText(
+              text.isEmpty ? '暂无记录' : text,
+              style: const TextStyle(fontSize: 13, height: 1.6),
+            ),
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('关闭')),
