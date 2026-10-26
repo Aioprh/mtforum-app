@@ -1228,6 +1228,14 @@ class ForumRepository {
       final match = RegExp(r'[?&]uid=(\d+)').firstMatch(raw);
       final uid = int.tryParse(match?.group(1) ?? raw) ?? 0;
       if (uid > 0) return uid;
+      // 静态头像路径 .../data/avatar/000/02/55/71_avatar_middle.jpg 里也带着 uid。
+      final path = RegExp(r'data/avatar/(\d{3})/(\d{2})/(\d{2})/(\d{2})_').firstMatch(raw);
+      if (path != null) {
+        final fromPath = int.tryParse(
+          '${path.group(1)}${path.group(2)}${path.group(3)}${path.group(4)}',
+        );
+        if (fromPath != null && fromPath > 0) return fromPath;
+      }
     }
     final match = RegExp(r'''authorid[=:"']\s*(\d+)''').firstMatch(el.innerHtml);
     return int.tryParse(match?.group(1) ?? '') ?? 0;
