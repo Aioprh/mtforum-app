@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Keep the symbol inside Android's adaptive-icon safe zone. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M22,24 C22,18.5 26.5,14 32,14 L76,14 C84.8,14 92,21.2 92,30 L92,62 C92,70.8 84.8,78 76,78 L48,78 L30,92 L35,78 L32,78 C26.5,78 22,73.5 22,68 Z" />
+    <!-- Custom geometric M monogram. -->
+    <path
+        android:fillColor="#087B47"
+        android:pathData="M34,60 L34,34 L40,34 L49,46 L58,34 L64,34 L64,60 L57,60 L57,45 L49,55 L41,45 L41,60 Z" />
+    <!-- Custom geometric T monogram. -->
+    <path
+        android:fillColor="#087B47"
+        android:pathData="M66,34 L84,34 L84,41 L78.5,41 L78.5,60 L71.5,60 L71.5,41 L66,41 Z" />
+</vector>
