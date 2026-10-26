@@ -152,9 +152,8 @@ class DownloadManager extends ChangeNotifier {
         request.headers.set(HttpHeaders.cookieHeader, cookie);
       }
       headers?.forEach((key, value) {
-        if (key.toLowerCase() != 'cookie' || uri.host == Uri.tryParse(AppConfig.base)?.host) {
-          request.headers.set(key, value);
-        }
+        // Cookie header passed by the WebView is scoped to this exact download host.
+        request.headers.set(key, value);
       });
 
       final response = await request.close();
