@@ -106,6 +106,50 @@ class NoticeItem {
   final String kind;
 }
 
+/// 一次打赏记录（Discuz 评分日志）。
+class RateRecord {
+  const RateRecord({
+    required this.username,
+    this.uid = 0,
+    this.score = '',
+    this.reason = '',
+  });
+
+  final String username;
+  final int uid;
+  final String score;
+  final String reason;
+}
+
+/// 站点允许的打赏项（好评 / 金币等，取决于用户组评分类别）。
+class RateField {
+  const RateField({
+    required this.id,
+    required this.label,
+    this.min = 0,
+    this.max = 10,
+  });
+
+  final int id;
+  final String label;
+  final int min;
+  final int max;
+}
+
+class RateOptions {
+  const RateOptions({this.fields = const <RateField>[], this.canNotify = false});
+
+  final List<RateField> fields;
+  final bool canNotify;
+
+  static const RateOptions fallback = RateOptions(
+    fields: <RateField>[
+      RateField(id: 1, label: '好评', max: 10),
+      RateField(id: 2, label: '金币', max: 5),
+    ],
+  );
+}
+
 class ForumPost {
   ForumPost({
     required this.pid,
@@ -121,6 +165,8 @@ class ForumPost {
     this.likes = 0,
     this.images = const <String>[],
     this.comments = const <ForumComment>[],
+    this.rates = const <RateRecord>[],
+    this.rateSummary = '',
   });
 
   final int pid;
@@ -136,6 +182,8 @@ class ForumPost {
   final int likes;
   final List<String> images;
   final List<ForumComment> comments;
+  final List<RateRecord> rates;
+  final String rateSummary;
 
   String get floorLabel => floor == 1 ? '楼主' : '$floor 楼';
 
@@ -153,6 +201,8 @@ class ForumPost {
         likes: likes,
         images: images,
         comments: comments,
+        rates: rates,
+        rateSummary: rateSummary,
       );
 }
 
@@ -178,6 +228,9 @@ class ThreadDetail {
     this.notice = '',
     this.favorited = false,
     this.favoriteHref = '',
+    this.kickToken = '',
+    this.kickVotes = 0,
+    this.kickLimit = 5,
   });
 
   final int tid;
@@ -205,6 +258,11 @@ class ThreadDetail {
   final bool favorited;
   final String favoriteHref;
 
+  /// 踢帖入口（站点插件 bin_post_report 注入的 token 与当前票数）。
+  final String kickToken;
+  final int kickVotes;
+  final int kickLimit;
+
   ThreadDetail copyWith({List<ForumPost>? posts, bool? hasMore, int? likes, int? dislikes}) => ThreadDetail(
         tid: tid,
         title: title,
@@ -226,6 +284,9 @@ class ThreadDetail {
         notice: notice,
         favorited: favorited,
         favoriteHref: favoriteHref,
+        kickToken: kickToken,
+        kickVotes: kickVotes,
+        kickLimit: kickLimit,
       );
 }
 

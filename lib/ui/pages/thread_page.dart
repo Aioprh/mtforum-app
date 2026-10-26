@@ -419,15 +419,33 @@ class _ThreadPageState extends State<ThreadPage> {
 
   Future<void> _ratePost(ForumPost post) async {
     if (!await _ensureLogin()) return;
-    final detail = _detail;
-    if (detail == null || detail.formhash.isEmpty) {
-      _toast('评分信息已失效，请刷新后重试');
+    if (_isMine(post)) {
+      _toast('不能打赏自己的帖子');
       return;
     }
+    final detail = _detail;
+    if (detail == null || detail.formhash.isEmpty) {
+      _toast('打赏信息已失效，请刷新后重试');
+      return;
+    }
+    var options = RateOptions.fallback;
+    try {
+      options = await _repo.fetchRateOptions(tid: widget.tid, pid: post.pid);
+    } catch (_) {
+      // 读取失败时按好评 / 金币的常见范围兜底。
+    }
     if (!mounted) return;
-    final result = await showDialog<(int, String)>(
+    final result = await showModalBottomSheet<_RateResult>(
       context: context,
-      builder: (_) => _RateDialog(floor: post.floorLabel),
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => _RateSheet(
+        floor: post.floorLabel,
+        isOp: post.isOp,
+        author: post.author,
+        avatar: post.avatar,
+        options: options,
+      ),
     );
     if (result == null || !mounted) return;
     try {
@@ -435,8 +453,44 @@ class _ThreadPageState extends State<ThreadPage> {
         tid: widget.tid,
         pid: post.pid,
         formhash: detail.formhash,
-        score: result.$1,
-        reason: result.$2,
+        scores: result.scores,
+        reason: result.reason,
+        notify: result.notify,
+      );
+      if (!mounted) return;
+      _toast(message);
+      await _load();
+    } catch (e) {
+      _toast(_message(e));
+    }
+  }
+
+  /// 踢帖：站点插件达到 5 票会自动送审核，需二次确认。
+  Future<void> _kickThread() async {
+    if (!await _ensureLogin()) return;
+    final detail = _detail;
+    if (detail == null || detail.kickToken.isEmpty) {
+      _toast('当前页面没有踢帖入口');
+      return;
+    }
+    if (!mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('踢帖（${detail.kickVotes}/${detail.kickLimit}）'),
+        content: Text('踢帖人数达到 ${detail.kickLimit} 人后主题会进入审核，恶意踢帖可能被处罚。确定要踢「${detail.title}」吗？'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('确定踢帖')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      final message = await _repo.kickThread(
+        tid: widget.tid,
+        token: detail.kickToken,
+        formhash: detail.formhash,
       );
       if (!mounted) return;
       _toast(message);
@@ -506,6 +560,14 @@ class _ThreadPageState extends State<ThreadPage> {
   bool _isMine(ForumPost post) {
     final uid = AppState.instance.profile?.uid ?? 0;
     return post.uid > 0 && uid > 0 && post.uid == uid;
+  }
+
+  /// 只有称号 / 等级为版主（或管理员）时才显示管理类菜单。
+  bool get _isModerator {
+    final profile = AppState.instance.profile;
+    if (profile == null) return false;
+    final title = '${profile.group} ${profile.level}';
+    return title.contains('版主') || title.contains('管理员');
   }
 
   void _openUser(int uid, String name) {
@@ -1111,6 +1173,14 @@ class _ThreadPageState extends State<ThreadPage> {
             ),
             const SizedBox(height: 11),
             PostHtmlView(html: post.html, images: post.images, onReply: _focusReply),
+            if (post.isOp && !_isMine(post)) ...[
+              const SizedBox(height: 12),
+              _opActions(post),
+            ],
+            if (post.rates.isNotEmpty || post.rateSummary.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              _rateLog(post),
+            ],
             if (post.comments.isNotEmpty) ...[
               const SizedBox(height: 10),
               _commentList(post),
@@ -1147,15 +1217,16 @@ class _ThreadPageState extends State<ThreadPage> {
                         title: Text('举报'),
                       ),
                     ),
-                    const PopupMenuItem(
-                      value: 'rate',
-                      child: ListTile(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        leading: Icon(Icons.star_half_rounded, size: 20),
-                        title: Text('评分'),
+                    if (!_isMine(post))
+                      PopupMenuItem(
+                        value: 'rate',
+                        child: ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(Icons.volunteer_activism_outlined, size: 20),
+                          title: Text(post.isOp ? '赞赏' : '打赏'),
+                        ),
                       ),
-                    ),
                     if (!_isMine(post) && post.uid > 0)
                       const PopupMenuItem(
                         value: 'pm',
@@ -1166,42 +1237,44 @@ class _ThreadPageState extends State<ThreadPage> {
                           title: Text('发消息'),
                         ),
                       ),
-                    const PopupMenuItem(
-                      value: 'stick',
-                      child: ListTile(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        leading: Icon(Icons.vertical_align_top_rounded, size: 20),
-                        title: Text('置顶（版主）'),
+                    if (_isModerator) ...[
+                      const PopupMenuItem(
+                        value: 'stick',
+                        child: ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(Icons.vertical_align_top_rounded, size: 20),
+                          title: Text('置顶'),
+                        ),
                       ),
-                    ),
-                    const PopupMenuItem(
-                      value: 'digest',
-                      child: ListTile(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        leading: Icon(Icons.workspace_premium_outlined, size: 20),
-                        title: Text('设精华（版主）'),
+                      const PopupMenuItem(
+                        value: 'digest',
+                        child: ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(Icons.workspace_premium_outlined, size: 20),
+                          title: Text('设精华'),
+                        ),
                       ),
-                    ),
-                    const PopupMenuItem(
-                      value: 'close',
-                      child: ListTile(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        leading: Icon(Icons.lock_outline_rounded, size: 20),
-                        title: Text('关闭主题（版主）'),
+                      const PopupMenuItem(
+                        value: 'close',
+                        child: ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(Icons.lock_outline_rounded, size: 20),
+                          title: Text('关闭主题'),
+                        ),
                       ),
-                    ),
-                    const PopupMenuItem(
-                      value: 'warn',
-                      child: ListTile(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        leading: Icon(Icons.gavel_rounded, size: 20),
-                        title: Text('警告（版主）'),
+                      const PopupMenuItem(
+                        value: 'warn',
+                        child: ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(Icons.gavel_rounded, size: 20),
+                          title: Text('警告'),
+                        ),
                       ),
-                    ),
+                    ],
                     if (_isMine(post)) ...[
                       const PopupMenuItem(
                         value: 'edit',
@@ -1228,6 +1301,95 @@ class _ThreadPageState extends State<ThreadPage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// 楼主楼层底部的「赞赏 / 踢帖」按钮，与站点移动模板保持一致。
+  Widget _opActions(ForumPost post) {
+    final detail = _detail;
+    final kickLabel = detail == null || detail.kickToken.isEmpty
+        ? ''
+        : '踢帖(${detail.kickVotes}/${detail.kickLimit})';
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        FilledButton.icon(
+          onPressed: () => _ratePost(post),
+          icon: const Icon(Icons.volunteer_activism_outlined, size: 16),
+          label: const Text('赞赏'),
+          style: FilledButton.styleFrom(
+            backgroundColor: const Color(0xFFE3A008),
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 9),
+            textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+          ),
+        ),
+        if (kickLabel.isNotEmpty) ...[
+          const SizedBox(width: 12),
+          FilledButton(
+            onPressed: _kickThread,
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFC62828),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 9),
+              textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+            ),
+            child: Text(kickLabel),
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// 楼层打赏记录：`N 人参与了打赏` + 明细。
+  Widget _rateLog(ForumPost post) {
+    final scheme = Theme.of(context).colorScheme;
+    final title = post.rateSummary.isNotEmpty ? post.rateSummary : '${post.rates.length} 人参与了打赏';
+    return Container(
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+      decoration: BoxDecoration(
+        color: scheme.tertiary.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.volunteer_activism_outlined, size: 13, color: scheme.tertiary),
+              const SizedBox(width: 4),
+              Text(
+                title,
+                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: scheme.tertiary),
+              ),
+            ],
+          ),
+          for (final record in post.rates.take(8))
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text.rich(
+                TextSpan(children: [
+                  if (record.score.isNotEmpty)
+                    TextSpan(
+                      text: '${record.score} ',
+                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: scheme.tertiary),
+                    ),
+                  TextSpan(
+                    text: record.username.isEmpty ? '匿名' : record.username,
+                    style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
+                  ),
+                  if (record.reason.isNotEmpty)
+                    TextSpan(
+                      text: '：${record.reason}',
+                      style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant),
+                    ),
+                ]),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -1749,71 +1911,184 @@ class _ReportSheetState extends State<_ReportSheet> {
   }
 }
 
-/// 评分弹窗：选择分值并填写理由。
-class _RateDialog extends StatefulWidget {
-  const _RateDialog({required this.floor});
+/// 打赏结果：勾选的积分项、理由与是否通知作者。
+class _RateResult {
+  const _RateResult({required this.scores, this.reason = '', this.notify = false});
 
-  final String floor;
-
-  @override
-  State<_RateDialog> createState() => _RateDialogState();
+  final Map<int, int> scores;
+  final String reason;
+  final bool notify;
 }
 
-class _RateDialogState extends State<_RateDialog> {
-  final TextEditingController _controller = TextEditingController();
-  int _score = 5;
+/// 打赏面板：对齐站点移动模板（头像 + 昵称 + 好评 / 金币 + 理由 + 通知作者）。
+class _RateSheet extends StatefulWidget {
+  const _RateSheet({
+    required this.floor,
+    required this.isOp,
+    required this.author,
+    required this.avatar,
+    required this.options,
+  });
+
+  final String floor;
+  final bool isOp;
+  final String author;
+  final String avatar;
+  final RateOptions options;
+
+  @override
+  State<_RateSheet> createState() => _RateSheetState();
+}
+
+class _RateSheetState extends State<_RateSheet> {
+  final TextEditingController _reason = TextEditingController();
+  final Map<int, int> _scores = <int, int>{};
+  bool _notify = false;
+
+  @override
+  void initState() {
+    super.initState();
+    for (final field in widget.options.fields) {
+      _scores[field.id] = 0;
+    }
+  }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _reason.dispose();
     super.dispose();
+  }
+
+  int get _total => _scores.values.fold(0, (sum, value) => sum + value);
+
+  void _submit() {
+    if (_total <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请先选择打赏积分')),
+      );
+      return;
+    }
+    final scores = <int, int>{
+      for (final entry in _scores.entries)
+        if (entry.value != 0) entry.key: entry.value,
+    };
+    Navigator.of(context).pop(
+      _RateResult(
+        scores: scores,
+        reason: _reason.text.trim(),
+        notify: _notify,
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return AlertDialog(
-      title: Text('评分 ${widget.floor}'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              for (final score in const [1, 2, 3, 4, 5, 6, 8, 10])
-                ChoiceChip(
-                  label: Text('$score 分'),
-                  selected: _score == score,
-                  onSelected: (_) => setState(() => _score = score),
-                ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _controller,
-            maxLines: 3,
-            decoration: const InputDecoration(
-              hintText: '评分理由（可选）',
-              isDense: true,
-              border: OutlineInputBorder(),
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Align(
+              alignment: Alignment.topRight,
+              child: IconButton(
+                visualDensity: VisualDensity.compact,
+                onPressed: () => Navigator.of(context).pop(),
+                icon: Icon(Icons.close_rounded, size: 20, color: scheme.outline),
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '评分会消耗相应积分，请谨慎操作。',
-            style: TextStyle(fontSize: 11.5, color: scheme.outline),
+            UserAvatar(url: widget.avatar, name: widget.author, size: 54),
+            const SizedBox(height: 8),
+            Text(
+              widget.author.isEmpty ? '匿名' : widget.author,
+              style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              widget.isOp ? '搬砖不容易，打赏一下楼主吧' : '打赏一下${widget.floor}',
+              style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: 14),
+            for (final field in widget.options.fields) _fieldRow(field, scheme),
+            const SizedBox(height: 4),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: TextField(
+                controller: _reason,
+                minLines: 1,
+                maxLines: 3,
+                maxLength: 100,
+                style: const TextStyle(fontSize: 14),
+                decoration: const InputDecoration(
+                  hintText: '说两句鼓励一下吧…',
+                  counterText: '',
+                  isDense: true,
+                  border: UnderlineInputBorder(),
+                ),
+              ),
+            ),
+            SwitchListTile(
+              dense: true,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+              title: const Text('通知作者', style: TextStyle(fontSize: 14)),
+              value: _notify,
+              onChanged: (value) => setState(() => _notify = value),
+            ),
+            const SizedBox(height: 6),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+              child: SizedBox(
+                width: double.infinity,
+                height: 46,
+                child: FilledButton(
+                  onPressed: _submit,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFFFF5A5A),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                  ),
+                  child: Text(
+                    widget.isOp ? '赞赏' : '打赏',
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _fieldRow(RateField field, ColorScheme scheme) {
+    final start = field.min <= 0 ? field.min : 0;
+    final end = field.max < 0 ? 0 : field.max;
+    final value = (_scores[field.id] ?? 0).clamp(start, end).toInt();
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Row(
+        children: [
+          Text(field.label, style: const TextStyle(fontSize: 14.5)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<int>(
+                value: value,
+                isDense: true,
+                isExpanded: true,
+                icon: Icon(Icons.keyboard_arrow_down_rounded, size: 20, color: scheme.outline),
+                style: TextStyle(fontSize: 15, color: scheme.onSurface, fontWeight: FontWeight.w700),
+                items: [
+                  for (var score = start; score <= end; score++)
+                    DropdownMenuItem<int>(value: score, child: Text('$score')),
+                ],
+                onChanged: (score) => setState(() => _scores[field.id] = score ?? 0),
+              ),
+            ),
           ),
         ],
       ),
-      actions: [
-        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('取消')),
-        FilledButton(
-          onPressed: () => Navigator.of(context).pop((_score, _controller.text.trim())),
-          child: const Text('提交评分'),
-        ),
-      ],
     );
   }
 }

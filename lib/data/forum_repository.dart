@@ -170,6 +170,12 @@ class ForumRepository {
     final loggedIn = _http.hasLoginCookie || _isLoggedInHtml(html);
     final notice = posts.isEmpty ? _pageMessage(doc) ?? '' : '';
 
+    // 站点插件 bin_post_report 会在页面尾部注入「踢帖(n/5)」入口。
+    final kickUrl = RegExp(
+      r'plugin\.php\?id=bin_post_report&(?:amp;)?tid=(\d+)&(?:amp;)?m=([0-9A-Za-z]+)',
+    ).firstMatch(html);
+    final kickLabel = RegExp(r'踢帖\s*\(\s*(\d+)\s*/\s*(\d+)\s*\)').firstMatch(html);
+
     return ThreadDetail(
       tid: tid,
       title: title,
@@ -191,6 +197,9 @@ class ForumRepository {
       notice: notice,
       favorited: _isThreadFavorited(html),
       favoriteHref: _favoriteHref(html),
+      kickToken: kickUrl?.group(2) ?? '',
+      kickVotes: int.tryParse(kickLabel?.group(1) ?? '') ?? 0,
+      kickLimit: int.tryParse(kickLabel?.group(2) ?? '') ?? 5,
     );
   }
 
@@ -289,7 +298,30 @@ class ForumRepository {
       likes: _intOf(el.querySelector('.comiis_recommend_num')?.text),
       images: images,
       comments: _parseComments(el),
+      rates: _parseRates(el, pid),
+      rateSummary: _clean(el.querySelector('.comiis_rate a[href*="viewratings"]')?.text ?? ''),
     );
+  }
+
+  /// 打赏记录：`#ratelog_<pid>` 内每条 `li#rate_<pid>_<uid>`。
+  List<RateRecord> _parseRates(Element el, int pid) {
+    final box = el.querySelector('#ratelog_$pid') ?? el.querySelector('.comiis_view_lcrate');
+    if (box == null) return const <RateRecord>[];
+    final records = <RateRecord>[];
+    for (final li in box.querySelectorAll('li')) {
+      final score = _clean(li.querySelector('.f_a')?.text ?? '');
+      final link = li.querySelector('a.f_c') ?? li.querySelector('a[href*="uid="]');
+      final name = _clean(link?.text ?? '');
+      final reason = _clean(li.querySelector('p')?.text ?? '');
+      if (name.isEmpty && score.isEmpty) continue;
+      final uid = _firstInt(
+            RegExp(r'[?&]uid=(\d+)').firstMatch(link?.attributes['href'] ?? '')?.group(1),
+          ) ??
+          0;
+      records.add(RateRecord(username: name, uid: uid, score: score, reason: reason));
+      if (records.length >= 20) break;
+    }
+    return records;
   }
 
   /// 楼中楼点评：兼容 Discuz 手机模板与桌面模板的几种容器。
@@ -617,13 +649,67 @@ class ForumRepository {
     return '举报已提交';
   }
 
-  /// 给某个楼层评分（Discuz `misc&action=rate`）。
+  /// 读取当前用户组可用的打赏项（好评 / 金币等）与分值范围。
+  ///
+  /// 评分弹窗由站点按用户组动态生成，这里直接解析 `showratetip` 试读页；
+  /// 失败时回退到常见的好评 / 金币两项。
+  Future<RateOptions> fetchRateOptions({required int tid, required int pid}) async {
+    try {
+      final result = await _http.get(
+        'forum.php',
+        query: {
+          'mod': 'misc',
+          'action': 'rate',
+          'tid': '$tid',
+          'pid': '$pid',
+          'showratetip': '1',
+          'mobile': '2',
+        },
+        referer: _threadReferer(tid),
+      );
+      _ensureOk(result);
+      final doc = parser.parse(result.body);
+      final fields = <RateField>[];
+      for (final input in doc.querySelectorAll('input[name^="score"]')) {
+        final name = input.attributes['name'] ?? '';
+        final id = int.tryParse(name.replaceFirst('score', '')) ?? 0;
+        if (id <= 0) continue;
+        Element? row;
+        for (final candidate in doc.querySelectorAll('tr')) {
+          if (candidate.querySelector('input[name="$name"]') != null) {
+            row = candidate;
+            break;
+          }
+        }
+        var label = _clean(row != null && row.children.isNotEmpty ? row.children.first.text : '');
+        label = label.replaceAll(RegExp(r'[0-9\s]'), '');
+        if (label.isEmpty || label.length > 8) label = '积分 $id';
+        final text = _clean(row?.text ?? input.parent?.text ?? '');
+        final range = RegExp(r'(-?\d+)\s*~\s*(-?\d+)').firstMatch(text);
+        var min = int.tryParse(range?.group(1) ?? '') ?? 0;
+        var max = int.tryParse(range?.group(2) ?? '') ?? 10;
+        if (max < min) max = min;
+        if (max > 100) max = 100;
+        fields.add(RateField(id: id, label: label, min: min, max: max));
+      }
+      if (fields.isEmpty) return RateOptions.fallback;
+      return RateOptions(
+        fields: fields,
+        canNotify: doc.querySelector('input[name="sendreasonpm"]') != null,
+      );
+    } catch (_) {
+      return RateOptions.fallback;
+    }
+  }
+
+  /// 给某个楼层打赏（Discuz `misc&action=rate`）。
   Future<String> rate({
     required int tid,
     required int pid,
     required String formhash,
-    required int score,
+    required Map<int, int> scores,
     String reason = '',
+    bool notify = false,
   }) async {
     final response = await _http.post(
       'forum.php',
@@ -634,19 +720,99 @@ class ForumRepository {
         'pid': '$pid',
         'ratesubmit': 'yes',
         'handlekey': 'rate',
+        'formhash': formhash,
         'inajax': '1',
         'mobile': '2',
       },
       referer: _threadReferer(tid),
       form: {
         'formhash': formhash,
-        'score1': '$score',
+        'tid': '$tid',
+        'pid': '$pid',
         'reason': reason,
+        for (final entry in scores.entries) 'score${entry.key}': '${entry.value}',
+        if (notify) 'sendreasonpm': 'on',
       },
     );
-    final msg = _pageMessage(parser.parse(response.body));
-    if (msg != null && _looksLikeError(msg)) throw SiteException(msg);
-    return msg?.replaceAll(RegExp(r'<[^>]+>'), '') ?? '评分成功';
+    _ensureOk(response);
+    final msg = _rateMessage(response.body);
+    if (msg.isNotEmpty && _looksLikeRateError(msg)) throw SiteException(msg);
+    return msg.isEmpty ? '打赏成功' : msg;
+  }
+
+  String _rateMessage(String body) {
+    if (body.contains('<![CDATA[')) return _inajaxMessage(body);
+    return _pageMessage(parser.parse(body)) ?? '';
+  }
+
+  bool _looksLikeRateError(String text) =>
+      RegExp(r'(抱歉|错误|失败|不能|无权|权限|非法|禁止|请先登录|间隔|重复)').hasMatch(text);
+
+  /// 踢帖：站点插件 `bin_post_report` 的确认页可能带有表单，按其字段原样提交。
+  Future<String> kickThread({
+    required int tid,
+    required String token,
+    required String formhash,
+  }) async {
+    final entry = await _http.get(
+      'plugin.php',
+      query: {
+        'id': 'bin_post_report',
+        'tid': '$tid',
+        'm': token,
+        'mobile': '2',
+      },
+      referer: _threadReferer(tid),
+    );
+    _ensureOk(entry);
+    final doc = parser.parse(entry.body);
+    final form = doc.querySelector('form');
+    if (form == null) {
+      final msg = _pageMessage(doc) ?? '';
+      if (_looksLikeRateError(msg)) throw SiteException(msg);
+      throw SiteException(msg.isEmpty ? '踢帖页面暂不可用，请在浏览器中操作' : msg);
+    }
+
+    final fields = <String, String>{};
+    for (final input in form.querySelectorAll('input, textarea')) {
+      final name = input.attributes['name'] ?? '';
+      if (name.isEmpty) continue;
+      final type = (input.attributes['type'] ?? 'text').toLowerCase();
+      if (type == 'button' || type == 'image') continue;
+      if (type == 'checkbox' || type == 'radio') {
+        if (input.attributes.containsKey('checked')) {
+          fields[name] = input.attributes['value'] ?? 'on';
+        }
+        continue;
+      }
+      fields[name] = input.localName == 'textarea'
+          ? input.text
+          : input.attributes['value'] ?? '';
+    }
+    for (final select in form.querySelectorAll('select')) {
+      final name = select.attributes['name'] ?? '';
+      if (name.isEmpty) continue;
+      final selected = select.querySelector('option[selected]') ?? select.querySelector('option');
+      fields[name] = selected?.attributes['value'] ?? '';
+    }
+    fields.putIfAbsent('formhash', () => formhash);
+
+    final action = (form.attributes['action'] ?? '').trim().replaceFirst(RegExp(r'^\./'), '');
+    final target = action.isEmpty
+        ? AppConfig.uri('plugin.php', {'id': 'bin_post_report', 'tid': '$tid', 'm': token}).toString()
+        : _absolute(action);
+    final response = await _http.post(
+      target,
+      query: {'formhash': fields['formhash'] ?? formhash, 'mobile': '2'},
+      referer: _threadReferer(tid),
+      form: fields,
+    );
+    _ensureOk(response);
+    final text = response.body.contains('<![CDATA[')
+        ? _inajaxMessage(response.body)
+        : (_pageMessage(parser.parse(response.body)) ?? '');
+    if (_looksLikeRateError(text)) throw SiteException(text);
+    return text.isEmpty ? '已提交踢帖' : text;
   }
 
   /// 版主管理：关闭 / 置顶 / 精华 / 警告 / 删除。
