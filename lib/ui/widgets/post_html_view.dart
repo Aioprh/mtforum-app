@@ -124,7 +124,11 @@ class _PostHtmlViewState extends State<PostHtmlView> {
       if (node is dom.Text) {
         final text = _cleanInline(node.text);
         if (text.trim().isEmpty) continue;
-        inline.add(TextSpan(text: text));
+        inline.addAll(_linkifyText(context, text, TextStyle(
+          fontSize: 15.5,
+          height: 1.62,
+          color: Theme.of(context).colorScheme.onSurface,
+        )));
         continue;
       }
       if (node is! dom.Element) continue;
@@ -444,7 +448,7 @@ class _PostHtmlViewState extends State<PostHtmlView> {
     final spans = <InlineSpan>[];
     if (node is dom.Text) {
       final text = _cleanInline(node.text);
-      if (text.isNotEmpty) spans.add(TextSpan(text: text));
+      if (text.isNotEmpty) spans.addAll(_linkifyText(context, text, style));
       return spans;
     }
     if (node is! dom.Element) return spans;
@@ -513,6 +517,130 @@ class _PostHtmlViewState extends State<PostHtmlView> {
       default:
         return _inlineChildren(context, node, style);
     }
+  }
+
+  /// 自动识别论坛正文中未被服务端转换为 <a> 的纯文本网址。
+  /// 例如隐藏内容里的“https://share.example.com/xxx”也应当可以点击。
+  List<InlineSpan> _linkifyText(BuildContext context, String text, TextStyle style) {
+    final spans = <InlineSpan>[];
+    final pattern = RegExp(r'https?://[^\\s<>"]+', caseSensitive: false);
+    var cursor = 0;
+    for (final match in pattern.allMatches(text)) {
+      if (match.start > cursor) {
+        spans.add(TextSpan(text: text.substring(cursor, match.start), style: style));
+      }
+
+      var url = match.group(0)!;
+      // URL 后紧跟的中文标点属于正文，不应带进浏览器地址。
+      final trailing = RegExp(r'[，。；！？、）》】」』,.;:!?]+
+    final spans = <InlineSpan>[];
+    for (final child in element.nodes) {
+      spans.addAll(_inlineNode(context, child, style));
+    }
+    return spans;
+  }
+
+  void _openLink(BuildContext context, String url) {
+    final thread = RegExp(r'thread-(\d+)-1-1\.html').firstMatch(url);
+    if (thread != null) {
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => ThreadPage(tid: int.parse(thread.group(1)!))));
+      return;
+    }
+    final board = RegExp(r'forum-(\d+)-1\.html').firstMatch(url);
+    if (board != null) {
+      Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => BoardThreadsPage(fid: int.parse(board.group(1)!), name: '版块'),
+      ));
+      return;
+    }
+    final uri = Uri.tryParse(url);
+    if (uri != null && AppConfig.isForumHost(uri.host)) {
+      final mod = uri.queryParameters['mod'];
+      if (mod == 'post' && uri.queryParameters['action'] == 'reply') {
+        widget.onReply?.call();
+        return;
+      }
+      if (mod == 'forumdisplay') {
+        final fid = int.tryParse(uri.queryParameters['fid'] ?? '');
+        if (fid != null) {
+          Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => BoardThreadsPage(fid: fid, name: '版块'),
+          ));
+          return;
+        }
+      }
+    }
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => InternalBrowserPage(url: url)));
+  }
+
+  Map<String, String> _headers() {
+    final cookie = HttpSession.instance.cookieHeader;
+    return {
+      'Referer': AppConfig.base,
+      'User-Agent': AppConfig.userAgent,
+      if (cookie.isNotEmpty) 'Cookie': cookie,
+    };
+  }
+
+  Color? _parseColor(String? value) {
+    if (value == null) return null;
+    final hex = value.trim().replaceAll('#', '');
+    if (hex.length == 6) return Color(int.parse('FF$hex', radix: 16));
+    if (hex.length == 3) {
+      final expanded = hex.split('').map((e) => '$e$e').join();
+      return Color(int.parse('FF$expanded', radix: 16));
+    }
+    return switch (value.toLowerCase()) {
+      'red' => Colors.red,
+      'blue' => Colors.blue,
+      'green' => Colors.green,
+      'gray' || 'grey' => Colors.grey,
+      'orange' => Colors.orange,
+      _ => null,
+    };
+  }
+
+  String _cleanInline(String text) => text
+      .replaceAll('\u00a0', ' ')
+      .replaceAll(RegExp(r'[\uE000-\uF8FF\uFFFD]'), '')
+      .replaceAll(RegExp(r'[ \t\r\n]+'), ' ');
+
+  @override
+  Widget build(BuildContext context) {
+    final cache = _cache ??= _blocks(context, parser.parseFragment(widget.html).nodes);
+    if (cache.isEmpty) {
+      final scheme = Theme.of(context).colorScheme;
+      return Text('该楼层暂无内容', style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant));
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: cache);
+  }
+}
+).firstMatch(url);
+      final suffix = trailing?.group(0) ?? '';
+      if (suffix.isNotEmpty) url = url.substring(0, url.length - suffix.length);
+
+      if (url.isEmpty) {
+        spans.add(TextSpan(text: match.group(0), style: style));
+      } else {
+        final recognizer = TapGestureRecognizer()
+          ..onTap = () => _openLink(context, AppConfig.uri(url).toString());
+        _recognizers.add(recognizer);
+        spans.add(TextSpan(
+          text: url,
+          style: style.copyWith(
+            color: Theme.of(context).colorScheme.primary,
+            decoration: TextDecoration.underline,
+          ),
+          recognizer: recognizer,
+        ));
+        if (suffix.isNotEmpty) spans.add(TextSpan(text: suffix, style: style));
+      }
+      cursor = match.end;
+    }
+    if (cursor < text.length) {
+      spans.add(TextSpan(text: text.substring(cursor), style: style));
+    }
+    return spans;
   }
 
   List<InlineSpan> _inlineChildren(BuildContext context, dom.Element element, TextStyle style) {
