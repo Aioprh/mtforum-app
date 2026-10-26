@@ -255,18 +255,16 @@ class ForumPost {
   final List<RateRecord> rates;
   final String rateSummary;
 
-  /// 帖子详情中的楼层标记使用官网的数字格式，例如 11#。
-  String get floorLabel => floor <= 1 ? '楼主' : '$floor#';
+  /// 楼层标签：主题正文不参与评论排序；首条评论为沙发，第十楼为下水道。
+  String get floorLabel => seatLabel;
 
-  /// 个人空间等采用座位称呼的列表可单独使用此标签，不影响帖子详情楼层号。
-  /// 帖子正文不参与评论楼层排序；评论从第一条开始计为沙发。
   String get seatLabel {
-    if (floor <= 0) return '';
+    if (floor <= 1) return '';
     const seats = <String>[
       '沙发', '椅子', '板凳', '地毯', '凉席', '报纸', '地板', '地下室', '下水道',
     ];
+    // floor=2 为首条评论（沙发），floor=10 为第九条评论（下水道）。
     final index = floor - 2;
-    // floor=2 是第一条评论（沙发），floor=10 是第九条评论（下水道）。
     return index >= 0 && index < seats.length ? seats[index] : '$floor#';
   }
 
