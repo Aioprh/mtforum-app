@@ -24,7 +24,8 @@ OUTER_INSET = 16          # 1024 坐标系下的边距
 OUTER_RADIUS = 232
 PLATE_BOX = (212, 206, 812, 806)
 PLATE_RADIUS = 128
-STROKE = 24
+LETTER_SCALE = 0.82   # 字标相对面板中心的缩放
+LETTER_STROKE = 21
 
 M_PATH = [(311, 632), (311, 380), (421, 620), (531, 380), (531, 632)]
 T_BAR = [(587, 380), (713, 380)]
@@ -126,10 +127,15 @@ def render_letters(scale=1.0):
     """单线描边的 MT 字标，圆头圆角，和参考图的线性图标一致。"""
     k = WORK / CANVAS
     _, _, point = plate_geometry(scale)
-    stroke = max(1, int(STROKE * scale * k))
+    stroke = max(1, int(LETTER_STROKE * scale * k))
+
+    def letter_point(x, y):
+        lx = 512 + (x - 512) * LETTER_SCALE
+        ly = 506 + (y - 506) * LETTER_SCALE
+        return point(lx, ly)
 
     def path(points):
-        return [tuple(v * k for v in point(x, y)) for x, y in points]
+        return [tuple(v * k for v in letter_point(x, y)) for x, y in points]
 
     layer = Image.new("RGBA", (WORK, WORK), (0, 0, 0, 0))
     draw = ImageDraw.Draw(layer)
@@ -137,7 +143,7 @@ def render_letters(scale=1.0):
         draw.line(path(points), fill=LINE + (255,), width=stroke, joint="curve")
     # PIL 的线段是平头，补圆点模拟圆头。
     for x, y in (M_PATH[0], M_PATH[-1], T_BAR[0], T_BAR[-1], T_STEM[-1]):
-        cx, cy = point(x, y)
+        cx, cy = letter_point(x, y)
         cx, cy = cx * k, cy * k
         r = stroke / 2
         draw.ellipse((cx - r, cy - r, cx + r, cy + r), fill=LINE + (255,))
