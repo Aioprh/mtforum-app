@@ -14,6 +14,7 @@ import 'pm_list_page.dart';
 import 'rankings_page.dart';
 import 'site_features_page.dart';
 import 'tags_page.dart';
+import 'download_manager_page.dart';
 import 'user_page.dart';
 
 /// 个人中心：账号信息、我的主题 / 回复 / 收藏、外观与退出。
@@ -232,6 +233,9 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
                   }),
                   _MenuItem(Icons.sell_outlined, '标签', () {
                     _openPage(const TagsPage());
+                  }),
+                  _MenuItem(Icons.download_for_offline_outlined, '下载管理', () {
+                    _openPage(const DownloadManagerPage());
                   }),
                   _MenuItem(Icons.apps_rounded, '更多站点功能', () {
                     _openPage(const SiteFeaturesPage());

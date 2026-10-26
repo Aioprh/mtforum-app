@@ -3,12 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as parser;
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_config.dart';
 import '../../core/http_session.dart';
 import '../pages/board_threads_page.dart';
 import '../pages/image_viewer_page.dart';
+import '../pages/internal_browser_page.dart';
 import '../pages/thread_page.dart';
 import 'smart_image.dart';
 
@@ -291,7 +291,7 @@ class _PostHtmlViewState extends State<PostHtmlView> {
             leading: const Icon(Icons.play_circle_outline),
             title: const Text('媒体内容'),
             subtitle: Text(src, maxLines: 1, overflow: TextOverflow.ellipsis),
-            onTap: () => launchUrl(AppConfig.uri(src), mode: LaunchMode.externalApplication),
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => InternalBrowserPage(url: AppConfig.uri(src).toString(), title: '媒体内容'))),
           ),
         ),
       ];
@@ -553,7 +553,7 @@ class _PostHtmlViewState extends State<PostHtmlView> {
         }
       }
     }
-    launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => InternalBrowserPage(url: url)));
   }
 
   Map<String, String> _headers() {
