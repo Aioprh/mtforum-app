@@ -259,15 +259,15 @@ class ForumPost {
   String get floorLabel => floor <= 1 ? '楼主' : '$floor#';
 
   /// 个人空间等采用座位称呼的列表可单独使用此标签，不影响帖子详情楼层号。
+  /// 帖子正文不参与评论楼层排序；评论从第一条开始计为沙发。
   String get seatLabel {
-    if (floor <= 1) return '楼主';
-    // 十楼以内保留论坛原有的座位称呼；从十楼起使用数字楼层编号。
-    if (floor >= 10) return '$floor#';
+    if (floor <= 0) return '';
     const seats = <String>[
-      '沙发', '椅子', '板凳', '地毯', '凉席', '报纸', '地板', '地下室',
+      '沙发', '椅子', '板凳', '地毯', '凉席', '报纸', '地板', '地下室', '下水道',
     ];
     final index = floor - 2;
-    return index >= 0 && index < seats.length ? seats[index] : '$floor 楼';
+    // floor=2 是第一条评论（沙发），floor=10 是第九条评论（下水道）。
+    return index >= 0 && index < seats.length ? seats[index] : '$floor#';
   }
 
   ForumPost copyWith({int? floor, int? uid, String? avatar}) => ForumPost(
