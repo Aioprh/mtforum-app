@@ -1118,7 +1118,7 @@ class ForumRepository {
       items.add(PmConversation(
         uid: uid,
         name: name,
-        avatar: _absolute(box?.querySelector('img[src*="avatar"], img")?.attributes['src'] ?? ''),
+        avatar: _absolute(box?.querySelector('img[src*="avatar"], img')?.attributes['src'] ?? ''),
         preview: preview,
         time: spans.isEmpty ? '' : _clean(spans.last.text),
         unread: box?.querySelector('img[src*="new_pm"], .unread, .comiis_new') != null,
