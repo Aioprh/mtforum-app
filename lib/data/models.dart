@@ -592,6 +592,28 @@ class MagicUseForm {
   final List<MagicFormField> fields;
 }
 
+/// 积分商城下单：确认页解析出的表单。
+class MallCheckout {
+  const MallCheckout({
+    this.action = '',
+    this.formhash = '',
+    this.hidden = const <String, String>{},
+    this.fields = const <MagicFormField>[],
+    this.preview = '',
+  });
+
+  /// 表单提交地址；为空表示该页已是结果页。
+  final String action;
+  final String formhash;
+  final Map<String, String> hidden;
+  final List<MagicFormField> fields;
+
+  /// 确认页 / 结果页上的可见文本（商品信息、卡密等）。
+  final String preview;
+
+  bool get isForm => action.isNotEmpty;
+}
+
 /// 站点功能模块中的一行（道具、任务、积分、推广等）。
 class SiteRow {
   const SiteRow({

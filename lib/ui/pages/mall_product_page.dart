@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/http_session.dart';
 import '../../data/models.dart';
 import '../../state/app_state.dart';
+import '../widgets/site_form_dialog.dart';
 import '../widgets/smart_image.dart';
 import '../widgets/state_views.dart';
 import 'login_page.dart';
@@ -75,15 +76,52 @@ class _MallProductPageState extends State<MallProductPage> {
 
     setState(() => _busy = true);
     final messenger = ScaffoldMessenger.of(context);
+    final repo = AppState.instance.repo;
     try {
-      final message = await AppState.instance.repo.performModuleAction(product.buyHref);
-      messenger.showSnackBar(SnackBar(content: Text(message)));
+      // 站点把「抢购」做成确认页，需要先取回表单再提交。
+      final checkout = await repo.fetchMallCheckout(product.buyHref);
+      if (!mounted) return;
+      if (!checkout.isForm) {
+        await _showResult(checkout.preview);
+        await _load();
+        return;
+      }
+      final values = await showSiteFormDialog(
+        context,
+        title: '确认抢购',
+        fields: checkout.fields,
+        description: checkout.preview,
+        confirmText: '确认抢购',
+      );
+      if (values == null || !mounted) return;
+      final result = await repo.submitMallCheckout(checkout, values: values);
+      if (!mounted) return;
+      await _showResult(result);
       await _load();
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e is SiteException ? e.message : '抢购失败，请稍后重试')));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  Future<void> _showResult(String text) async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('抢购结果'),
+        content: SingleChildScrollView(
+          child: SelectableText(
+            text.isEmpty ? '抢购完成，请查看卡密状态确认。' : text,
+            style: const TextStyle(fontSize: 13, height: 1.6),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('关闭')),
+        ],
+      ),
+    );
   }
 
   Future<void> _showStatus() async {

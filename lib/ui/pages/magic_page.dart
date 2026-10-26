@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/http_session.dart';
 import '../../data/models.dart';
 import '../../state/app_state.dart';
+import '../widgets/site_form_dialog.dart';
 import '../widgets/smart_image.dart';
 import '../widgets/state_views.dart';
 
@@ -363,9 +364,11 @@ class _MagicBoxTabState extends State<_MagicBoxTab> with AutomaticKeepAliveClien
         navigator.pop();
       }
       if (!mounted) return;
-      final values = await showDialog<Map<String, String>>(
-        context: context,
-        builder: (_) => _MagicUseDialog(title: '使用 ${item.name}', form: form),
+      final values = await showSiteFormDialog(
+        context,
+        title: '使用 ${item.name}',
+        fields: form.fields,
+        confirmText: '确认使用',
       );
       if (values == null || !mounted) return;
       setState(() => _busy = true);
@@ -940,145 +943,4 @@ class _BusyDialog extends StatelessWidget {
   }
 }
 
-/// 使用道具时按站点要求填写的动态表单。
-class _MagicUseDialog extends StatefulWidget {
-  const _MagicUseDialog({required this.title, required this.form});
-
-  final String title;
-  final MagicUseForm form;
-
-  @override
-  State<_MagicUseDialog> createState() => _MagicUseDialogState();
-}
-
-class _MagicUseDialogState extends State<_MagicUseDialog> {
-  final Map<String, TextEditingController> _controllers = {};
-  final Map<String, String> _choices = {};
-
-  @override
-  void initState() {
-    super.initState();
-    for (final field in widget.form.fields) {
-      if (field.type == MagicFieldType.text || field.type == MagicFieldType.textarea) {
-        _controllers[field.name] = TextEditingController(text: field.value);
-      } else if (field.options.isNotEmpty) {
-        _choices[field.name] = field.options
-            .firstWhere((option) => option.value == field.value, orElse: () => field.options.first)
-            .value;
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    for (final controller in _controllers.values) {
-      controller.dispose();
-    }
-    super.dispose();
-  }
-
-  void _submit() {
-    final values = <String, String>{};
-    for (final field in widget.form.fields) {
-      if (field.type == MagicFieldType.text || field.type == MagicFieldType.textarea) {
-        values[field.name] = _controllers[field.name]?.text.trim() ?? '';
-      } else {
-        values[field.name] = _choices[field.name] ?? field.value;
-      }
-    }
-    Navigator.of(context).pop(values);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final fields = widget.form.fields;
-    return AlertDialog(
-      title: Text(widget.title),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (fields.isEmpty)
-              Text(
-                '该道具无需填写参数，确认后立即使用。',
-                style: TextStyle(fontSize: 12.5, height: 1.5, color: scheme.onSurfaceVariant),
-              ),
-            for (final field in fields) ...[
-              if (field.label.isNotEmpty) ...[
-                Text(
-                  field.label,
-                  style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant),
-                ),
-                const SizedBox(height: 6),
-              ],
-              _fieldInput(field),
-              const SizedBox(height: 12),
-            ],
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('取消')),
-        FilledButton(onPressed: _submit, child: const Text('确认使用')),
-      ],
-    );
-  }
-
-  Widget _fieldInput(MagicFormField field) {
-    switch (field.type) {
-      case MagicFieldType.text:
-        final numeric = field.name.contains('id') || field.name.contains('tid');
-        return TextField(
-          controller: _controllers[field.name],
-          keyboardType: numeric ? TextInputType.number : TextInputType.text,
-          textInputAction: TextInputAction.next,
-          decoration: InputDecoration(
-            isDense: true,
-            hintText: field.label.isEmpty ? field.name : field.label,
-            border: const OutlineInputBorder(),
-          ),
-        );
-      case MagicFieldType.textarea:
-        return TextField(
-          controller: _controllers[field.name],
-          maxLines: 3,
-          decoration: InputDecoration(
-            isDense: true,
-            hintText: field.label.isEmpty ? field.name : field.label,
-            border: const OutlineInputBorder(),
-          ),
-        );
-      case MagicFieldType.radio:
-        final selected = _choices[field.name] ?? field.value;
-        return SegmentedButton<String>(
-          segments: [
-            for (final option in field.options)
-              ButtonSegment(value: option.value, label: Text(option.label)),
-          ],
-          selected: {selected},
-          showSelectedIcon: false,
-          style: const ButtonStyle(
-            visualDensity: VisualDensity.compact,
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          ),
-          onSelectionChanged: (value) => setState(() => _choices[field.name] = value.first),
-        );
-      case MagicFieldType.select:
-        return DropdownButtonFormField<String>(
-          initialValue: _choices[field.name],
-          isDense: true,
-          decoration: const InputDecoration(isDense: true, border: OutlineInputBorder()),
-          items: [
-            for (final option in field.options)
-              DropdownMenuItem(value: option.value, child: Text(option.label)),
-          ],
-          onChanged: (value) {
-            if (value == null) return;
-            setState(() => _choices[field.name] = value);
-          },
-        );
-    }
-  }
-}
+/// 使用道具时按站点要求填写的动态表单由 [showSiteFormDialog] 统一渲染。

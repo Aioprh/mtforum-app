@@ -2569,73 +2569,89 @@ class ForumRepository {
 
     final form = doc.querySelector('form#magicform') ??
         doc.querySelector('form[action*="mod=magic"]');
+    final parsed = form == null
+        ? (hidden: <String, String>{}, fields: <MagicFormField>[])
+        : _parseSiteForm(
+            form,
+            skipNames: const {'formhash', 'operation', 'magicid', 'usesubmit', 'handlekey'},
+          );
+    return MagicUseForm(formhash: formhash, hidden: parsed.hidden, fields: parsed.fields);
+  }
+
+  /// 识别站点表单：隐藏域作为提交参数，输入项作为原生表单字段。
+  ({Map<String, String> hidden, List<MagicFormField> fields}) _parseSiteForm(
+    Element form, {
+    Set<String> skipNames = const <String>{},
+  }) {
     final hidden = <String, String>{};
     final fields = <MagicFormField>[];
     final radios = <String>{};
-    if (form != null) {
-      for (final input in form.querySelectorAll('input')) {
-        final name = (input.attributes['name'] ?? '').trim();
-        if (name.isEmpty) continue;
-        final type = (input.attributes['type'] ?? 'text').toLowerCase();
-        final value = input.attributes['value'] ?? '';
-        if (type == 'hidden') {
-          if (const {'formhash', 'operation', 'magicid', 'usesubmit', 'handlekey'}.contains(name)) {
-            continue;
-          }
-          hidden[name] = value;
-          continue;
-        }
-        if (name == 'magicid' || type == 'submit' || type == 'button' || type == 'reset') continue;
-        if (type == 'radio') {
-          if (!radios.add(name)) continue;
-          fields.add(MagicFormField(
-            name: name,
-            label: _magicFieldLabel(input),
-            type: MagicFieldType.radio,
-            value: value == '1' ? '1' : '0',
-            options: const [MagicFieldOption('1', '是'), MagicFieldOption('0', '否')],
-          ));
-          continue;
-        }
-        if (type == 'checkbox') continue;
+    for (final input in form.querySelectorAll('input')) {
+      final name = (input.attributes['name'] ?? '').trim();
+      if (name.isEmpty) continue;
+      final type = (input.attributes['type'] ?? 'text').toLowerCase();
+      final value = input.attributes['value'] ?? '';
+      if (type == 'hidden') {
+        if (skipNames.contains(name)) continue;
+        hidden[name] = value;
+        continue;
+      }
+      if (skipNames.contains(name) ||
+          type == 'submit' ||
+          type == 'button' ||
+          type == 'reset' ||
+          type == 'image') {
+        continue;
+      }
+      if (type == 'radio') {
+        if (!radios.add(name)) continue;
         fields.add(MagicFormField(
           name: name,
           label: _magicFieldLabel(input),
-          value: value,
+          type: MagicFieldType.radio,
+          value: value == '1' ? '1' : '0',
+          options: const [MagicFieldOption('1', '是'), MagicFieldOption('0', '否')],
         ));
+        continue;
       }
-      for (final select in form.querySelectorAll('select')) {
-        final name = (select.attributes['name'] ?? '').trim();
-        if (name.isEmpty || name == 'magicid') continue;
-        final options = <MagicFieldOption>[];
-        var selected = '';
-        for (final option in select.querySelectorAll('option')) {
-          final value = (option.attributes['value'] ?? '').trim();
-          if (value.isEmpty) continue;
-          options.add(MagicFieldOption(value, _clean(option.text)));
-          if (option.attributes.containsKey('selected')) selected = value;
-        }
-        if (options.isEmpty) continue;
-        fields.add(MagicFormField(
-          name: name,
-          label: _magicFieldLabel(select),
-          type: MagicFieldType.select,
-          value: selected.isEmpty ? options.first.value : selected,
-          options: options,
-        ));
-      }
-      for (final area in form.querySelectorAll('textarea')) {
-        final name = (area.attributes['name'] ?? '').trim();
-        if (name.isEmpty) continue;
-        fields.add(MagicFormField(
-          name: name,
-          label: _magicFieldLabel(area),
-          type: MagicFieldType.textarea,
-          value: _clean(area.text),
-        ));
-      }
+      if (type == 'checkbox') continue;
+      fields.add(MagicFormField(
+        name: name,
+        label: _magicFieldLabel(input),
+        value: value,
+      ));
     }
-    return MagicUseForm(formhash: formhash, hidden: hidden, fields: fields);
+    for (final select in form.querySelectorAll('select')) {
+      final name = (select.attributes['name'] ?? '').trim();
+      if (name.isEmpty || skipNames.contains(name)) continue;
+      final options = <MagicFieldOption>[];
+      var selected = '';
+      for (final option in select.querySelectorAll('option')) {
+        final value = (option.attributes['value'] ?? '').trim();
+        if (value.isEmpty) continue;
+        options.add(MagicFieldOption(value, _clean(option.text)));
+        if (option.attributes.containsKey('selected')) selected = value;
+      }
+      if (options.isEmpty) continue;
+      fields.add(MagicFormField(
+        name: name,
+        label: _magicFieldLabel(select),
+        type: MagicFieldType.select,
+        value: selected.isEmpty ? options.first.value : selected,
+        options: options,
+      ));
+    }
+    for (final area in form.querySelectorAll('textarea')) {
+      final name = (area.attributes['name'] ?? '').trim();
+      if (name.isEmpty || skipNames.contains(name)) continue;
+      fields.add(MagicFormField(
+        name: name,
+        label: _magicFieldLabel(area),
+        type: MagicFieldType.textarea,
+        value: _clean(area.text),
+      ));
+    }
+    return (hidden: hidden, fields: fields);
   }
 
   Future<String> useMagic({
@@ -2866,6 +2882,87 @@ class ForumRepository {
       statusHref: _absolute(doc.querySelector('a.detail-btn')?.attributes['href']),
       records: records,
     );
+  }
+
+  /// 读取积分商城「立即抢购」确认页：返回站点要求的表单，或页面本身的结果文本。
+  Future<MallCheckout> fetchMallCheckout(String href) async {
+    final uri = Uri.tryParse(href);
+    if (uri == null) throw SiteException('链接无效');
+    final result = await _http.get(uri.path.replaceFirst('/', ''), query: uri.queryParameters);
+    _ensureOk(result);
+    final doc = parser.parse(result.body);
+
+    if (doc.querySelector('form[action*="logging"]') != null || doc.querySelector('#loginform') != null) {
+      throw SiteException('登录状态已失效，请重新登录');
+    }
+
+    final message = _pageMessage(doc);
+    if (message != null && _looksLikeError(message)) throw SiteException(message);
+
+    final container = doc.querySelector('.comiis_bodybox') ?? doc.querySelector('#ct') ?? doc.body;
+    final preview = _visibleText(container, limit: 800);
+
+    Element? form;
+    for (final candidate in doc.querySelectorAll('form')) {
+      final action = candidate.attributes['action'] ?? '';
+      if (action.contains('logging') || action.contains('search')) continue;
+      if (action.contains('keke_integralmall') ||
+          candidate.querySelector('input[name="formhash"]') != null) {
+        form = candidate;
+        break;
+      }
+    }
+    if (form == null) {
+      return MallCheckout(preview: preview.isEmpty ? (message ?? '') : preview);
+    }
+
+    final rawAction = (form.attributes['action'] ?? '').trim();
+    final action = rawAction.isEmpty ? href : _absolute(rawAction);
+    final formhash = _findFormhash(result.body);
+    final hasFormhashInput = form.querySelector('input[name="formhash"]') != null;
+    if (formhash.isEmpty && !hasFormhashInput) {
+      throw SiteException(message ?? '当前商品暂不可抢购');
+    }
+
+    final parsed = _parseSiteForm(form, skipNames: const {'formhash'});
+    return MallCheckout(
+      action: action,
+      formhash: formhash,
+      hidden: parsed.hidden,
+      fields: parsed.fields,
+      preview: preview,
+    );
+  }
+
+  /// 提交积分商城下单表单，返回站点结果文本（成功提示 / 卡密等）。
+  Future<String> submitMallCheckout(
+    MallCheckout checkout, {
+    Map<String, String> values = const {},
+  }) async {
+    final uri = Uri.tryParse(checkout.action);
+    if (uri == null) throw SiteException('下单地址无效');
+    final result = await _http.post(
+      uri.path.replaceFirst('/', ''),
+      query: uri.queryParameters,
+      form: <String, String>{
+        if (checkout.formhash.isNotEmpty) 'formhash': checkout.formhash,
+        ...checkout.hidden,
+        ...values,
+      },
+      referer: AppConfig.uri('plugin.php', {
+        'id': 'keke_integralmall:keke_integralmall',
+        'mobile': '2',
+      }).toString(),
+    );
+    _ensureOk(result);
+    final doc = parser.parse(result.body);
+    final message = _pageMessage(doc);
+    if (message != null && _looksLikeError(message)) throw SiteException(message);
+
+    final container = doc.querySelector('.comiis_bodybox') ?? doc.querySelector('#ct') ?? doc.body;
+    final text = _visibleText(container, limit: 800);
+    if (text.isNotEmpty) return text;
+    return message ?? '抢购成功';
   }
 
   /// 读取插件操作页的正文文本（例如查看卡密状态）。
