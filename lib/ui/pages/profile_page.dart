@@ -1,16 +1,16 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 
-import '../../core/app_config.dart';
 import '../../core/http_session.dart';
 import '../../data/models.dart';
 import '../../state/app_state.dart';
 import '../widgets/thread_feed.dart';
 import '../widgets/user_avatar.dart';
 import 'about_page.dart';
+import 'black_house_page.dart';
 import 'login_page.dart';
 import 'notifications_page.dart';
 import 'rankings_page.dart';
+import 'site_features_page.dart';
 import 'tags_page.dart';
 
 /// 个人中心：账号信息、我的主题 / 回复 / 收藏、外观与退出。
@@ -121,45 +121,6 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
     }
   }
 
-  Future<void> _openSiteMenu() async {
-    final entries = <(String, String, Map<String, String>, IconData)>[
-      ('道具中心', 'home.php', {'mod': 'magic', 'mobile': '2'}, Icons.auto_fix_high_outlined),
-      ('勋章中心', 'home.php', {'mod': 'medal', 'mobile': '2'}, Icons.military_tech_outlined),
-      ('任务中心', 'home.php', {'mod': 'task', 'mobile': '2'}, Icons.task_alt_rounded),
-      ('积分', 'home.php', {'mod': 'spacecp', 'ac': 'credit', 'mobile': '2'}, Icons.toll_outlined),
-      ('积分商城', 'plugin.php', {'id': 'k_mall:index', 'mobile': '2'}, Icons.storefront_outlined),
-      ('访问推广', 'home.php', {'mod': 'spacecp', 'ac': 'promotion', 'mobile': '2'}, Icons.campaign_outlined),
-    ];
-    final index = await showModalBottomSheet<int>(
-      context: context,
-      builder: (sheetContext) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(20, 16, 20, 6),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text('更多站点功能', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-              ),
-            ),
-            for (var i = 0; i < entries.length; i++)
-              ListTile(
-                leading: Icon(entries[i].$4, size: 21),
-                title: Text(entries[i].$1, style: const TextStyle(fontSize: 14)),
-                trailing: const Icon(Icons.open_in_browser_rounded, size: 17),
-                onTap: () => Navigator.pop(sheetContext, i),
-              ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
-    if (index == null) return;
-    final entry = entries[index];
-    await launchUrl(AppConfig.uri(entry.$2, entry.$3), mode: LaunchMode.externalApplication);
-  }
-
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -195,13 +156,19 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
                       _openPersonal('我的主题', 'home.php', {
                         'mod': 'space',
                         'do': 'thread',
+                        'view': 'me',
+                        'type': 'thread',
+                        'from': 'space',
                         'mobile': '2',
                       }, '你还没有发布过主题');
                     }),
                     _MenuItem(Icons.chat_bubble_outline_rounded, '我的回复', () {
                       _openPersonal('我的回复', 'home.php', {
                         'mod': 'space',
-                        'do': 'reply',
+                        'do': 'thread',
+                        'view': 'me',
+                        'type': 'reply',
+                        'from': 'space',
                         'mobile': '2',
                       }, '你还没有回复过帖子');
                     }),
@@ -220,6 +187,9 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
                       _openPage(const NotificationsPage());
                     }),
                     _MenuItem(Icons.event_available_outlined, '每日签到', _signIn),
+                    _MenuItem(Icons.gavel_rounded, '小黑屋', () {
+                      _openPage(const BlackHousePage());
+                    }),
                   ]),
                   const SizedBox(height: 14),
                 ] else ...[
@@ -233,7 +203,9 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
                   _MenuItem(Icons.sell_outlined, '标签', () {
                     _openPage(const TagsPage());
                   }),
-                  _MenuItem(Icons.apps_rounded, '更多站点功能', _openSiteMenu),
+                  _MenuItem(Icons.apps_rounded, '更多站点功能', () {
+                    _openPage(const SiteFeaturesPage());
+                  }),
                 ]),
                 const SizedBox(height: 14),
                 _menuGroup(scheme, [

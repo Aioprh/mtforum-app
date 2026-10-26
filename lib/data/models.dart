@@ -258,3 +258,61 @@ class UserProfile {
   final String regTime;
   final String group;
 }
+
+/// 小黑屋记录（forum.php?mod=misc&action=showdarkroom）。
+class DarkRoomEntry {
+  const DarkRoomEntry({
+    required this.uid,
+    required this.name,
+    required this.action,
+    this.expiry = '',
+    this.time = '',
+  });
+
+  final int uid;
+  final String name;
+  final String action;
+  final String expiry;
+  final String time;
+}
+
+/// 勋章目录条目。
+class MedalItem {
+  const MedalItem({required this.name, this.image = '', this.desc = ''});
+
+  final String name;
+  final String image;
+  final String desc;
+}
+
+/// 勋章获得记录。
+class MedalRecord {
+  const MedalRecord({
+    required this.uid,
+    required this.name,
+    required this.medal,
+    this.avatar = '',
+    this.time = '',
+  });
+
+  final int uid;
+  final String name;
+  final String medal;
+  final String avatar;
+  final String time;
+}
+
+/// 站点功能模块中的一行（道具、任务、积分、推广等）。
+class SiteRow {
+  const SiteRow({
+    required this.title,
+    this.subtitle = '',
+    this.image = '',
+    this.href = '',
+  });
+
+  final String title;
+  final String subtitle;
+  final String image;
+  final String href;
+}

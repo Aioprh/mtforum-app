@@ -355,51 +355,7 @@ class ForumRepository {
       query: {'mod': 'space', 'do': 'profile', 'mobile': '2'},
     );
     _ensureOk(result);
-    final doc = parser.parse(result.body);
-    final html = result.body;
-
-    final uid = _firstInt(
-      RegExp(r"discuz_uid\s*=\s*'(\d+)'").firstMatch(html)?.group(1) ??
-          RegExp(r'[?&]uid=(\d+)').firstMatch(html)?.group(1) ??
-          '0',
-    ) ??
-        0;
-
-    var name = _clean(
-      doc.querySelector('.comiis_space_name')?.text ??
-          doc.querySelector('.space_name')?.text ??
-          doc.querySelector('.top_user')?.text ??
-          RegExp(r"username\s*=\s*'([^']*)'").firstMatch(html)?.group(1) ??
-          '',
-    );
-    if (name.isEmpty) name = fallbackName;
-
-    var avatar = _absolute(
-      doc.querySelector('.comiis_space_tximg img')?.attributes['src'] ??
-          doc.querySelector('a.comiis_space_tximg img')?.attributes['src'] ??
-          doc.querySelector('img[src*="/avatar/"]')?.attributes['src'],
-    );
-    if ((avatar.isEmpty || _isPlaceholderImage(avatar)) && uid > 0) avatar = _avatarForUid(uid);
-
-    final bodyText = _clean(doc.body?.text ?? '');
-    final level = RegExp(r'(Lv\.\s*\d+[^\s]{0,8})').firstMatch(bodyText)?.group(1) ?? '';
-    String numberAfter(String label) {
-      final match = RegExp('$label\\s*[:：]?\\s*(\\d+)').firstMatch(bodyText);
-      return match?.group(1) ?? '';
-    }
-
-    return UserProfile(
-      uid: uid,
-      username: name,
-      avatar: avatar,
-      level: _clean(level),
-      credits: numberAfter('金币'),
-      posts: numberAfter('主题'),
-      replies: numberAfter('帖子'),
-      followers: numberAfter('粉丝'),
-      regTime: RegExp(r'注册时间\s*[:：]?\s*([0-9\-\/年月日]+)').firstMatch(bodyText)?.group(1) ?? '',
-      group: _clean(doc.querySelector('.comiis_space_group')?.text ?? ''),
-    );
+    return _parseSpaceProfile(parser.parse(result.body), result.body, fallbackName: fallbackName);
   }
 
   Future<void> logout() async {
@@ -717,43 +673,9 @@ class ForumRepository {
       query: {'mod': 'space', 'uid': '$uid', 'do': 'profile', 'mobile': '2'},
     );
     _ensureOk(result);
-    final doc = parser.parse(result.body);
-    final html = result.body;
-    final bodyText = _clean(doc.body?.text ?? '');
-    String numberAfter(String label) {
-      final match = RegExp('$label\\s*[:：]?\\s*(\\d+)').firstMatch(bodyText);
-      return match?.group(1) ?? '';
-    }
-
-    final name = _clean(
-      doc.querySelector('.comiis_space_name')?.text ??
-          doc.querySelector('.space_name')?.text ??
-          doc.querySelector('.top_user')?.text ??
-          RegExp(r"username\s*=\s*'([^']*)'").firstMatch(html)?.group(1) ??
-          '',
-    );
-    var avatar = _absolute(
-      doc.querySelector('.comiis_space_tximg img')?.attributes['src'] ??
-          doc.querySelector('a.comiis_space_tximg img')?.attributes['src'] ??
-          doc.querySelector('img[src*="/avatar/"]')?.attributes['src'],
-    );
-    if ((avatar.isEmpty || _isPlaceholderImage(avatar)) && uid > 0) avatar = _avatarForUid(uid);
-    final level = RegExp(r'(Lv\.\s*\d+[^\s]{0,8})').firstMatch(bodyText)?.group(1) ?? '';
-
     return (
-      UserProfile(
-        uid: uid,
-        username: name,
-        avatar: avatar,
-        level: _clean(level),
-        credits: numberAfter('金币'),
-        posts: numberAfter('主题'),
-        replies: numberAfter('帖子'),
-        followers: numberAfter('粉丝'),
-        regTime: RegExp(r'注册时间\s*[:：]?\s*([0-9\-\/年月日]+)').firstMatch(bodyText)?.group(1) ?? '',
-        group: _clean(doc.querySelector('.comiis_space_group')?.text ?? ''),
-      ),
-      _findFormhash(html),
+      _parseSpaceProfile(parser.parse(result.body), result.body, uid: uid),
+      _findFormhash(result.body),
     );
   }
 
@@ -1437,6 +1359,225 @@ class ForumRepository {
     final padded = uid.toString().padLeft(9, '0');
     return 'https://cdn.binmt.cc/uc_server/data/avatar/'
         '${padded.substring(0, 3)}/${padded.substring(3, 5)}/${padded.substring(5, 7)}/${padded.substring(7, 9)}_avatar_middle.jpg';
+  }
+
+  /// 解析个人空间页（`home.php?mod=space&do=profile` 的 comiis 移动模板）。
+  UserProfile _parseSpaceProfile(Document doc, String html, {int uid = 0, String fallbackName = ''}) {
+    final info = doc.querySelector('.comiis_space_info') ??
+        doc.querySelector('.comiis_space_tx') ??
+        doc.querySelector('.comiis_space_center');
+
+    final resolvedUid = uid > 0
+        ? uid
+        : _firstInt(
+              RegExp(r"discuz_uid\s*=\s*'(\d+)'").firstMatch(html)?.group(1) ??
+                  RegExp(r'[?&]uid=(\d+)').firstMatch(html)?.group(1) ??
+                  '0',
+            ) ??
+            0;
+
+    var name = _clean(
+      info?.querySelector('h2')?.text ??
+          doc.querySelector('h2.fyy')?.text ??
+          doc.querySelector('.comiis_space_name')?.text ??
+          doc.querySelector('.top_user')?.text ??
+          RegExp(r"username\s*=\s*'([^']*)'").firstMatch(html)?.group(1) ??
+          '',
+    );
+    if (name.isEmpty) name = fallbackName;
+
+    final rawAvatar = _absolute(
+      info?.querySelector('.user_img img')?.attributes['src'] ??
+          doc.querySelector('.comiis_space_tximg img')?.attributes['src'] ??
+          doc.querySelector('.user_img img')?.attributes['src'],
+    );
+    // 页面顶部可能混入当前登录用户的头像，必须校验 uid 才能采用。
+    var avatar = rawAvatar;
+    if (resolvedUid > 0) {
+      if (_avatarMatchesUid(rawAvatar, resolvedUid)) {
+        avatar = rawAvatar;
+      } else if (rawAvatar.toLowerCase().contains('noavatar')) {
+        avatar = rawAvatar;
+      } else {
+        avatar = _avatarForUid(resolvedUid);
+      }
+    } else if (_isPlaceholderImage(avatar)) {
+      avatar = '';
+    }
+
+    // 统计区：<span>帖子 45</span> / <span>回复 2988</span> / <span>粉丝 16</span>。
+    final counts = <String, String>{};
+    for (final span in doc.querySelectorAll('ul li span, .comiis_space_num span')) {
+      final text = _clean(span.text);
+      final match = RegExp(r'^(.{1,4}?)\s*(\d+)$').firstMatch(text);
+      if (match == null) continue;
+      counts.putIfAbsent(_clean(match.group(1)!), () => match.group(2)!);
+    }
+    // 积分区：<li><span>4083</span>金币</li>。
+    for (final li in doc.querySelectorAll('ul li')) {
+      final label = _clean(li.text).replaceAll(RegExp(r'[0-9\s]'), '');
+      final number = _clean(li.querySelector('span')?.text ?? '').replaceAll(RegExp(r'[^0-9]'), '');
+      if (label.isEmpty || label.length > 4 || number.isEmpty) continue;
+      counts.putIfAbsent(label, () => number);
+    }
+
+    final bodyText = _clean(doc.body?.text ?? '');
+    final level = _clean(
+      info?.querySelector('.kmlevs')?.text ??
+          RegExp(r'Lv\.\s*\d+').firstMatch(bodyText)?.group(0) ??
+          '',
+    );
+
+    return UserProfile(
+      uid: resolvedUid,
+      username: name,
+      avatar: avatar,
+      level: level,
+      credits: counts['金币'] ?? counts['积分'] ?? '',
+      posts: counts['帖子'] ?? counts['主题'] ?? '',
+      replies: counts['回复'] ?? '',
+      followers: counts['粉丝'] ?? '',
+      regTime: RegExp(r'注册时间\s*[:：]?\s*([0-9]{4}-[0-9]{1,2}-[0-9]{1,2}(?:\s+[0-9]{1,2}:[0-9]{2})?)')
+              .firstMatch(bodyText)
+              ?.group(1) ??
+          '',
+      group: _clean(info?.querySelector('.kmlev:not(.kmlevs)')?.text ?? doc.querySelector('.comiis_space_group')?.text ?? ''),
+    );
+  }
+
+  /// 头像地址是否属于指定 uid（静态头像路径或 avatar.php?uid=）。
+  bool _avatarMatchesUid(String url, int uid) {
+    if (url.isEmpty || _isPlaceholderImage(url)) return false;
+    final padded = uid.toString().padLeft(9, '0');
+    final path = '${padded.substring(0, 3)}/${padded.substring(3, 5)}/${padded.substring(5, 7)}/${padded.substring(7, 9)}_avatar';
+    return url.contains(path) || url.contains('uid=$uid');
+  }
+
+  /// 小黑屋（forum.php?mod=misc&action=showdarkroom，桌面模板表格）。
+  Future<List<DarkRoomEntry>> fetchDarkRoom() async {
+    final result = await _http.get(
+      'forum.php',
+      query: {'mod': 'misc', 'action': 'showdarkroom'},
+    );
+    _ensureOk(result);
+    final doc = parser.parse(result.body);
+    final entries = <DarkRoomEntry>[];
+    for (final tr in doc.querySelectorAll('#darkroomtable tr')) {
+      final cells = tr.querySelectorAll('td');
+      if (cells.length < 4) continue;
+      final link = cells[0].querySelector('a[href]');
+      final href = link?.attributes['href'] ?? '';
+      final uid = int.tryParse(
+            RegExp(r'space-uid-(\d+)\.html').firstMatch(href)?.group(1) ??
+                RegExp(r'[?&]uid=(\d+)').firstMatch(href)?.group(1) ??
+                '',
+          ) ??
+          0;
+      final name = _clean(link?.text ?? cells[0].text);
+      if (name.isEmpty) continue;
+      entries.add(DarkRoomEntry(
+        uid: uid,
+        name: name,
+        action: _clean(cells[1].text),
+        expiry: _clean(cells[2].text),
+        time: _clean(cells[3].text),
+      ));
+    }
+    return entries;
+  }
+
+  /// 勋章中心：返回（勋章目录, 最近获得记录）。
+  Future<(List<MedalItem>, List<MedalRecord>)> fetchMedals() async {
+    final result = await _http.get('home.php', query: {'mod': 'medal', 'mobile': '2'});
+    _ensureOk(result);
+    final doc = parser.parse(result.body);
+
+    final items = <MedalItem>[];
+    final seen = <String>{};
+    for (final block in doc.querySelectorAll('p.list02_limg')) {
+      final img = block.querySelector('img');
+      final name = _clean(img?.attributes['alt'] ?? '');
+      if (name.isEmpty || !seen.add(name)) continue;
+      final onclick = block.querySelector('a')?.attributes['onclick'] ?? '';
+      final desc = _clean(
+        RegExp(r"kmtxt[^>]*>(.*?)<").firstMatch(onclick)?.group(1) ?? '',
+      );
+      items.add(MedalItem(name: name, image: _absolute(img?.attributes['src']), desc: desc));
+    }
+
+    final records = <MedalRecord>[];
+    for (final a in doc.querySelectorAll('.comiis_medal_box a.block')) {
+      final href = a.attributes['href'] ?? '';
+      final uid = int.tryParse(RegExp(r'uid=(\d+)').firstMatch(href)?.group(1) ?? '') ?? 0;
+      if (uid <= 0) continue;
+      final time = _clean(a.querySelector('p.tit font')?.text ?? '');
+      final titleText = _clean(a.querySelector('p.tit')?.text ?? '');
+      final name = _clean(titleText.replaceAll(time, ''));
+      final medal = _clean(a.querySelector('p.txt')?.text ?? '').replaceFirst('获得', '');
+      if (name.isEmpty) continue;
+      records.add(MedalRecord(
+        uid: uid,
+        name: name,
+        medal: medal,
+        avatar: _absolute(a.querySelector('img')?.attributes['src']),
+        time: time,
+      ));
+    }
+    return (items, records);
+  }
+
+  /// 通用站点模块：返回（提示文案, 列表行）。
+  Future<(String, List<SiteRow>)> fetchModule(String path, Map<String, String> query) async {
+    final result = await _http.get(path, query: query);
+    _ensureOk(result);
+    final doc = parser.parse(result.body);
+
+    final tip = _clean(
+      doc.querySelector('.comiis_password_top p')?.text ??
+          doc.querySelector('.alert_info')?.text ??
+          doc.querySelector('.alert_error')?.text ??
+          '',
+    );
+
+    final rows = <SiteRow>[];
+    final seen = <String>{};
+    for (final li in doc.querySelectorAll('.comiis_bodybox li, #ct li, .comiis_list01 li')) {
+      final classes = li.attributes['class'] ?? '';
+      if (classes.contains('comiis_left_Touch')) continue;
+      final link = li.querySelector('a[href]');
+      final href = _absolute(link?.attributes['href']);
+      final text = _clean(li.text);
+      if (text.isEmpty || text.length > 300) continue;
+      final img = li.querySelector('img');
+      final title = _clean(
+        li.querySelector('.tit, .title, h3, h4, strong')?.text ?? link?.text ?? text,
+      );
+      if (title.isEmpty || !seen.add('$title|$href')) continue;
+      final rest = _clean(text.replaceFirst(title, ''));
+      rows.add(SiteRow(
+        title: title,
+        subtitle: rest,
+        image: _absolute(img?.attributes['src']),
+        href: href,
+      ));
+      if (rows.length >= 60) break;
+    }
+    return (tip, rows);
+  }
+
+  /// 执行站点模块行上的原生操作（GET，例如领取勋章、购买道具）。
+  Future<String> performModuleAction(String href) async {
+    final uri = Uri.tryParse(href);
+    if (uri == null) throw SiteException('链接无效');
+    final result = await _http.get(
+      uri.path.replaceFirst('/', ''),
+      query: uri.queryParameters,
+      referer: AppConfig.uri('home.php', {'mod': 'space', 'do': 'profile', 'mobile': '2'}).toString(),
+    );
+    _ensureOk(result);
+    final message = _pageMessage(parser.parse(result.body));
+    if (message != null && _looksLikeError(message)) throw SiteException(message);
+    return message ?? '操作成功';
   }
 
   String decode(List<int> bytes) => WafSolver.decodeUtf8(bytes);
