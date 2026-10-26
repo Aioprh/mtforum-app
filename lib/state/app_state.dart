@@ -11,6 +11,9 @@ class AppState extends ChangeNotifier {
   static final AppState instance = AppState._();
 
   static const String _themeKey = 'mt_forum_theme';
+  static const String _autoSignInDateKey = 'mt_forum_auto_signin_date';
+  bool _autoSignInRunning = false;
+  String? _autoSignInAttemptDate;
 
   final ForumRepository repo = ForumRepository.instance;
   final HttpSession session = HttpSession.instance;
@@ -39,6 +42,31 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     if (isLoggedIn) {
       refreshProfile();
+      // 不阻塞首屏；同一自然日成功后持久化日期，重复打开不会重复签到。
+      autoSignInOncePerDay();
+    }
+  }
+
+  /// 登录状态下每日最多自动签到一次。仅在成功（含服务端提示已签到）后记录日期；
+  /// 网络失败时不写入日期，下一次启动仍可重试。整个过程不展示提示。
+  Future<void> autoSignInOncePerDay() async {
+    if (!isLoggedIn || _autoSignInRunning) return;
+    final now = DateTime.now();
+    final today =
+        '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    if (_autoSignInAttemptDate == today) return;
+
+    _autoSignInRunning = true;
+    _autoSignInAttemptDate = today;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getString(_autoSignInDateKey) == today) return;
+      await repo.signIn();
+      await prefs.setString(_autoSignInDateKey, today);
+    } catch (_) {
+      // 静默失败，不打扰用户；未保存日期，下一次启动可重新尝试。
+    } finally {
+      _autoSignInRunning = false;
     }
   }
 
@@ -72,6 +100,7 @@ class AppState extends ChangeNotifier {
     profileError = null;
     _boards = null;
     notifyListeners();
+    autoSignInOncePerDay();
     return user;
   }
 
