@@ -441,6 +441,157 @@ class MedalRecord {
   final String time;
 }
 
+/// 积分项（金币、威望、贡献等）。
+class CreditItem {
+  const CreditItem({required this.name, required this.value, this.highlight = false});
+
+  final String name;
+  final String value;
+  final bool highlight;
+}
+
+/// 积分页的余额摘要。
+class CreditSummary {
+  const CreditSummary({
+    this.items = const <CreditItem>[],
+    this.total = '',
+    this.formula = '',
+  });
+
+  final List<CreditItem> items;
+  final String total;
+  final String formula;
+}
+
+/// 积分交易记录。
+class CreditLog {
+  const CreditLog({
+    required this.operation,
+    required this.change,
+    required this.detail,
+    required this.time,
+  });
+
+  final String operation;
+  final String change;
+  final String detail;
+  final String time;
+}
+
+/// 道具商店条目。
+class MagicItem {
+  const MagicItem({
+    required this.mid,
+    required this.name,
+    this.image = '',
+    this.description = '',
+    this.priceText = '',
+    this.price = '',
+    this.soldOut = false,
+    this.canGive = false,
+    this.saleVolume = '',
+  });
+
+  /// 道具 identifier，购买/赠送时作为 `mid` 提交。
+  final String mid;
+  final String name;
+  final String image;
+  final String description;
+  final String priceText;
+  final String price;
+  final bool soldOut;
+
+  /// 站点是否开放「购买后赠送」。
+  final bool canGive;
+
+  /// 热销榜上的已售数量文案。
+  final String saleVolume;
+}
+
+/// 我的道具。
+class MyMagic {
+  const MyMagic({
+    required this.id,
+    required this.name,
+    this.image = '',
+    this.description = '',
+    this.num = 0,
+    this.weight = '',
+    this.canUse = false,
+    this.canGive = false,
+    this.canSell = false,
+    this.canDrop = false,
+  });
+
+  /// 数字道具 id，使用/赠送/出售/丢弃时作为 `magicid` 提交。
+  final int id;
+  final String name;
+  final String image;
+  final String description;
+  final int num;
+  final String weight;
+  final bool canUse;
+  final bool canGive;
+  final bool canSell;
+  final bool canDrop;
+}
+
+/// 我的道具页内容。
+class MagicBox {
+  const MagicBox({this.capacity = '', this.items = const <MyMagic>[]});
+
+  final String capacity;
+  final List<MyMagic> items;
+}
+
+/// 道具日志条目。
+class MagicLogEntry {
+  const MagicLogEntry({required this.title, this.time = '', this.detail = ''});
+
+  final String title;
+  final String time;
+  final String detail;
+}
+
+enum MagicFieldType { text, radio, select, textarea }
+
+class MagicFieldOption {
+  const MagicFieldOption(this.value, this.label);
+
+  final String value;
+  final String label;
+}
+
+/// 使用道具时站点要求的表单字段（如主题 ID、颜色等）。
+class MagicFormField {
+  const MagicFormField({
+    required this.name,
+    this.label = '',
+    this.type = MagicFieldType.text,
+    this.value = '',
+    this.options = const <MagicFieldOption>[],
+  });
+
+  final String name;
+  final String label;
+  final MagicFieldType type;
+  final String value;
+  final List<MagicFieldOption> options;
+}
+
+/// 使用道具的操作页表单。
+class MagicUseForm {
+  const MagicUseForm({
+    required this.formhash,
+    this.hidden = const <String, String>{},
+    this.fields = const <MagicFormField>[],
+  });
+
+  final String formhash;
+  final Map<String, String> hidden;
+  final List<MagicFormField> fields;
+}
+
 /// 站点功能模块中的一行（道具、任务、积分、推广等）。
 class SiteRow {
   const SiteRow({

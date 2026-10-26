@@ -2278,6 +2278,459 @@ class ForumRepository {
     return (items, records);
   }
 
+  /// 积分页：余额与总积分（桌面模板 `ul.creditl`）。
+  Future<CreditSummary> fetchCredits() async {
+    final result = await _getDesktopPage('home.php', {
+      'mod': 'spacecp',
+      'ac': 'credit',
+    });
+    _ensureOk(result);
+    final doc = parser.parse(result.body);
+
+    final items = <CreditItem>[];
+    var total = '';
+    var formula = '';
+    for (final li in doc.querySelectorAll('ul.creditl li')) {
+      final labelEl = li.querySelector('em');
+      final label = _clean(labelEl?.text ?? '').replaceAll(RegExp(r'[:：]\s*$'), '');
+      final formulaEl = li.querySelector('span.xg1');
+      var value = _clean(li.text);
+      if (labelEl != null) value = value.replaceFirst(_clean(labelEl.text), '');
+      if (formulaEl != null) value = value.replaceFirst(_clean(formulaEl.text), '');
+      value = _clean(value);
+      if (label.isEmpty || value.isEmpty) continue;
+      final classes = (li.attributes['class'] ?? '').split(RegExp(r'\s+'));
+      // 总积分行是 `<li class="cl"><em>积分: </em>...`；若有转账积分则是 `class="xi1 cl"`。
+      if (classes.contains('cl') && !classes.contains('xi1')) {
+        total = value;
+        formula = _clean(formulaEl?.text ?? '');
+        continue;
+      }
+      items.add(CreditItem(
+        name: label,
+        value: value,
+        highlight: classes.contains('xi1'),
+      ));
+    }
+    return CreditSummary(items: items, total: total, formula: formula);
+  }
+
+  /// 积分交易记录（`ac=credit&op=log`，桌面模板 `table.dt` 四列）。
+  Future<List<CreditLog>> fetchCreditLogs({int page = 1}) async {
+    final result = await _getDesktopPage('home.php', {
+      'mod': 'spacecp',
+      'ac': 'credit',
+      'op': 'log',
+      'page': '$page',
+    });
+    _ensureOk(result);
+    final doc = parser.parse(result.body);
+
+    final items = <CreditLog>[];
+    for (final tr in doc.querySelectorAll('table.dt tr')) {
+      final cells = tr.querySelectorAll('td');
+      if (cells.length < 4) continue;
+      final values = cells.map((cell) => _clean(cell.text)).toList();
+      if (values[0] == '操作' || values[0].isEmpty && values[1].isEmpty) continue;
+      items.add(CreditLog(
+        operation: values[0],
+        change: values[1],
+        detail: values[2],
+        time: values[3],
+      ));
+    }
+    return items;
+  }
+
+  /// 道具商店（`home.php?mod=magic&action=shop`）。
+  Future<List<MagicItem>> fetchMagicShop({int page = 1, bool hot = false}) async {
+    final result = await _getDesktopPage('home.php', {
+      'mod': 'magic',
+      'action': 'shop',
+      if (hot) 'operation': 'hot',
+      'page': '$page',
+    });
+    _ensureOk(result);
+    final doc = parser.parse(result.body);
+
+    final items = <MagicItem>[];
+    for (final li in doc.querySelectorAll('ul.mgcl li')) {
+      final imgEl = li.querySelector('.mg_img img') ?? li.querySelector('img');
+      final name = _clean(li.querySelector('p strong')?.text ?? imgEl?.attributes['alt'] ?? '');
+      if (name.isEmpty) continue;
+
+      final buy = li.querySelector('a[href*="operation=buy"]');
+      final give = li.querySelector('a[href*="operation=give"]');
+      final actionHref = (buy ?? give)?.attributes['href'] ?? '';
+      var mid = _magicQueryValue(actionHref, 'mid');
+      if (mid.isEmpty) {
+        final imgId = imgEl?.parent?.attributes['id'] ?? '';
+        mid = imgId.startsWith('magic_') ? imgId.substring(6) : '';
+      }
+
+      var priceText = '';
+      for (final p in li.querySelectorAll('p')) {
+        if (p.querySelector('strong.xi1') != null) {
+          priceText = _clean(p.text);
+          break;
+        }
+      }
+      if (priceText.isEmpty) {
+        final paragraphs = li.querySelectorAll('p');
+        if (paragraphs.length > 1) priceText = _clean(paragraphs[1].text);
+      }
+
+      items.add(MagicItem(
+        mid: mid,
+        name: name,
+        image: _absolute(imgEl?.attributes['src']),
+        description: _clean(li.querySelector('.tip_c')?.text ?? ''),
+        priceText: priceText,
+        price: _clean(li.querySelector('strong.xi1')?.text ?? ''),
+        soldOut: buy == null,
+        canGive: give != null,
+        saleVolume: _clean(li.querySelector('em.xg1')?.text ?? ''),
+      ));
+    }
+    return items;
+  }
+
+  /// 我的道具（`home.php?mod=magic&action=mybox`）。
+  Future<MagicBox> fetchMagicBox({int page = 1}) async {
+    final result = await _getDesktopPage('home.php', {
+      'mod': 'magic',
+      'action': 'mybox',
+      'page': '$page',
+    });
+    _ensureOk(result);
+    final doc = parser.parse(result.body);
+
+    final items = <MyMagic>[];
+    for (final li in doc.querySelectorAll('ul.mgcl li')) {
+      final imgEl = li.querySelector('.mg_img img') ?? li.querySelector('img');
+      final name = _clean(li.querySelector('p strong')?.text ?? imgEl?.attributes['alt'] ?? '');
+      if (name.isEmpty) continue;
+
+      final use = li.querySelector('a[href*="operation=use"]');
+      final give = li.querySelector('a[href*="operation=give"]');
+      final sell = li.querySelector('a[href*="operation=sell"]');
+      final drop = li.querySelector('a[href*="operation=drop"]');
+      final actionHref = (use ?? give ?? sell ?? drop)?.attributes['href'] ??
+          li.querySelector('a[href*="magicid="]')?.attributes['href'] ??
+          '';
+      final id = _firstInt(RegExp(r'[?&](?:amp;)?magicid=(\d+)').firstMatch(actionHref)?.group(1));
+      if (id == null || id <= 0) continue;
+
+      final fonts = li.querySelectorAll('p font');
+      final num = _firstInt(_clean(fonts.isNotEmpty ? fonts.first.text : '')) ?? 0;
+      final weight = fonts.length > 1 ? _clean(fonts[1].text) : '';
+
+      items.add(MyMagic(
+        id: id,
+        name: name,
+        image: _absolute(imgEl?.attributes['src']),
+        description: _clean(li.querySelector('.tip_c')?.text ?? ''),
+        num: num,
+        weight: weight,
+        canUse: use != null,
+        canGive: give != null,
+        canSell: sell != null,
+        canDrop: drop != null,
+      ));
+    }
+    return MagicBox(
+      capacity: _clean(doc.querySelector('p.tbmu')?.text ?? ''),
+      items: items,
+    );
+  }
+
+  /// 道具日志（`action=log&operation=uselog|buylog|givelog|receivelog`）。
+  Future<List<MagicLogEntry>> fetchMagicLogs(String type, {int page = 1}) async {
+    final operation = const {'uselog', 'buylog', 'givelog', 'receivelog'}.contains(type)
+        ? type
+        : 'uselog';
+    final result = await _getDesktopPage('home.php', {
+      'mod': 'magic',
+      'action': 'log',
+      'operation': operation,
+      'page': '$page',
+    });
+    _ensureOk(result);
+    final doc = parser.parse(result.body);
+
+    final items = <MagicLogEntry>[];
+    for (final tr in doc.querySelectorAll('table.dt tr')) {
+      final cells = tr.querySelectorAll('td');
+      if (cells.length < 3) continue;
+      final values = cells.map((cell) => _clean(cell.text)).toList();
+      if (values.first.isEmpty) continue;
+      items.add(MagicLogEntry(
+        title: values[0],
+        time: values.length > 1 ? values[1] : '',
+        detail: values.skip(2).where((value) => value.isNotEmpty).join(' · '),
+      ));
+    }
+    return items;
+  }
+
+  /// 购买道具。`mid` 为商店里的道具 identifier。
+  Future<String> buyMagic({required String mid, int num = 1}) async {
+    if (mid.isEmpty) throw SiteException('该道具当前不可购买');
+    final formhash = await _fetchMagicFormhash(action: 'shop', operation: 'buy', mid: mid);
+    return _submitMagic(action: 'shop', form: {
+      'formhash': formhash,
+      'operation': 'buy',
+      'mid': mid,
+      'magicnum': '$num',
+      'operatesubmit': 'yes',
+    });
+  }
+
+  /// 购买后直接赠送给他人。
+  Future<String> giftMagicFromShop({
+    required String mid,
+    required String username,
+    int num = 1,
+    String message = '',
+  }) async {
+    if (mid.isEmpty) throw SiteException('该道具当前不可赠送');
+    final formhash = await _fetchMagicFormhash(action: 'shop', operation: 'give', mid: mid);
+    return _submitMagic(action: 'shop', form: {
+      'formhash': formhash,
+      'operation': 'give',
+      'mid': mid,
+      'magicnum': '$num',
+      'tousername': username,
+      'givemessage': message,
+      'operatesubmit': 'yes',
+    });
+  }
+
+  /// 读取「使用道具」操作页的表单字段。
+  Future<MagicUseForm> fetchMagicUseForm(int magicId) async {
+    final page = await _getDesktopPage('home.php', {
+      'mod': 'magic',
+      'action': 'mybox',
+      'operation': 'use',
+      'magicid': '$magicId',
+      'infloat': 'yes',
+    });
+    _ensureOk(page);
+    final doc = parser.parse(page.body);
+    final formhash = _findFormhash(page.body);
+    if (formhash.isEmpty) {
+      throw SiteException(_messageText(doc) ?? '该道具当前无法使用');
+    }
+
+    final form = doc.querySelector('form#magicform') ??
+        doc.querySelector('form[action*="mod=magic"]');
+    final hidden = <String, String>{};
+    final fields = <MagicFormField>[];
+    final radios = <String>{};
+    if (form != null) {
+      for (final input in form.querySelectorAll('input')) {
+        final name = (input.attributes['name'] ?? '').trim();
+        if (name.isEmpty) continue;
+        final type = (input.attributes['type'] ?? 'text').toLowerCase();
+        final value = input.attributes['value'] ?? '';
+        if (type == 'hidden') {
+          if (const {'formhash', 'operation', 'magicid', 'usesubmit', 'handlekey'}.contains(name)) {
+            continue;
+          }
+          hidden[name] = value;
+          continue;
+        }
+        if (name == 'magicid' || type == 'submit' || type == 'button' || type == 'reset') continue;
+        if (type == 'radio') {
+          if (!radios.add(name)) continue;
+          fields.add(MagicFormField(
+            name: name,
+            label: _magicFieldLabel(input),
+            type: MagicFieldType.radio,
+            value: value == '1' ? '1' : '0',
+            options: const [MagicFieldOption('1', '是'), MagicFieldOption('0', '否')],
+          ));
+          continue;
+        }
+        if (type == 'checkbox') continue;
+        fields.add(MagicFormField(
+          name: name,
+          label: _magicFieldLabel(input),
+          value: value,
+        ));
+      }
+      for (final select in form.querySelectorAll('select')) {
+        final name = (select.attributes['name'] ?? '').trim();
+        if (name.isEmpty || name == 'magicid') continue;
+        final options = <MagicFieldOption>[];
+        var selected = '';
+        for (final option in select.querySelectorAll('option')) {
+          final value = (option.attributes['value'] ?? '').trim();
+          if (value.isEmpty) continue;
+          options.add(MagicFieldOption(value, _clean(option.text)));
+          if (option.attributes.containsKey('selected')) selected = value;
+        }
+        if (options.isEmpty) continue;
+        fields.add(MagicFormField(
+          name: name,
+          label: _magicFieldLabel(select),
+          type: MagicFieldType.select,
+          value: selected.isEmpty ? options.first.value : selected,
+          options: options,
+        ));
+      }
+      for (final area in form.querySelectorAll('textarea')) {
+        final name = (area.attributes['name'] ?? '').trim();
+        if (name.isEmpty) continue;
+        fields.add(MagicFormField(
+          name: name,
+          label: _magicFieldLabel(area),
+          type: MagicFieldType.textarea,
+          value: _clean(area.text),
+        ));
+      }
+    }
+    return MagicUseForm(formhash: formhash, hidden: hidden, fields: fields);
+  }
+
+  Future<String> useMagic({
+    required int magicId,
+    required MagicUseForm form,
+    Map<String, String> values = const {},
+  }) {
+    return _submitMagic(action: 'mybox', form: {
+      'formhash': form.formhash,
+      'operation': 'use',
+      'magicid': '$magicId',
+      'usesubmit': 'yes',
+      ...form.hidden,
+      ...values,
+    });
+  }
+
+  Future<String> giveMagic({
+    required int magicId,
+    required String username,
+    int num = 1,
+    String message = '',
+  }) async {
+    final formhash = await _fetchMagicFormhash(action: 'mybox', operation: 'give', magicId: magicId);
+    return _submitMagic(action: 'mybox', form: {
+      'formhash': formhash,
+      'operation': 'give',
+      'magicid': '$magicId',
+      'tousername': username,
+      'magicnum': '$num',
+      'givemessage': message,
+      'operatesubmit': 'yes',
+    });
+  }
+
+  Future<String> sellMagic({required int magicId, int num = 1}) async {
+    final formhash = await _fetchMagicFormhash(action: 'mybox', operation: 'sell', magicId: magicId);
+    return _submitMagic(action: 'mybox', form: {
+      'formhash': formhash,
+      'operation': 'sell',
+      'magicid': '$magicId',
+      'magicnum': '$num',
+      'operatesubmit': 'yes',
+    });
+  }
+
+  Future<String> dropMagic({required int magicId, int num = 1}) async {
+    final formhash = await _fetchMagicFormhash(action: 'mybox', operation: 'drop', magicId: magicId);
+    return _submitMagic(action: 'mybox', form: {
+      'formhash': formhash,
+      'operation': 'drop',
+      'magicid': '$magicId',
+      'magicnum': '$num',
+      'operatesubmit': 'yes',
+    });
+  }
+
+  /// 读取道具操作页里的 formhash（操作页是站点唯一稳定输出该凭证的地方）。
+  Future<String> _fetchMagicFormhash({
+    required String action,
+    required String operation,
+    String? mid,
+    int? magicId,
+  }) async {
+    final page = await _getDesktopPage('home.php', {
+      'mod': 'magic',
+      'action': action,
+      'operation': operation,
+      if (mid != null) 'mid': mid,
+      if (magicId != null) 'magicid': '$magicId',
+      'infloat': 'yes',
+    });
+    _ensureOk(page);
+    final formhash = _findFormhash(page.body);
+    if (formhash.isEmpty) {
+      throw SiteException(_messageText(parser.parse(page.body)) ?? '该操作当前不可用');
+    }
+    return formhash;
+  }
+
+  Future<String> _submitMagic({required String action, required Map<String, String> form}) async {
+    final result = await _http.post(
+      'home.php',
+      query: {'mod': 'magic', 'action': action, 'mobile': 'no'},
+      form: form,
+      referer: AppConfig.uri('home.php', {'mod': 'magic', 'action': action}).toString(),
+      userAgent: _desktopUserAgent,
+    );
+    _http.removeCookie('mobile');
+    _ensureOk(result);
+
+    final doc = parser.parse(result.body);
+    final box = doc.querySelector('#messagetext');
+    final message = _messageText(doc);
+    if (box != null) {
+      final classes = box.attributes['class'] ?? '';
+      if (classes.contains('alert_error') ||
+          (message != null && _looksLikeError(message))) {
+        throw SiteException(message ?? '操作失败，请稍后重试');
+      }
+    } else if (message != null && _looksLikeError(message)) {
+      throw SiteException(message);
+    }
+    return message ?? '操作成功';
+  }
+
+  /// 桌面消息页的正文（`#messagetext` 的第一个段落）。
+  String? _messageText(Document doc) {
+    final box = doc.querySelector('#messagetext');
+    if (box != null) {
+      final text = _clean(box.querySelector('p')?.text ?? box.text);
+      if (text.isNotEmpty) return text;
+    }
+    return _pageMessage(doc);
+  }
+
+  String _magicQueryValue(String href, String key) {
+    final match = RegExp('[?&](?:amp;)?$key=([^&]+)').firstMatch(href);
+    final value = match?.group(1) ?? '';
+    if (value.isEmpty) return '';
+    try {
+      return Uri.decodeComponent(value);
+    } catch (_) {
+      return value;
+    }
+  }
+
+  /// 表单字段标签：优先取紧邻的提示段落，其次取表格行的表头。
+  String _magicFieldLabel(Element element) {
+    var previous = element.previousElementSibling;
+    while (previous != null && previous.localName == 'script') {
+      previous = previous.previousElementSibling;
+    }
+    final text = _clean(previous?.text ?? '');
+    if (text.isNotEmpty && text.length <= 60) return text;
+    final th = element.parent?.parent?.querySelector('th');
+    final header = _clean(th?.text ?? '');
+    return header.length <= 60 ? header : '';
+  }
+
   /// 通用站点模块：返回（提示文案, 列表行）。
   Future<(String, List<SiteRow>)> fetchModule(String path, Map<String, String> query) async {
     final result = await _http.get(path, query: query);

@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../state/app_state.dart';
 import 'black_house_page.dart';
+import 'credit_page.dart';
 import 'login_page.dart';
+import 'magic_page.dart';
 import 'medals_page.dart';
 import 'site_module_page.dart';
 
@@ -51,24 +53,14 @@ class SiteFeaturesPage extends StatelessWidget {
             Icons.toll_outlined,
             '积分',
             '积分余额与交易记录',
-            () => const SiteModulePage(
-              title: '积分',
-              path: 'home.php',
-              query: {'mod': 'spacecp', 'ac': 'credit', 'mobile': '2'},
-              icon: Icons.toll_outlined,
-            ),
+            () => const CreditPage(),
             true,
           ),
           (
             Icons.auto_fix_high_outlined,
             '道具中心',
             '购买与使用站点道具',
-            () => const SiteModulePage(
-              title: '道具中心',
-              path: 'home.php',
-              query: {'mod': 'magic', 'mobile': '2'},
-              icon: Icons.auto_fix_high_outlined,
-            ),
+            () => const MagicPage(),
             true,
           ),
         ]
