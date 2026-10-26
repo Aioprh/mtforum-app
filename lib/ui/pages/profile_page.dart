@@ -128,20 +128,6 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
     _openPage(UserPage(uid: profile.uid, name: profile.username));
   }
 
-  Future<void> _signIn() async {
-    if (!AppState.instance.isLoggedIn) {
-      await _openLogin();
-      return;
-    }
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      final message = await AppState.instance.repo.signIn();
-      messenger.showSnackBar(SnackBar(content: Text(message)));
-    } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text(e is SiteException ? e.message : '签到失败，请稍后重试')));
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     super.build(context);
