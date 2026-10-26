@@ -217,7 +217,6 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
                     _MenuItem(Icons.group_outlined, '我的好友', () {
                       _openPage(const FriendsPage());
                     }),
-                    _MenuItem(Icons.event_available_outlined, '每日签到', _signIn),
                     _MenuItem(Icons.gavel_rounded, '小黑屋', () {
                       _openPage(const BlackHousePage());
                     }),
