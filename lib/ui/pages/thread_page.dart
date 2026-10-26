@@ -1099,14 +1099,24 @@ class _ThreadPageState extends State<ThreadPage> {
     final targeted = _replyTarget?.pid == post.pid;
     return Card(
       clipBehavior: Clip.antiAlias,
-      shape: targeted
-          ? RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-              side: BorderSide(color: scheme.primary.withValues(alpha: 0.6), width: 1.4),
-            )
-          : null,
+      margin: EdgeInsets.zero,
+      elevation: post.isOp ? 1 : 0,
+      color: post.isOp
+          ? scheme.primaryContainer.withValues(alpha: 0.24)
+          : scheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(post.isOp ? 16 : 12),
+        side: BorderSide(
+          color: targeted
+              ? scheme.primary.withValues(alpha: 0.75)
+              : post.isOp
+                  ? scheme.primary.withValues(alpha: 0.38)
+                  : scheme.outlineVariant.withValues(alpha: 0.55),
+          width: targeted ? 1.5 : post.isOp ? 1.1 : 0.6,
+        ),
+      ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+        padding: EdgeInsets.fromLTRB(14, post.isOp ? 14 : 10, 14, post.isOp ? 10 : 6),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1169,7 +1179,7 @@ class _ThreadPageState extends State<ThreadPage> {
                     borderRadius: BorderRadius.circular(7),
                   ),
                   child: Text(
-                    post.floorLabel,
+                    post.isOp ? '主题正文' : post.floorLabel,
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w700,
