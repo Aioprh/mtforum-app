@@ -299,7 +299,7 @@ class _LiveCountdownSubtitleState extends State<_LiveCountdownSubtitle> {
     final minutes = left.inMinutes % 60;
     final seconds = left.inSeconds % 60;
     String two(int value) => value.toString().padLeft(2, '0');
-    final value = '剩余 ${days}天${two(hours)}小时${two(minutes)}分${two(seconds)}秒';
+    final value = '剩余 $days天${two(hours)}小时${two(minutes)}分${two(seconds)}秒';
     return widget.text.replaceFirst(_countdownPattern, value);
   }
 
