@@ -524,7 +524,7 @@ class _PostHtmlViewState extends State<PostHtmlView> {
   /// 自动识别正文中未被服务端转换为 <a> 标签的纯文本网址。
   List<InlineSpan> _linkifyText(BuildContext context, String text, TextStyle style) {
     final spans = <InlineSpan>[];
-    final pattern = RegExp(r'https?://[^\\s<>\"]+', caseSensitive: false);
+    final pattern = RegExp(r'https?://[^\s<>"]+', caseSensitive: false);
     var cursor = 0;
     for (final match in pattern.allMatches(text)) {
       if (match.start > cursor) {
