@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -199,13 +201,14 @@ class _InternalBrowserPageState extends State<InternalBrowserPage> {
                 });
               }
             },
-            onDownloadStartRequest: (controller, request) {
-              _startDownload(
+            onDownloadStarting: (controller, request) async {
+              unawaited(_startDownload(
                 request.url.toString(),
                 suggestedFilename: request.suggestedFilename,
                 userAgent: request.userAgent,
                 contentDisposition: request.contentDisposition,
-              );
+              ));
+              return null;
             },
             shouldOverrideUrlLoading: (controller, action) async {
               final uri = Uri.tryParse(action.request.url?.toString() ?? '');
