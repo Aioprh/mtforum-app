@@ -316,3 +316,36 @@ class SiteRow {
   final String image;
   final String href;
 }
+
+/// 积分商城商品详情（keke_integralmall 插件）。
+class MallProduct {
+  const MallProduct({
+    required this.tid,
+    required this.title,
+    this.image = '',
+    this.price = '',
+    this.marketPrice = '',
+    this.stock = '',
+    this.sold = '',
+    this.countdown = '',
+    this.views = '',
+    this.warning = '',
+    this.buyHref = '',
+    this.statusHref = '',
+    this.records = const [],
+  });
+
+  final int tid;
+  final String title;
+  final String image;
+  final String price;
+  final String marketPrice;
+  final String stock;
+  final String sold;
+  final String countdown;
+  final String views;
+  final String warning;
+  final String buyHref;
+  final String statusHref;
+  final List<SiteRow> records;
+}

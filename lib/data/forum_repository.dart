@@ -1565,6 +1565,72 @@ class ForumRepository {
     return (tip, rows);
   }
 
+  /// 积分商城商品详情（keke_integralmall 插件页）。
+  Future<MallProduct> fetchMallProduct(int tid) async {
+    final result = await _http.get(
+      'keke_integralmall-view.html',
+      query: {'tid': '$tid', 'mobile': '2'},
+    );
+    _ensureOk(result);
+    final doc = parser.parse(result.body);
+
+    String pick(String selector) => _clean(doc.querySelector(selector)?.text ?? '');
+
+    final records = <SiteRow>[];
+    final seen = <String>{};
+    for (final tr in doc.querySelectorAll('.comiis_bodybox tr')) {
+      final cells = tr.querySelectorAll('td');
+      if (cells.length < 3) continue;
+      final values = <String>[];
+      for (final cell in cells) {
+        final value = _clean(cell.text);
+        if (value.isNotEmpty) values.add(value);
+      }
+      if (values.length < 3) continue;
+      if (!seen.add(values.join('|'))) continue;
+      records.add(SiteRow(title: values.first, subtitle: values.skip(1).join(' · ')));
+      if (records.length >= 20) break;
+    }
+
+    return MallProduct(
+      tid: tid,
+      title: _clean(
+        doc.querySelector('.comiis_viewtit h2')?.text ??
+            doc.querySelector('h2')?.text ??
+            doc.querySelector('title')?.text ??
+            '',
+      ),
+      image: _absolute(
+        doc.querySelector('.mallitem img')?.attributes['src'] ??
+            doc.querySelector('.item_l img')?.attributes['src'] ??
+            doc.querySelector('.comiis_bodybox img')?.attributes['src'],
+      ),
+      price: pick('.price-real'),
+      marketPrice: pick('.price-sell'),
+      stock: pick('.count-take'),
+      sold: pick('.count-rest'),
+      countdown: pick('#countdown'),
+      views: pick('.item-assure b'),
+      warning: pick('.item-warning'),
+      buyHref: _absolute(doc.querySelector('a.buy-btn')?.attributes['href']),
+      statusHref: _absolute(doc.querySelector('a.detail-btn')?.attributes['href']),
+      records: records,
+    );
+  }
+
+  /// 读取插件操作页的正文文本（例如查看卡密状态）。
+  Future<String> fetchPluginText(String href) async {
+    final uri = Uri.tryParse(href);
+    if (uri == null) throw SiteException('链接无效');
+    final result = await _http.get(uri.path.replaceFirst('/', ''), query: uri.queryParameters);
+    _ensureOk(result);
+    final doc = parser.parse(result.body);
+    final text = _clean((doc.querySelector('.comiis_bodybox') ?? doc.body)?.text ?? '');
+    final message = _pageMessage(doc);
+    final output = text.isEmpty ? (message ?? '') : text;
+    return output.length > 800 ? '${output.substring(0, 800)}…' : output;
+  }
+
   /// 执行站点模块行上的原生操作（GET，例如领取勋章、购买道具）。
   Future<String> performModuleAction(String href) async {
     final uri = Uri.tryParse(href);

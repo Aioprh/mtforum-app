@@ -6,6 +6,7 @@ import '../../data/models.dart';
 import '../../state/app_state.dart';
 import '../widgets/smart_image.dart';
 import '../widgets/state_views.dart';
+import 'mall_product_page.dart';
 import 'thread_page.dart';
 import 'user_page.dart';
 
@@ -70,6 +71,16 @@ class _SiteModulePageState extends State<SiteModulePage> {
   Future<void> _onTap(SiteRow row) async {
     final href = row.href;
     if (href.isEmpty) return;
+    // 积分商城商品详情是插件页，不能当帖子打开。
+    if (href.contains('keke_integralmall-view.html')) {
+      final tid = RegExp(r'[?&]tid=(\d+)').firstMatch(href)?.group(1);
+      if (tid != null) {
+        await Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => MallProductPage(tid: int.parse(tid))),
+        );
+        return;
+      }
+    }
     final uid = RegExp(r'[?&]uid=(\d+)').firstMatch(href)?.group(1) ??
         RegExp(r'space-uid-(\d+)\.html').firstMatch(href)?.group(1);
     if (uid != null) {
