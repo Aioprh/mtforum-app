@@ -95,6 +95,7 @@ class _MallProductPageState extends State<MallProductPage> {
       );
       if (ok != true) return;
     }
+    if (!mounted) return;
     setState(() => _busy = true);
     final messenger = ScaffoldMessenger.of(context);
     try {
