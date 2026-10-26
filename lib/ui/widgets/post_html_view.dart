@@ -124,7 +124,11 @@ class _PostHtmlViewState extends State<PostHtmlView> {
       if (node is dom.Text) {
         final text = _cleanInline(node.text);
         if (text.trim().isEmpty) continue;
-        inline.add(TextSpan(text: text));
+        inline.addAll(_linkifyText(context, text, TextStyle(
+          fontSize: 15.5,
+          height: 1.62,
+          color: Theme.of(context).colorScheme.onSurface,
+        )));
         continue;
       }
       if (node is! dom.Element) continue;
@@ -444,7 +448,7 @@ class _PostHtmlViewState extends State<PostHtmlView> {
     final spans = <InlineSpan>[];
     if (node is dom.Text) {
       final text = _cleanInline(node.text);
-      if (text.isNotEmpty) spans.add(TextSpan(text: text));
+      if (text.isNotEmpty) spans.addAll(_linkifyText(context, text, style));
       return spans;
     }
     if (node is! dom.Element) return spans;
@@ -515,6 +519,44 @@ class _PostHtmlViewState extends State<PostHtmlView> {
     }
   }
 
+  /// 自动识别论坛正文中未被服务端转换为 <a> 的纯文本网址。
+  /// 例如隐藏内容里的“https://share.example.com/xxx”也应当可以点击。
+  /// 自动识别正文中未被服务端转换为 <a> 标签的纯文本网址。
+  List<InlineSpan> _linkifyText(BuildContext context, String text, TextStyle style) {
+    final spans = <InlineSpan>[];
+    final pattern = RegExp(r'https?://[^\s<>"]+', caseSensitive: false);
+    var cursor = 0;
+    for (final match in pattern.allMatches(text)) {
+      if (match.start > cursor) {
+        spans.add(TextSpan(text: text.substring(cursor, match.start), style: style));
+      }
+      var url = match.group(0)!;
+      var suffix = '';
+      const punctuation = '，。；！？、）》】」』,.;:!?';
+      while (url.isNotEmpty && punctuation.contains(url[url.length - 1])) {
+        suffix = url[url.length - 1] + suffix;
+        url = url.substring(0, url.length - 1);
+      }
+      if (url.isEmpty) {
+        spans.add(TextSpan(text: match.group(0), style: style));
+      } else {
+        final linkUrl = AppConfig.uri(url).toString();
+        final recognizer = TapGestureRecognizer()..onTap = () => _openLink(context, linkUrl);
+        _recognizers.add(recognizer);
+        spans.add(TextSpan(
+          text: url,
+          style: style.copyWith(color: Theme.of(context).colorScheme.primary, decoration: TextDecoration.underline),
+          recognizer: recognizer,
+        ));
+        if (suffix.isNotEmpty) spans.add(TextSpan(text: suffix, style: style));
+      }
+      cursor = match.end;
+    }
+    if (cursor < text.length) {
+      spans.add(TextSpan(text: text.substring(cursor), style: style));
+    }
+    return spans;
+  }
   List<InlineSpan> _inlineChildren(BuildContext context, dom.Element element, TextStyle style) {
     final spans = <InlineSpan>[];
     for (final child in element.nodes) {
