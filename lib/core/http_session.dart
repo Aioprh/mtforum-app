@@ -119,8 +119,8 @@ class HttpSession {
     if (changed) _saveCookies();
   }
 
-  Map<String, String> _headers({String? referer}) => {
-        'User-Agent': AppConfig.userAgent,
+  Map<String, String> _headers({String? referer, String? userAgent}) => {
+        'User-Agent': userAgent ?? AppConfig.userAgent,
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.6',
         'Accept-Encoding': 'gzip',
@@ -133,17 +133,19 @@ class HttpSession {
     String url, {
     Map<String, String>? query,
     String? referer,
+    String? userAgent,
     bool retryWaf = true,
   }) =>
-      _request('GET', AppConfig.uri(url, query), referer: referer, retryWaf: retryWaf);
+      _request('GET', AppConfig.uri(url, query), referer: referer, userAgent: userAgent, retryWaf: retryWaf);
 
   Future<HttpResult> post(
     String url, {
     Map<String, String>? form,
     Map<String, String>? query,
     String? referer,
+    String? userAgent,
   }) =>
-      _request('POST', AppConfig.uri(url, query), form: form, referer: referer);
+      _request('POST', AppConfig.uri(url, query), form: form, referer: referer, userAgent: userAgent);
 
   /// 上传单个文件（multipart/form-data），用于论坛附件与图片。
   Future<HttpResult> postFile(
@@ -173,11 +175,12 @@ class HttpSession {
     Map<String, String>? form,
     HttpUpload? upload,
     String? referer,
+    String? userAgent,
     bool retryWaf = true,
   }) async {
     for (var attempt = 0; attempt < 3; attempt++) {
       try {
-        final result = await _send(method, uri, form: form, upload: upload, referer: referer);
+        final result = await _send(method, uri, form: form, upload: upload, referer: referer, userAgent: userAgent);
         if (WafSolver.isChallenge(result.body)) {
           final cookie = WafSolver.solve(result.body);
           if (cookie != null && cookie.isNotEmpty) {
@@ -216,6 +219,7 @@ class HttpSession {
     Map<String, String>? form,
     HttpUpload? upload,
     String? referer,
+    String? userAgent,
   }) async {
     var currentMethod = method;
     var currentUri = uri;
@@ -223,7 +227,7 @@ class HttpSession {
     var currentUpload = upload;
 
     for (var hop = 0; hop < 6; hop++) {
-      final requestHeaders = _headers(referer: referer);
+      final requestHeaders = _headers(referer: referer, userAgent: userAgent);
       final http.BaseRequest request;
       if (currentUpload != null && currentMethod.toUpperCase() == 'POST') {
         final multipart = http.MultipartRequest(currentMethod, currentUri);

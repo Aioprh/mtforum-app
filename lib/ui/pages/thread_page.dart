@@ -106,6 +106,7 @@ class _ThreadPageState extends State<ThreadPage> {
         _hasMore = detail.hasMore;
         _likes = detail.likes;
         _dislikes = detail.dislikes;
+        _favorited = detail.favorited;
         _pollSelected.clear();
         _loading = false;
       });
@@ -360,7 +361,9 @@ class _ThreadPageState extends State<ThreadPage> {
       });
       _toast('点赞成功');
     } catch (e) {
-      _toast(_message(e));
+      final message = _message(e);
+      if (mounted && message.contains('已经赞过')) setState(() => _liked = true);
+      _toast(message);
     }
   }
 
@@ -389,9 +392,15 @@ class _ThreadPageState extends State<ThreadPage> {
       return;
     }
     try {
-      final message = await _repo.addFavorite(tid: widget.tid, formhash: detail.formhash);
+      final wasFavorited = _favorited;
+      final message = await _repo.toggleFavorite(
+        tid: widget.tid,
+        formhash: detail.formhash,
+        favorited: wasFavorited,
+        href: wasFavorited ? detail.favoriteHref : '',
+      );
       if (!mounted) return;
-      setState(() => _favorited = true);
+      setState(() => _favorited = !wasFavorited);
       _toast(message);
     } catch (e) {
       _toast(_message(e));

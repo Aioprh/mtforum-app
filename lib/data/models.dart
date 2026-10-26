@@ -176,6 +176,8 @@ class ThreadDetail {
     this.uid = 0,
     this.poll,
     this.notice = '',
+    this.favorited = false,
+    this.favoriteHref = '',
   });
 
   final int tid;
@@ -199,6 +201,10 @@ class ThreadDetail {
   final Poll? poll;
   final String notice;
 
+  /// 是否已收藏该主题，以及页面上收藏/取消收藏的原始链接。
+  final bool favorited;
+  final String favoriteHref;
+
   ThreadDetail copyWith({List<ForumPost>? posts, bool? hasMore, int? likes, int? dislikes}) => ThreadDetail(
         tid: tid,
         title: title,
@@ -218,6 +224,8 @@ class ThreadDetail {
         uid: uid,
         poll: poll,
         notice: notice,
+        favorited: favorited,
+        favoriteHref: favoriteHref,
       );
 }
 

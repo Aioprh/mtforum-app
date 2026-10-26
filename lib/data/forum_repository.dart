@@ -18,6 +18,11 @@ class ForumRepository {
 
   static const String _loginPath = 'member.php?mod=logging&action=login&mobile=2';
 
+  /// 少数页面（如小黑屋）没有移动模板，需要桌面 UA。
+  static const String _desktopUserAgent =
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+      '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+
   Future<void> init() => _http.init();
 
   // ---------------------------------------------------------------- 列表
@@ -184,6 +189,8 @@ class ForumRepository {
       uid: _findUid(html),
       poll: _parsePoll(doc),
       notice: notice,
+      favorited: _isThreadFavorited(html),
+      favoriteHref: _favoriteHref(html),
     );
   }
 
@@ -416,7 +423,26 @@ class ForumRepository {
     return aid;
   }
 
-  /// 点赞 / 踩。Discuz 的 recommend 接口需要页面 formhash。
+  /// 页面中收藏 / 取消收藏的原始链接（已收藏时 Discuz 会输出 op=delete&favid=xx）。
+  String _favoriteHref(String html) {
+    final matches = RegExp(r'href=[\'"]([^\'"]*ac=favorite[^\'"]*)[\'"]', caseSensitive: false).allMatches(html);
+    var first = '';
+    for (final match in matches) {
+      final href = match.group(1) ?? '';
+      if (href.isEmpty) continue;
+      if (first.isEmpty) first = href;
+      if (href.contains('op=delete')) return _absolute(href);
+    }
+    return first.isEmpty ? '' : _absolute(first);
+  }
+
+  /// 是否已收藏：优先看 op=delete 链接，其次看收藏图标的 f_a 状态。
+  bool _isThreadFavorited(String html) {
+    if (_favoriteHref(html).contains('op=delete')) return true;
+    return RegExp(r'comiis_favorite_a_color[^"]*\bf_a\b').hasMatch(html);
+  }
+
+  /// 点赞 / 踩。Discuz 的 recommend 接口要求 inajax=1，返回 CDATA 包裹的提示。
   Future<void> recommend({
     required int tid,
     required String formhash,
@@ -431,13 +457,32 @@ class ForumRepository {
         'do': up ? 'add' : 'subtract',
         'tid': '$tid',
         'hash': formhash,
+        'inajax': '1',
         'mobile': '2',
       },
+      referer: _threadReferer(tid),
     );
     _ensureOk(result);
-    if (result.body.contains('成功') || result.body.contains('感谢')) return;
-    final msg = _pageMessage(parser.parse(result.body));
-    throw SiteException(msg ?? (up ? '点赞失败，请稍后重试' : '操作失败，请稍后重试'));
+    final message = _inajaxMessage(result.body);
+    if (message.contains('recommendv') ||
+        message.contains('投票成功') ||
+        message.contains('点赞成功') ||
+        message.contains('感谢')) {
+      return;
+    }
+    if (message.contains('已评价过本主题') || message.contains('已经评价')) {
+      throw SiteException(up ? '你已经赞过这个帖子' : '你已经踩过这个帖子');
+    }
+    if (message.contains('不能评价自己的帖子')) throw SiteException('不能点赞自己的帖子');
+    if (message.contains('关闭的主题')) throw SiteException('该主题已关闭，无法点赞');
+    if (message.contains('今日评价机会已用完')) throw SiteException('今天的点赞次数已用完');
+    throw SiteException(up ? '点赞失败，请稍后重试' : '操作失败，请稍后重试');
+  }
+
+  /// 读取 inajax 响应里的 CDATA 文本。
+  String _inajaxMessage(String body) {
+    final cdata = RegExp(r'<!\[CDATA\[(.*?)\]\]>', dotAll: true).firstMatch(body)?.group(1);
+    return _clean((cdata ?? body).replaceAll(RegExp(r'<[^>]+>'), ' '));
   }
 
   /// 参与投票。`ids` 为选项 id，多选时逐个提交。
@@ -1009,6 +1054,72 @@ class ForumRepository {
     return msg == null || msg.length > 40 ? '已加入收藏' : msg;
   }
 
+  /// 收藏 / 取消收藏。已收藏时用页面给出的 op=delete 链接，必要时回收藏夹查 favid。
+  Future<String> toggleFavorite({
+    required int tid,
+    required String formhash,
+    required bool favorited,
+    String href = '',
+  }) async {
+    if (!favorited) return addFavorite(tid: tid, formhash: formhash);
+
+    var deleteHref = href;
+    if (!deleteHref.contains('op=delete')) {
+      final favid = await _findFavoriteId(tid);
+      if (favid == null) throw SiteException('未找到收藏记录，请下拉刷新后重试');
+      deleteHref = AppConfig.uri('home.php', {
+        'mod': 'spacecp',
+        'ac': 'favorite',
+        'op': 'delete',
+        'type': 'thread',
+        'favid': '$favid',
+        'formhash': formhash,
+        'handlekey': 'favorite',
+        'mobile': '2',
+      }).toString();
+    }
+
+    final result = await _http.get(
+      deleteHref,
+      referer: _threadReferer(tid),
+    );
+    _ensureOk(result);
+    final msg = _pageMessage(parser.parse(result.body));
+    if (msg != null && _looksLikeError(msg)) throw SiteException(msg);
+    return '已取消收藏';
+  }
+
+  /// 从收藏夹中找出该主题对应的 favid。
+  Future<int?> _findFavoriteId(int tid) async {
+    for (var page = 1; page <= 3; page++) {
+      final result = await _http.get(
+        'home.php',
+        query: {'mod': 'space', 'do': 'favorite', 'view': 'me', 'page': '$page', 'mobile': '2'},
+      );
+      _ensureOk(result);
+      final doc = parser.parse(result.body);
+      final links = doc.querySelectorAll('a[href*="favid="]');
+      if (links.isEmpty) break;
+      for (final link in links) {
+        final href = link.attributes['href'] ?? '';
+        final favid = int.tryParse(RegExp(r'favid=(\d+)').firstMatch(href)?.group(1) ?? '');
+        if (favid == null) continue;
+        Element? row = link;
+        for (var i = 0; i < 5 && row != null; i++) {
+          if (row.localName == 'li' || (row.attributes['class'] ?? '').contains('comiis_fav')) break;
+          row = row.parent;
+        }
+        final scope = row?.innerHtml ?? '';
+        if (scope.contains('thread-$tid-1-1.html') ||
+            scope.contains('tid=$tid') ||
+            scope.contains('viewthread&tid=$tid')) {
+          return favid;
+        }
+      }
+    }
+    return null;
+  }
+
   /// Discuz 原生搜索：formhash -> POST 关键词 -> searchid 翻页。
   Future<List<ThreadSummary>> search(String keyword, {int fid = 0, int maxPages = 3}) async {
     final page = await _http.get('search.php', query: {'mod': 'forum', 'mobile': '2'});
@@ -1455,9 +1566,11 @@ class ForumRepository {
 
   /// 小黑屋（forum.php?mod=misc&action=showdarkroom，桌面模板表格）。
   Future<List<DarkRoomEntry>> fetchDarkRoom() async {
+    // 该页没有移动模板，移动 UA 会被引导页拦截，必须用桌面 UA。
     final result = await _http.get(
       'forum.php',
       query: {'mod': 'misc', 'action': 'showdarkroom'},
+      userAgent: _desktopUserAgent,
     );
     _ensureOk(result);
     final doc = parser.parse(result.body);
