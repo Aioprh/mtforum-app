@@ -172,26 +172,32 @@ class _InternalBrowserPageState extends State<InternalBrowserPage> {
             ),
             onWebViewCreated: (controller) => _controller = controller,
             onProgressChanged: (controller, progress) {
-              if (mounted) setState(() {
-                _progress = progress;
-                _loading = progress < 100;
-              });
+              if (mounted) {
+                setState(() {
+                  _progress = progress;
+                  _loading = progress < 100;
+                });
+              }
             },
             onLoadStart: (controller, url) {
-              if (mounted) setState(() {
-                _url = url?.toString() ?? _url;
-                _loading = true;
-                _progress = 0;
-              });
+              if (mounted) {
+                setState(() {
+                  _url = url?.toString() ?? _url;
+                  _loading = true;
+                  _progress = 0;
+                });
+              }
             },
             onLoadStop: (controller, url) async {
               final title = await controller.getTitle();
-              if (mounted) setState(() {
-                _url = url?.toString() ?? _url;
-                _title = (title?.trim().isNotEmpty ?? false) ? title!.trim() : widget.title;
-                _loading = false;
-                _progress = 100;
-              });
+              if (mounted) {
+                setState(() {
+                  _url = url?.toString() ?? _url;
+                  _title = (title?.trim().isNotEmpty ?? false) ? title!.trim() : widget.title;
+                  _loading = false;
+                  _progress = 100;
+                });
+              }
             },
             onDownloadStartRequest: (controller, request) {
               _startDownload(
