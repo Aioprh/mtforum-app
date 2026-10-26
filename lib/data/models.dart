@@ -255,10 +255,15 @@ class ForumPost {
   final List<RateRecord> rates;
   final String rateSummary;
 
-  String get floorLabel {
+  /// 帖子详情中的楼层标记使用官网的数字格式，例如 11#。
+  String get floorLabel => floor <= 1 ? '楼主' : '$floor#';
+
+  /// 个人空间等采用座位称呼的列表可单独使用此标签，不影响帖子详情楼层号。
+  String get seatLabel {
     if (floor <= 1) return '楼主';
-    // 对齐 bbs.binmt.cc 评论区的座位式楼层标签。
-    const seats = <String>['沙发', '椅子', '板凳', '地毯', '凉席', '报纸', '地板'];
+    const seats = <String>[
+      '沙发', '椅子', '板凳', '地毯', '凉席', '报纸', '地板', '地下室', '下水道',
+    ];
     final index = floor - 2;
     return index >= 0 && index < seats.length ? seats[index] : '$floor 楼';
   }
