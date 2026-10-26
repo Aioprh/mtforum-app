@@ -255,7 +255,13 @@ class ForumPost {
   final List<RateRecord> rates;
   final String rateSummary;
 
-  String get floorLabel => floor == 1 ? '楼主' : '$floor 楼';
+  String get floorLabel {
+    if (floor <= 1) return '楼主';
+    // 对齐 bbs.binmt.cc 评论区的座位式楼层标签。
+    const seats = <String>['沙发', '椅子', '板凳', '地毯', '凉席', '报纸', '地板'];
+    final index = floor - 2;
+    return index >= 0 && index < seats.length ? seats[index] : '$floor 楼';
+  }
 
   ForumPost copyWith({int? floor, int? uid, String? avatar}) => ForumPost(
         pid: pid,
