@@ -7,6 +7,7 @@ import '../widgets/user_avatar.dart';
 import 'about_page.dart';
 import 'black_house_page.dart';
 import 'friends_page.dart';
+import 'following_page.dart';
 import 'login_page.dart';
 import 'notifications_page.dart';
 import 'pm_list_page.dart';
@@ -202,6 +203,9 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
                     }),
                     _MenuItem(Icons.group_outlined, '我的好友', () {
                       _openPage(const FriendsPage());
+                    }),
+                    _MenuItem(Icons.person_add_alt_1_rounded, '我的关注', () {
+                      _openPage(const FollowingPage());
                     }),
                     _MenuItem(Icons.gavel_rounded, '小黑屋', () {
                       _openPage(const BlackHousePage());
