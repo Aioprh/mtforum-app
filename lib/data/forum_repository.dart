@@ -1136,41 +1136,71 @@ class ForumRepository {
     final doc = parser.parse(html);
     final items = <FriendItem>[];
     final seen = <int>{};
-    for (final selector in [
-      '.comiis_userlist01 li',
+    // Discuz 关注列表里「取消 / 备注 / 星标」也可能带 uid 参数，
+    // 不能把这些操作链接当作用户昵称或用户主页。
+    const actionLabels = <String>{
+      '取消', '取消关注', '备注', '星标', '取消星标', '访问主页', '删除',
+    };
+    final selectors = <String>[
       '#follow_ul li',
+      '.comiis_userlist01 li',
       '.buddy li',
       '.follow_list li',
+      'ul[id*="follow"] li',
       '.mtli li',
-      '#ct li',
-      '.comiis_bodybox li',
-    ]) {
+    ];
+    for (final selector in selectors) {
       for (final element in doc.querySelectorAll(selector)) {
-        final links = element.querySelectorAll('a[href]');
-        Element? nameLink;
+        Element? profileLink;
         var uid = 0;
-        for (final link in links) {
+        for (final link in element.querySelectorAll('a[href]')) {
           final href = link.attributes['href'] ?? '';
-          final candidate = _uidFromHref(href);
-          if (candidate > 0 && uid == 0) uid = candidate;
           final text = _clean(link.text);
-          if (text.isNotEmpty && (href.contains('uid=') || href.contains('space-uid-'))) {
-            nameLink ??= link;
+          final candidate = _uidFromHref(href);
+          final isAction = actionLabels.contains(text) ||
+              text.startsWith('取消') ||
+              text.startsWith('备注') ||
+              text.startsWith('星标');
+          final isProfile = href.contains('mod=space') ||
+              href.contains('space-uid-') ||
+              href.contains('do=profile') ||
+              href.contains('uid=');
+          if (!isAction && text.isNotEmpty && isProfile && candidate > 0) {
+            profileLink ??= link;
+            uid = candidate;
           }
         }
-        if (uid <= 0 || !seen.add(uid)) continue;
-        final name = _clean(
-          nameLink?.text ??
-              element.querySelector('.username, .name, .tit, h3, h4, strong')?.text ??
-              '',
-        );
-        if (name.isEmpty || name == '取消关注' || name == '访问主页') continue;
+
+        // 有些模板把昵称放在标题节点里，链接不直接带 uid；此时只接受
+        // 头像/昵称周围明确的个人空间链接，不从「取消关注」操作中猜 uid。
+        if (profileLink == null) {
+          final candidateLink = element.querySelector(
+            'h2 a[href], h3 a[href], h4 a[href], .username a[href], .name a[href], .avt a[href]',
+          );
+          final href = candidateLink?.attributes['href'] ?? '';
+          final candidateName = _clean(candidateLink?.text ?? '');
+          final candidateUid = _uidFromHref(href);
+          if (candidateLink != null &&
+              candidateName.isNotEmpty &&
+              !actionLabels.contains(candidateName) &&
+              candidateUid > 0) {
+            profileLink = candidateLink;
+            uid = candidateUid;
+          }
+        }
+        if (profileLink == null || uid <= 0 || !seen.add(uid)) continue;
+
+        final name = _clean(profileLink.text);
+        if (name.isEmpty || actionLabels.contains(name)) continue;
+
         final avatar = element.querySelector('img');
+        final noteNode = element.querySelector('.note, .desc, .xg1');
+        final note = _clean(noteNode?.text ?? '');
         items.add(FriendItem(
           uid: uid,
           username: name,
           avatar: avatar == null ? '' : _pickImage(avatar),
-          note: _clean(element.querySelector('.note, .desc, .xg1, p')?.text ?? ''),
+          note: note,
         ));
       }
       if (items.isNotEmpty) break;
