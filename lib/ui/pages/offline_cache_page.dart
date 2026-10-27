@@ -39,7 +39,7 @@ class _OfflineCachePageState extends State<OfflineCachePage> {
           final count = item['posts'] is List ? (item['posts'] as List).length : 0;
           final size = OfflineThreadCache.instance.estimateBytes(item);
           return Card(clipBehavior: Clip.antiAlias, child: ListTile(leading: const Icon(Icons.offline_pin_outlined), title: Text('${item['title'] ?? '未命名帖子'}', maxLines: 2, overflow: TextOverflow.ellipsis),
-            subtitle: Text('${item['boardName'] ?? ''} · $count 条已缓存内容\\n缓存于：${date ?? '未知'} · ${(size / 1024).toStringAsFixed(1)} KB'), isThreeLine: true, onTap: () => _open(item),
+            subtitle: Text('${item['boardName'] ?? ''} · $count 条已缓存内容\n缓存于：${date ?? '未知'} · ${(size / 1024).toStringAsFixed(1)} KB'), isThreeLine: true, onTap: () => _open(item),
             trailing: IconButton(tooltip: '删除缓存', icon: const Icon(Icons.delete_outline), onPressed: () => _delete(item))));
         })));
   }
