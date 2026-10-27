@@ -84,8 +84,8 @@ class OfflineThreadCache {
     var imageCount = 0;
 
     Future<String> cacheImage(String raw) async {
+      if (raw.startsWith('file://')) return raw;
       final url = AppConfig.uri(raw).toString();
-      if (url.startsWith('file://')) return url;
       if (imageMap.containsKey(url) && await File(Uri.parse(imageMap[url]!).toFilePath()).exists()) return imageMap[url]!;
       if (imageCount >= _maxImages) return url;
       final uri = Uri.tryParse(url);
