@@ -482,6 +482,7 @@ class ForumRepository {
     required int tid,
     required String formhash,
     required bool up,
+    bool cancel = false,
   }) async {
     if (formhash.isEmpty) throw SiteException('操作凭证已失效，请下拉刷新后重试');
     final result = await _http.get(
@@ -489,7 +490,8 @@ class ForumRepository {
       query: {
         'mod': 'misc',
         'action': 'recommend',
-        'do': up ? 'add' : 'subtract',
+        // 取消点赞必须使用站点的取消动作，不能把 subtract（踩）当作取消。
+        'do': cancel ? 'cancel' : (up ? 'add' : 'subtract'),
         'tid': '$tid',
         'hash': formhash,
         'inajax': '1',
@@ -502,6 +504,8 @@ class ForumRepository {
     if (message.contains('recommendv') ||
         message.contains('投票成功') ||
         message.contains('点赞成功') ||
+        message.contains('取消成功') ||
+        message.contains('已取消') ||
         message.contains('感谢')) {
       return;
     }
@@ -511,6 +515,7 @@ class ForumRepository {
     if (message.contains('不能评价自己的帖子')) throw SiteException('不能点赞自己的帖子');
     if (message.contains('关闭的主题')) throw SiteException('该主题已关闭，无法点赞');
     if (message.contains('今日评价机会已用完')) throw SiteException('今天的点赞次数已用完');
+    if (cancel) throw SiteException('取消点赞失败，请稍后重试');
     throw SiteException(up ? '点赞失败，请稍后重试' : '操作失败，请稍后重试');
   }
 
