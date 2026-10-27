@@ -353,14 +353,20 @@ class _ThreadPageState extends State<ThreadPage> {
     final detail = _detail;
     if (detail == null) return;
     if (!await _ensureLogin()) return;
+    final wasLiked = _liked;
     try {
-      await _repo.recommend(tid: widget.tid, formhash: detail.formhash, up: true);
+      await _repo.recommend(
+        tid: widget.tid,
+        formhash: detail.formhash,
+        up: true,
+        cancel: wasLiked,
+      );
       if (!mounted) return;
       setState(() {
-        if (!_liked) _likes += 1;
-        _liked = true;
+        _liked = !wasLiked;
+        _likes = (_likes + (wasLiked ? -1 : 1)).clamp(0, 1 << 31);
       });
-      _toast('点赞成功');
+      _toast(wasLiked ? '已取消点赞' : '点赞成功');
     } catch (e) {
       final message = _message(e);
       if (mounted && message.contains('已经赞过')) setState(() => _liked = true);
