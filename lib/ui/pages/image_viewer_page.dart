@@ -83,7 +83,9 @@ class _ImageViewerPageState extends State<ImageViewerPage> {
                 minScale: 0.8,
                 maxScale: 4,
                 child: Center(
-                  child: Image.network(
+                  child: widget.images[index].startsWith('file://')
+                      ? Image.file(File(Uri.parse(widget.images[index]).toFilePath()), fit: BoxFit.contain)
+                      : Image.network(
                     widget.images[index],
                     headers: {
                       'Referer': AppConfig.base,
