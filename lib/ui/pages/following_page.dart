@@ -139,7 +139,9 @@ class _FollowingPageState extends State<FollowingPage> {
                                       style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
                                     ),
                                     subtitle: Text(
-                                      user.note.isEmpty ? 'UID ${user.uid}' : user.note,
+                                      user.followers > 0 || user.following > 0
+                                          ? '${user.followers} 粉丝  ${user.following} 关注'
+                                          : 'UID ${user.uid}',
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: TextStyle(fontSize: 10.5, color: scheme.outline),
