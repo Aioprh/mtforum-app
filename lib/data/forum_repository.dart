@@ -146,6 +146,12 @@ class ForumRepository {
       final post = _parsePost(el, posts.length + 1);
       if (post != null) posts.add(post);
     }
+    // 只有主题第一页、正常正序且未筛选作者时，首条才是主题正文。
+    // 每页解析时 floor 都从 1 重新计数，不能据此把后续页面第一条回复误标为正文。
+    final hasThreadOpener = page == 1 && !orderDesc && authorId == null;
+    for (var i = 0; i < posts.length; i++) {
+      posts[i] = posts[i].copyWith(isOp: hasThreadOpener && i == 0);
+    }
     // 楼主楼层偶发取不到 uid，退回用楼顶作者区再补一次。
     if (posts.isNotEmpty && posts.first.uid == 0) {
       final href = doc.querySelector('.comiis_postli_top a[href*="uid="]')?.attributes['href'] ?? '';
@@ -295,7 +301,7 @@ class ForumRepository {
       uid: uid,
       level: level,
       location: location,
-      isOp: floor == 1,
+      isOp: false,
       likes: _intOf(el.querySelector('.comiis_recommend_num')?.text),
       images: images,
       comments: _parseComments(el),
