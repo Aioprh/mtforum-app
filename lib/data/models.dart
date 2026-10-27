@@ -274,7 +274,7 @@ class ForumPost {
     return index >= 0 && index < seats.length ? seats[index] : '$floor#';
   }
 
-  ForumPost copyWith({int? floor, int? uid, String? avatar}) => ForumPost(
+  ForumPost copyWith({int? floor, int? uid, String? avatar, bool? isOp}) => ForumPost(
         pid: pid,
         author: author,
         avatar: avatar ?? this.avatar,
@@ -284,7 +284,7 @@ class ForumPost {
         uid: uid ?? this.uid,
         level: level,
         location: location,
-        isOp: isOp,
+        isOp: isOp ?? this.isOp,
         likes: likes,
         images: images,
         comments: comments,
