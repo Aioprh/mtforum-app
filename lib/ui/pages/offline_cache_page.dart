@@ -58,7 +58,20 @@ class _OfflineThreadDetail extends StatelessWidget {
       for (final value in posts) if (value is Map) Card(margin: const EdgeInsets.only(top: 8), child: Padding(padding: const EdgeInsets.all(14), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [Expanded(child: Text('${value['author'] ?? '用户'}', style: const TextStyle(fontWeight: FontWeight.w700))), Text(value['floor'] == 1 ? '主题正文' : '${value['floor'] ?? ''}#', style: TextStyle(fontSize: 12, color: scheme.primary))]),
         const SizedBox(height: 10), PostHtmlView(html: '${value['html'] ?? ''}', images: const <String>[]),
-        if ((value['comments'] as List?)?.isNotEmpty == true) Padding(padding: const EdgeInsets.only(top: 10), child: Text('楼中楼：${(value['comments'] as List).length} 条', style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12))),
+        if ((value['comments'] as List?)?.isNotEmpty == true)
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(top: 12),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: scheme.surfaceContainerHighest.withValues(alpha: .45), borderRadius: BorderRadius.circular(10)),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('楼中楼评论', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: scheme.onSurfaceVariant)),
+              const SizedBox(height: 6),
+              for (final comment in (value['comments'] as List))
+                if (comment is Map)
+                  Padding(padding: const EdgeInsets.only(top: 5), child: Text('${comment['author'] ?? '用户'}：${comment['text'] ?? ''}')),
+            ]),
+          ),
       ])))
     ]));
   }
