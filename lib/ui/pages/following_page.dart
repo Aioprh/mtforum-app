@@ -63,6 +63,74 @@ class _FollowingPageState extends State<FollowingPage> {
     }
   }
 
+  Future<void> _cancelFollowing(FriendItem user) async {
+    final confirmed = await showDialog<bool>(context: context, builder: (context) => AlertDialog(
+      title: const Text('取消关注'),
+      content: Text('确定不再关注「${user.username}」吗？'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('保留关注')),
+        FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('取消关注')),
+      ],
+    ));
+    if (confirmed != true || !mounted) return;
+    try {
+      await AppState.instance.repo.cancelFollowing(user.uid);
+      if (!mounted) return;
+      setState(() => _items.removeWhere((item) => item.uid == user.uid));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已取消关注')));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e is SiteException ? e.message : '取消关注失败')));
+    }
+  }
+
+  Future<void> _editNote(FriendItem user) async {
+    final controller = TextEditingController(text: user.note);
+    final value = await showDialog<String>(context: context, builder: (context) => AlertDialog(
+      title: Text('备注：${user.username}'),
+      content: TextField(controller: controller, autofocus: true, maxLength: 30,
+        decoration: const InputDecoration(labelText: '备注名称', hintText: '输入备注')),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+        FilledButton(onPressed: () => Navigator.pop(context, controller.text), child: const Text('保存')),
+      ],
+    ));
+    controller.dispose();
+    if (value == null || !mounted) return;
+    try {
+      final saved = await AppState.instance.repo.setFollowingNote(user.uid, value);
+      if (!mounted) return;
+      setState(() {
+        final i = _items.indexWhere((x) => x.uid == user.uid);
+        if (i >= 0) {
+          final x = _items[i];
+          _items[i] = FriendItem(uid: x.uid, username: x.username, avatar: x.avatar, note: saved,
+            followers: x.followers, following: x.following, isStarred: x.isStarred);
+        }
+      });
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('备注已保存')));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e is SiteException ? e.message : '保存备注失败')));
+    }
+  }
+
+  Future<void> _toggleStar(FriendItem user) async {
+    try {
+      await AppState.instance.repo.setFollowingStar(user.uid, starred: !user.isStarred);
+      if (!mounted) return;
+      setState(() {
+        final i = _items.indexWhere((x) => x.uid == user.uid);
+        if (i >= 0) {
+          final x = _items[i];
+          _items[i] = FriendItem(uid: x.uid, username: x.username, avatar: x.avatar, note: x.note,
+            followers: x.followers, following: x.following, isStarred: !x.isStarred);
+        }
+      });
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(user.isStarred ? '已取消星标' : '已设为星标')));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e is SiteException ? e.message : '星标操作失败')));
+    }
+  }
+
   Future<void> _openLogin() async {
     final ok = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => const LoginPage()),
@@ -146,7 +214,18 @@ class _FollowingPageState extends State<FollowingPage> {
                                       overflow: TextOverflow.ellipsis,
                                       style: TextStyle(fontSize: 10.5, color: scheme.outline),
                                     ),
-                                    trailing: Icon(Icons.chevron_right_rounded, color: scheme.outline),
+                                    trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                                      IconButton(tooltip: '备注', visualDensity: VisualDensity.compact,
+                                        onPressed: () => _editNote(user),
+                                        icon: Icon(Icons.edit_note_rounded, color: scheme.primary)),
+                                      IconButton(tooltip: user.isStarred ? '取消星标' : '星标',
+                                        visualDensity: VisualDensity.compact, onPressed: () => _toggleStar(user),
+                                        icon: Icon(user.isStarred ? Icons.star_rounded : Icons.star_outline_rounded,
+                                          color: user.isStarred ? Colors.green : scheme.outline)),
+                                      IconButton(tooltip: '取消关注', visualDensity: VisualDensity.compact,
+                                        onPressed: () => _cancelFollowing(user),
+                                        icon: const Icon(Icons.person_remove_alt_1_rounded, color: Colors.redAccent)),
+                                    ]),
                                     onTap: () => _openUser(user),
                                   );
                                 },
