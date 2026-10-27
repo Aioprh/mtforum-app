@@ -113,12 +113,16 @@ class FriendItem {
     required this.username,
     this.avatar = '',
     this.note = '',
+    this.followers = 0,
+    this.following = 0,
   });
 
   final int uid;
   final String username;
   final String avatar;
   final String note;
+  final int followers;
+  final int following;
 }
 
 /// 私信会话摘要。
