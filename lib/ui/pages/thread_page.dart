@@ -1737,58 +1737,66 @@ class _CommentSheetState extends State<_CommentSheet> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 16,
-        right: 16,
-        top: 12,
-        bottom: MediaQuery.viewInsetsOf(context).bottom + 14,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  widget.title,
-                  style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700),
+    // BottomSheet 在部分屏幕/字体缩放配置下会按子组件的最小宽度测量；
+    // 显式约束为屏幕宽度，避免提示文案被挤成逐字竖排。
+    return SizedBox(
+      width: MediaQuery.sizeOf(context).width,
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: 12,
+          bottom: MediaQuery.viewInsetsOf(context).bottom + 14,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    widget.title,
+                    style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700),
+                  ),
                 ),
-              ),
-              IconButton(
-                visualDensity: VisualDensity.compact,
-                onPressed: () => Navigator.of(context).pop(),
-                icon: const Icon(Icons.close_rounded, size: 18),
-              ),
-            ],
-          ),
-          TextField(
-            controller: _controller,
-            autofocus: true,
-            minLines: 1,
-            maxLines: 4,
-            maxLength: 200,
-            textInputAction: TextInputAction.newline,
-            decoration: InputDecoration(
-              hintText: widget.hint,
-              isDense: true,
-              border: const OutlineInputBorder(),
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(Icons.close_rounded, size: 18),
+                ),
+              ],
             ),
-          ),
-          const SizedBox(height: 4),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '点评会直接显示在该楼层下方',
-                  style: TextStyle(fontSize: 11, color: scheme.outline),
-                ),
+            TextField(
+              controller: _controller,
+              autofocus: true,
+              minLines: 1,
+              maxLines: 4,
+              maxLength: 200,
+              textInputAction: TextInputAction.newline,
+              decoration: InputDecoration(
+                hintText: widget.hint,
+                isDense: true,
+                border: const OutlineInputBorder(),
               ),
-              FilledButton(onPressed: _send, child: const Text('发送')),
-            ],
-          ),
-        ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '点评会直接显示在该楼层下方',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 11, color: scheme.outline),
+            ),
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton(
+                onPressed: _send,
+                child: const Text('发送'),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
