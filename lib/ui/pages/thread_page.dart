@@ -1158,10 +1158,10 @@ class _ThreadPageState extends State<ThreadPage> {
     return Card(
       clipBehavior: Clip.antiAlias,
       margin: EdgeInsets.zero,
-      elevation: post.isOp ? 1 : 0,
-      color: post.isOp
-          ? scheme.primaryContainer.withValues(alpha: 0.24)
-          : scheme.surface,
+      elevation: 0,
+      color: scheme.surface,
+      surfaceTintColor: Colors.transparent,
+      shadowColor: Colors.transparent,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(post.isOp ? 16 : 12),
         side: BorderSide(
