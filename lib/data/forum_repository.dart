@@ -15,6 +15,7 @@ class ForumRepository {
   static final ForumRepository instance = ForumRepository._();
 
   final HttpSession _http = HttpSession.instance;
+  String _followingFormhash = '';
 
   static const String _loginPath = 'member.php?mod=logging&action=login&mobile=2';
 
