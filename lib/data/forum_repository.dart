@@ -1045,7 +1045,7 @@ class ForumRepository {
       }
     }
     // 兼容模板将按钮写在脚本/属性中的情况，但只匹配目标 UID 的取消关注地址。
-    return RegExp(r'(?:ac=follow[^"\'<>]{0,160}op=del[^"\'<>]{0,160}fuid=' + uid + r'|fuid=' + uid + r'[^"\'<>]{0,160}ac=follow[^"\'<>]{0,160}op=del)', caseSensitive: false).hasMatch(html);
+    return RegExp(r"""(?:ac=follow[^"'<>]{0,160}op=del[^"'<>]{0,160}fuid=$uid|fuid=$uid[^"'<>]{0,160}ac=follow[^"'<>]{0,160}op=del)""", caseSensitive: false).hasMatch(html);
   }
 
   /// 关注 / 取消关注用户。
