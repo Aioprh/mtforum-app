@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../../core/app_config.dart';
@@ -35,6 +37,21 @@ class SmartImage extends StatelessWidget {
 
     if (url.trim().isEmpty) {
       return ClipRRect(borderRadius: radius, child: placeholder);
+    }
+
+    final parsed = Uri.tryParse(url);
+    if (parsed != null && parsed.scheme == 'file') {
+      return ClipRRect(
+        borderRadius: radius,
+        child: Image.file(
+          File(parsed.toFilePath()),
+          width: width,
+          height: height,
+          fit: fit,
+          cacheWidth: cacheWidth,
+          errorBuilder: (_, __, ___) => placeholder,
+        ),
+      );
     }
 
     final cookie = HttpSession.instance.cookieHeader;
