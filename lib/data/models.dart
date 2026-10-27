@@ -271,7 +271,7 @@ class ForumPost {
     ];
     // floor=2 为首条评论（沙发），floor=10 为第九条评论（下水道）。
     final index = floor - 2;
-    return index >= 0 && index < seats.length ? seats[index] : '$floor#';
+    return index >= 0 && index < seats.length ? seats[index] : '$floor楼';
   }
 
   ForumPost copyWith({int? floor, int? uid, String? avatar, bool? isOp}) => ForumPost(
