@@ -35,30 +35,36 @@ class _ImageViewerPageState extends State<ImageViewerPage> {
     final messenger = ScaffoldMessenger.of(context);
     try {
       final url = widget.images[_index];
-      final client = HttpClient();
-      try {
-        final request = await client.getUrl(Uri.parse(url));
-        request.headers.set('Referer', AppConfig.base);
-        request.headers.set('User-Agent', AppConfig.userAgent);
-        final cookie = HttpSession.instance.cookieHeader;
-        if (cookie.isNotEmpty) request.headers.set('Cookie', cookie);
-        final response = await request.close();
-        if (response.statusCode != HttpStatus.ok) {
-          throw Exception('图片下载失败（${response.statusCode}）');
+      late final Uint8List bytes;
+      final uri = Uri.parse(url);
+      if (uri.scheme == 'file') {
+        bytes = await File(uri.toFilePath()).readAsBytes();
+      } else {
+        final client = HttpClient();
+        try {
+          final request = await client.getUrl(uri);
+          request.headers.set('Referer', AppConfig.base);
+          request.headers.set('User-Agent', AppConfig.userAgent);
+          final cookie = HttpSession.instance.cookieHeader;
+          if (cookie.isNotEmpty) request.headers.set('Cookie', cookie);
+          final response = await request.close();
+          if (response.statusCode != HttpStatus.ok) {
+            throw Exception('图片下载失败（${response.statusCode}）');
+          }
+          final builder = BytesBuilder(copy: false);
+          await for (final chunk in response) {
+            builder.add(chunk);
+          }
+          bytes = builder.takeBytes();
+        } finally {
+          client.close();
         }
-        final builder = BytesBuilder(copy: false);
-        await for (final chunk in response) {
-          builder.add(chunk);
-        }
-        final bytes = builder.takeBytes();
-        final ok = await NativeBridge.saveImage(
-          bytes,
-          name: 'mt_forum_${DateTime.now().millisecondsSinceEpoch}.jpg',
-        );
-        messenger.showSnackBar(SnackBar(content: Text(ok ? '已保存到相册' : '保存失败，请检查存储权限')));
-      } finally {
-        client.close();
       }
+      final ok = await NativeBridge.saveImage(
+        bytes,
+        name: 'mt_forum_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      );
+      messenger.showSnackBar(SnackBar(content: Text(ok ? '已保存到相册' : '保存失败，请检查存储权限')));
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('$e')));
     } finally {
