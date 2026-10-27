@@ -1134,6 +1134,7 @@ class ForumRepository {
 
   List<FriendItem> _parseFollowing(String html) {
     final doc = parser.parse(html);
+    _followingFormhash = _findFormhash(html);
     final items = <FriendItem>[];
     final seen = <int>{};
     // Discuz 关注列表里「取消 / 备注 / 星标」也可能带 uid 参数，
@@ -1196,6 +1197,10 @@ class ForumRepository {
         final avatar = element.querySelector('img');
         final noteNode = element.querySelector('.note, .desc, .xg1');
         final note = _clean(noteNode?.text ?? '');
+        final starLink = element.querySelector('a[id^="a_specialfollow_"][href*="special="]') ?? element.querySelector('a[href*="special="][href*="fuid="]');
+        final starHref = starLink?.attributes['href'] ?? '';
+        final starLabel = _clean(starLink?.text ?? '');
+        final isStarred = RegExp(r'[?&]special=2(?:&|$)').hasMatch(starHref) && starLabel.contains('取消');
         final rowText = _clean(element.text);
         final followers = int.tryParse(
           RegExp(r'(\d[\d,]*)\s*粉丝').firstMatch(rowText)?.group(1)?.replaceAll(',', '') ?? '',
@@ -1210,6 +1215,7 @@ class ForumRepository {
           note: note,
           followers: followers,
           following: following,
+          isStarred: isStarred,
         ));
       }
       if (items.isNotEmpty) break;
