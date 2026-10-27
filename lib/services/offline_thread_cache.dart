@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
 import 'package:path_provider/path_provider.dart';
 
@@ -134,6 +135,9 @@ class OfflineThreadCache {
             img.attributes.remove('file');
             img.attributes.remove('comiis_loadimages');
             img.attributes.remove('longdesc');
+          } else {
+            // Never leave a remote image URL in an offline snapshot.
+            img.replaceWith(dom.Element.tag('span')..text = '（图片未能缓存）');
           }
         }
         html = document.body?.innerHtml ?? html;
