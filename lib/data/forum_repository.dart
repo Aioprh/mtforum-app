@@ -1100,6 +1100,84 @@ class ForumRepository {
     return items;
   }
 
+  /// 我的关注列表（Discuz 用户关注页）。使用当前登录账号的 UID，不固定用户编号。
+  Future<List<FriendItem>> fetchFollowing(int uid, {int page = 1}) async {
+    if (uid <= 0) throw SiteException('无法识别当前用户，请刷新个人资料后重试');
+    final query = <String, String>{
+      'mod': 'follow',
+      'do': 'following',
+      'uid': '$uid',
+      'page': '$page',
+      'mobile': '2',
+    };
+    final mobile = await _http.get('home.php', query: query);
+    _ensureOk(mobile);
+    var items = _parseFollowing(mobile.body);
+    if (items.isNotEmpty) return items;
+
+    // 站点桌面模板的关注列表结构更稳定，移动模板没有解析到时再回退。
+    final desktop = await _getDesktopPage('home.php', {
+      'mod': 'follow',
+      'do': 'following',
+      'uid': '$uid',
+      'page': '$page',
+    });
+    _ensureOk(desktop);
+    items = _parseFollowing(desktop.body);
+    final doc = parser.parse(desktop.body);
+    final message = _pageMessage(doc) ?? _clean(doc.body?.text ?? '');
+    if (items.isEmpty && (message.contains('登录') || message.contains('权限'))) {
+      throw SiteException(message.length > 120 ? '无法读取关注列表，请确认登录状态' : message);
+    }
+    return items;
+  }
+
+  List<FriendItem> _parseFollowing(String html) {
+    final doc = parser.parse(html);
+    final items = <FriendItem>[];
+    final seen = <int>{};
+    for (final selector in [
+      '.comiis_userlist01 li',
+      '#follow_ul li',
+      '.buddy li',
+      '.follow_list li',
+      '.mtli li',
+      '#ct li',
+      '.comiis_bodybox li',
+    ]) {
+      for (final element in doc.querySelectorAll(selector)) {
+        final links = element.querySelectorAll('a[href]');
+        Element? nameLink;
+        var uid = 0;
+        for (final link in links) {
+          final href = link.attributes['href'] ?? '';
+          final candidate = _uidFromHref(href);
+          if (candidate > 0 && uid == 0) uid = candidate;
+          final text = _clean(link.text);
+          if (text.isNotEmpty && (href.contains('uid=') || href.contains('space-uid-'))) {
+            nameLink ??= link;
+          }
+        }
+        if (uid <= 0 || !seen.add(uid)) continue;
+        final name = _clean(
+          nameLink?.text ??
+              element.querySelector('.username, .name, .tit, h3, h4, strong')?.text ??
+              '',
+        );
+        if (name.isEmpty || name == '取消关注' || name == '访问主页') continue;
+        final avatar = element.querySelector('img');
+        items.add(FriendItem(
+          uid: uid,
+          username: name,
+          avatar: avatar == null ? '' : _pickImage(avatar),
+          note: _clean(element.querySelector('.note, .desc, .xg1, p')?.text ?? ''),
+        ));
+      }
+      if (items.isNotEmpty) break;
+    }
+    return items;
+  }
+
   /// 以桌面模板读取页面：结构稳定，读取后立即清掉服务端写入的 mobile=no Cookie，
   /// 避免后续请求也跟着切到桌面模板。
   Future<HttpResult> _getDesktopPage(String path, Map<String, String> query) async {
