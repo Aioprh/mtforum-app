@@ -1196,11 +1196,20 @@ class ForumRepository {
         final avatar = element.querySelector('img');
         final noteNode = element.querySelector('.note, .desc, .xg1');
         final note = _clean(noteNode?.text ?? '');
+        final rowText = _clean(element.text);
+        final followers = int.tryParse(
+          RegExp(r'(\\d[\\d,]*)\\s*粉丝').firstMatch(rowText)?.group(1)?.replaceAll(',', '') ?? '',
+        ) ?? 0;
+        final following = int.tryParse(
+          RegExp(r'(\\d[\\d,]*)\\s*关注').firstMatch(rowText)?.group(1)?.replaceAll(',', '') ?? '',
+        ) ?? 0;
         items.add(FriendItem(
           uid: uid,
           username: name,
           avatar: avatar == null ? '' : _pickImage(avatar),
           note: note,
+          followers: followers,
+          following: following,
         ));
       }
       if (items.isNotEmpty) break;
