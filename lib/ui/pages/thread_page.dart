@@ -889,9 +889,44 @@ class _ThreadPageState extends State<ThreadPage> {
           if (index == 0) return _header();
           final postIndex = index - 1;
           if (postIndex < _posts.length) {
+            final post = _posts[postIndex];
+            if (postIndex == 1 && !_onlyOp) {
+              final scheme = Theme.of(context).colorScheme;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(4, 5, 4, 12),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 4,
+                          height: 18,
+                          decoration: BoxDecoration(
+                            color: scheme.primary,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                        const SizedBox(width: 9),
+                        const Text('评论区', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                        const SizedBox(width: 8),
+                        Text('${_detail?.replies ?? (_posts.length - 1)} 条回复',
+                          style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+                        const Spacer(),
+                        Icon(Icons.forum_outlined, size: 17, color: scheme.onSurfaceVariant),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 11),
+                    child: _postCard(post),
+                  ),
+                ],
+              );
+            }
             return Padding(
               padding: const EdgeInsets.only(bottom: 11),
-              child: _postCard(_posts[postIndex]),
+              child: _postCard(post),
             );
           }
           return _footer();
@@ -1159,7 +1194,9 @@ class _ThreadPageState extends State<ThreadPage> {
       clipBehavior: Clip.antiAlias,
       margin: EdgeInsets.zero,
       elevation: 0,
-      color: scheme.surface,
+      color: post.isOp
+          ? scheme.primary.withValues(alpha: 0.045)
+          : scheme.surface,
       surfaceTintColor: Colors.transparent,
       shadowColor: Colors.transparent,
       shape: RoundedRectangleBorder(
