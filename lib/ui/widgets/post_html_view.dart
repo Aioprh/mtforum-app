@@ -82,6 +82,7 @@ class _PostHtmlViewState extends State<PostHtmlView> {
             '')
         .trim();
     if (raw.isEmpty) return '';
+    if (raw.startsWith('file://')) return raw;
     if (raw.contains('none.png') || raw.contains('imageloading.gif') || raw.contains('noavatar')) {
       final candidates = <String>[
         img.attributes['data-src']?.trim() ?? '',
