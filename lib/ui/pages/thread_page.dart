@@ -692,25 +692,42 @@ class _ThreadPageState extends State<ThreadPage> {
   }
 
   Future<void> _cacheForOffline() async {
-    final detail = _detail;
-    if (detail == null || _posts.isEmpty) {
+    final current = _detail;
+    if (current == null || _posts.isEmpty) {
       _toast('帖子内容尚未加载完成，暂时无法缓存');
       return;
     }
+    _toast('正在缓存整篇帖子，评论和图片较多时可能需要一些时间');
     try {
+      final first = await _repo.fetchThread(widget.tid, page: 1);
+      final allPosts = <ForumPost>[...first.posts];
+      var hasMore = first.hasMore;
+      var page = 1;
+      // Fetch every page, independently of the current "only OP" and sort filters.
+      while (hasMore && page < 500) {
+        page++;
+        final next = await _repo.fetchThread(widget.tid, page: page);
+        final offset = (page - 1) * AppConfig.postsPerPage;
+        allPosts.addAll(next.posts.map((post) => post.copyWith(floor: post.floor + offset)));
+        hasMore = next.hasMore;
+        if (next.posts.isEmpty && hasMore) break;
+      }
       await OfflineThreadCache.instance.save(
         tid: widget.tid,
-        title: detail.title,
-        boardName: detail.boardName,
-        author: detail.author,
-        time: detail.time,
-        views: detail.views,
-        replies: detail.replies,
-        posts: _posts,
+        title: first.title,
+        boardName: first.boardName,
+        author: first.author,
+        time: first.time,
+        views: first.views,
+        replies: first.replies,
+        posts: allPosts,
       );
-      if (mounted) _toast('已缓存当前已加载的帖子内容，可在「我的 - 离线缓存」中阅读');
-    } catch (_) {
-      if (mounted) _toast('缓存失败，请检查手机存储空间后重试');
+      if (mounted) {
+        final suffix = hasMore ? '（达到分页安全上限，已保存前 $page 页）' : '';
+        _toast('已缓存整篇帖子：${allPosts.length} 条内容$suffix');
+      }
+    } catch (error) {
+      if (mounted) _toast('缓存失败：${_message(error)}');
     }
   }
 
