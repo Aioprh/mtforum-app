@@ -983,9 +983,12 @@ class ForumRepository {
       query: {'mod': 'space', 'uid': '$uid', 'do': 'profile', 'mobile': '2'},
     );
     _ensureOk(result);
+    final doc = parser.parse(result.body);
+    final isFollowing = _isFollowingOnProfile(doc, result.body, uid);
     return (
-      _parseSpaceProfile(parser.parse(result.body), result.body, uid: uid),
+      _parseSpaceProfile(doc, result.body, uid: uid),
       _findFormhash(result.body),
+      isFollowing,
     );
   }
 
@@ -1026,6 +1029,24 @@ class ForumRepository {
 
   /// 我的回复（不带 uid，服务端自动取当前登录用户）。
   Future<List<ThreadSummary>> fetchMyReplies({int page = 1}) => fetchUserReplies(0, page: page);
+
+  /// 从他人主页的关注操作入口识别当前登录账号是否已关注该用户。
+  /// Discuz/Comiis 会按状态输出「取消关注」入口或关注状态按钮；未登录时保持 false。
+  bool _isFollowingOnProfile(Document doc, String html, int uid) {
+    if (!_http.hasLoginCookie || uid <= 0) return false;
+    for (final link in doc.querySelectorAll('a[href], button, input[type=button], input[type=submit]')) {
+      final href = (link.attributes['href'] ?? '').replaceAll('&amp;', '&');
+      final label = _clean(link.attributes['value'] ?? link.text);
+      final isFollowAction = href.contains('ac=follow') &&
+          (href.contains('op=del') || href.contains('op=delete')) &&
+          (href.contains('fuid=$uid') || href.contains('fuid%3D$uid'));
+      if (isFollowAction || label == '已关注' || label == '取消关注' || label == '取消收听') {
+        return true;
+      }
+    }
+    // 兼容模板将按钮写在脚本/属性中的情况，但只匹配目标 UID 的取消关注地址。
+    return RegExp(r'(?:ac=follow[^"\'<>]{0,160}op=del[^"\'<>]{0,160}fuid=' + uid + r'|fuid=' + uid + r'[^"\'<>]{0,160}ac=follow[^"\'<>]{0,160}op=del)', caseSensitive: false).hasMatch(html);
+  }
 
   /// 关注 / 取消关注用户。
   Future<bool> followUser({required int uid, required bool follow, required String hash}) async {
