@@ -17,6 +17,11 @@ class ThreadCard extends StatelessWidget {
     final images = thread.images.where((e) => e.trim().isNotEmpty).toList();
 
     return Card(
+      // 统一主题/回复卡片底色，避免 Material surface tint 造成局部卡片变暗。
+      color: scheme.surface,
+      surfaceTintColor: Colors.transparent,
+      shadowColor: Colors.transparent,
+      elevation: 0,
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
