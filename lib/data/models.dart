@@ -115,6 +115,7 @@ class FriendItem {
     this.note = '',
     this.followers = 0,
     this.following = 0,
+    this.isStarred = false,
   });
 
   final int uid;
@@ -123,6 +124,7 @@ class FriendItem {
   final String note;
   final int followers;
   final int following;
+  final bool isStarred;
 }
 
 /// 私信会话摘要。
