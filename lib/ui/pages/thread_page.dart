@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../services/offline_thread_cache.dart';
+import 'offline_cache_page.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_config.dart';
@@ -690,10 +692,35 @@ class _ThreadPageState extends State<ThreadPage> {
     }
   }
 
+  Future<void> _cacheForOffline() async {
+    final detail = _detail;
+    if (detail == null || _posts.isEmpty) {
+      _toast('帖子内容尚未加载完成，暂时无法缓存');
+      return;
+    }
+    try {
+      await OfflineThreadCache.instance.save(
+        tid: widget.tid,
+        title: detail.title,
+        boardName: detail.boardName,
+        author: detail.author,
+        time: detail.time,
+        views: detail.views,
+        replies: detail.replies,
+        posts: _posts,
+      );
+      if (mounted) _toast('已缓存当前已加载的帖子内容，可在「我的 - 离线缓存」中阅读');
+    } catch (_) {
+      if (mounted) _toast('缓存失败，请检查手机存储空间后重试');
+    }
+  }
+
   void _handleMenu(String value) {
     switch (value) {
       case 'favorite':
         _toggleFavorite();
+      case 'offlineCache':
+        _cacheForOffline();
       case 'copy':
         _share();
       case 'browser':
@@ -736,6 +763,15 @@ class _ThreadPageState extends State<ThreadPage> {
                   contentPadding: EdgeInsets.zero,
                   leading: Icon(_favorited ? Icons.star_rounded : Icons.star_outline_rounded),
                   title: Text(_favorited ? '已收藏' : '收藏主题'),
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'offlineCache',
+                child: ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.download_for_offline_outlined),
+                  title: Text('缓存帖子供离线阅读'),
                 ),
               ),
               const PopupMenuItem(
