@@ -1217,6 +1217,63 @@ class ForumRepository {
     return items;
   }
 
+
+  /// 取消关注：Discuz X 标准动作。
+  Future<void> cancelFollowing(int uid) async {
+    if (uid <= 0) throw SiteException('用户编号无效');
+    final result = await _http.get('home.php', query: {
+      'mod': 'spacecp', 'ac': 'follow', 'op': 'del', 'fuid': '$uid', 'inajax': '1', 'mobile': '2',
+    }, referer: AppConfig.uri('home.php?mod=follow&do=following').toString());
+    _ensureOk(result);
+    final message = _inajaxMessage(result.body);
+    if (_looksLikeError(message) || message.contains('登录')) {
+      throw SiteException(message.isEmpty ? '取消关注失败，请稍后重试' : message);
+    }
+  }
+
+  /// 设置特别关注。Discuz 模板约定 special=1 添加、special=2 取消。
+  Future<void> setFollowingStar(int uid, {required bool starred}) async {
+    if (uid <= 0) throw SiteException('用户编号无效');
+    if (_followingFormhash.isEmpty) throw SiteException('操作凭证已失效，请刷新关注列表后重试');
+    final result = await _http.get('home.php', query: {
+      'mod': 'spacecp', 'ac': 'follow', 'op': 'add', 'hash': _followingFormhash,
+      'special': starred ? '1' : '2', 'fuid': '$uid', 'inajax': '1', 'mobile': '2',
+    }, referer: AppConfig.uri('home.php?mod=follow&do=following').toString());
+    _ensureOk(result);
+    final message = _inajaxMessage(result.body);
+    if (_looksLikeError(message) || message.contains('登录')) {
+      throw SiteException(message.isEmpty ? '星标操作失败，请稍后重试' : message);
+    }
+  }
+
+  /// 读取站点备注表单后提交，沿用其 formhash 和字段名。
+  Future<String> setFollowingNote(int uid, String note) async {
+    if (uid <= 0) throw SiteException('用户编号无效');
+    final query = {'mod': 'spacecp', 'ac': 'follow', 'op': 'bkname', 'fuid': '$uid', 'handlekey': 'followbkname_$uid'};
+    final page = await _http.get('home.php', query: query,
+      referer: AppConfig.uri('home.php?mod=follow&do=following').toString());
+    _ensureOk(page);
+    final doc = parser.parse(page.body);
+    final form = doc.querySelector('form[action*="op=bkname"]');
+    final formhash = form?.querySelector('input[name="formhash"]')?.attributes['value'] ?? _findFormhash(page.body);
+    if (form == null || formhash.isEmpty) {
+      throw SiteException(_pageMessage(doc) ?? '无法读取备注表单，请确认登录状态后重试');
+    }
+    final response = await _http.post('home.php', query: query,
+      referer: AppConfig.uri('home.php?mod=spacecp&ac=follow&op=bkname&fuid=$uid').toString(),
+      form: {
+        'formhash': formhash, 'referer': AppConfig.uri('home.php?mod=follow&do=following').toString(),
+        'editbkname': 'true', 'bkname': note.trim(), 'handlekey': 'followbkname_$uid',
+      });
+    _ensureOk(response);
+    final resultDoc = parser.parse(response.body);
+    final message = _pageMessage(resultDoc) ?? _inajaxMessage(response.body);
+    if (_looksLikeError(message) || message.contains('登录')) {
+      throw SiteException(message.isEmpty ? '保存备注失败，请稍后重试' : message);
+    }
+    return note.trim();
+  }
+
   /// 以桌面模板读取页面：结构稳定，读取后立即清掉服务端写入的 mobile=no Cookie，
   /// 避免后续请求也跟着切到桌面模板。
   Future<HttpResult> _getDesktopPage(String path, Map<String, String> query) async {
