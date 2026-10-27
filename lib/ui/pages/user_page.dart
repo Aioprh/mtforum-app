@@ -54,11 +54,12 @@ class _UserPageState extends State<UserPage> {
       _error = null;
     });
     try {
-      final (profile, hash) = await _repo.fetchUserProfile(widget.uid);
+      final (profile, hash, following) = await _repo.fetchUserProfile(widget.uid);
       if (!mounted) return;
       setState(() {
         _profile = profile;
         _hash = hash;
+        _following = following;
         _loading = false;
       });
     } catch (e) {
