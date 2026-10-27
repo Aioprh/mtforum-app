@@ -977,7 +977,7 @@ class ForumRepository {
   }
 
   /// 他人主页资料。`hash` 为关注操作所需的 formhash。
-  Future<(UserProfile, String)> fetchUserProfile(int uid) async {
+  Future<(UserProfile, String, bool)> fetchUserProfile(int uid) async {
     final result = await _http.get(
       'home.php',
       query: {'mod': 'space', 'uid': '$uid', 'do': 'profile', 'mobile': '2'},
