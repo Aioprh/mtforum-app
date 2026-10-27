@@ -1198,10 +1198,10 @@ class ForumRepository {
         final note = _clean(noteNode?.text ?? '');
         final rowText = _clean(element.text);
         final followers = int.tryParse(
-          RegExp(r'(\\d[\\d,]*)\\s*粉丝').firstMatch(rowText)?.group(1)?.replaceAll(',', '') ?? '',
+          RegExp(r'(\d[\d,]*)\s*粉丝').firstMatch(rowText)?.group(1)?.replaceAll(',', '') ?? '',
         ) ?? 0;
         final following = int.tryParse(
-          RegExp(r'(\\d[\\d,]*)\\s*关注').firstMatch(rowText)?.group(1)?.replaceAll(',', '') ?? '',
+          RegExp(r'(\d[\d,]*)\s*关注').firstMatch(rowText)?.group(1)?.replaceAll(',', '') ?? '',
         ) ?? 0;
         items.add(FriendItem(
           uid: uid,
