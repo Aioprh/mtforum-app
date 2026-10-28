@@ -276,14 +276,10 @@ class _ComposePageState extends State<ComposePage> {
   Future<void> _pickFiles() async {
     final info = await _ensureInfo();
     if (info == null) return;
-    final files = await FilePicker.platform.pickFiles(
-      type: FileType.any,
-      allowMultiple: true,
-      withData: true,
-    );
-    if (files == null || files.files.isEmpty) return;
+    final files = await FilePicker.pickFiles(type: FileType.any);
+    if (files.isEmpty) return;
     if (!mounted) return;
-    for (final file in files.files) {
+    for (final file in files) {
       final Uint8List bytes;
       try {
         bytes = await file.readAsBytes();
