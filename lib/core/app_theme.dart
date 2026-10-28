@@ -6,15 +6,15 @@ import 'app_config.dart';
 class AppTheme {
   const AppTheme._();
 
-  static const Color _seed = Color(0xFF12B76A);
+  static const Color defaultSeed = Color(0xFF12B76A);
 
-  static ThemeData light() {
-    final scheme = ColorScheme.fromSeed(seedColor: _seed, brightness: Brightness.light);
+  static ThemeData light([Color seed = defaultSeed]) {
+    final scheme = ColorScheme.fromSeed(seedColor: seed, brightness: Brightness.light);
     return _base(scheme, const Color(0xFFF5F7F9));
   }
 
-  static ThemeData dark() {
-    final scheme = ColorScheme.fromSeed(seedColor: _seed, brightness: Brightness.dark);
+  static ThemeData dark([Color seed = defaultSeed]) {
+    final scheme = ColorScheme.fromSeed(seedColor: seed, brightness: Brightness.dark);
     return _base(scheme, const Color(0xFF0D1117));
   }
 
