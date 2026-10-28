@@ -965,7 +965,7 @@ class _ComposePageState extends State<ComposePage> {
           const SizedBox(height: 10),
           Text(
             '@朋友账号，就能提醒他来看帖子；也可以在正文中直接输入 @用户名。',
-            style: TextStyle(fontSize: 11.5, height: 1.5, color: scheme.outline),
+            style: TextStyle(fontSize: 11.5, height: 1.5, color: scheme.onSurfaceVariant),
           ),
         ],
       ),
@@ -996,7 +996,22 @@ class _ComposePageState extends State<ComposePage> {
             children: [
               for (final chip in chips)
                 ChoiceChip(
-                  label: Text(chip.$2, style: const TextStyle(fontSize: 12)),
+                  label: Text(
+                    chip.$2,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: _insertKind == chip.$1
+                          ? scheme.onPrimaryContainer
+                          : scheme.onSurface,
+                    ),
+                  ),
+                  backgroundColor: scheme.surfaceContainerLow,
+                  selectedColor: scheme.primaryContainer,
+                  side: BorderSide(
+                    color: _insertKind == chip.$1
+                        ? scheme.primary.withValues(alpha: 0.55)
+                        : scheme.outlineVariant.withValues(alpha: 0.75),
+                  ),
                   selected: _insertKind == chip.$1,
                   onSelected: (_) {
                     if (chip.$3 != 'url' && chip.$3 != 'img' && chip.$3 != 'audio' &&
@@ -1042,7 +1057,7 @@ class _ComposePageState extends State<ComposePage> {
           const SizedBox(height: 8),
           Text(
             '插入的内容会以 BBCode 追加到正文光标处。',
-            style: TextStyle(fontSize: 11.5, color: scheme.outline),
+            style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant),
           ),
         ],
       ),
