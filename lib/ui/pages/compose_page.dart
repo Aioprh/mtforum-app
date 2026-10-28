@@ -924,8 +924,8 @@ class _ComposePageState extends State<ComposePage> {
     return Container(
       constraints: const BoxConstraints(maxHeight: 250),
       decoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest.withValues(alpha: 0.35),
-        border: Border(top: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.5))),
+        color: scheme.surfaceContainer.withValues(alpha: 0.98),
+        border: Border(top: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.72))),
       ),
       child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
