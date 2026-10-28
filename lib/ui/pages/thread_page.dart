@@ -64,7 +64,6 @@ class _ThreadPageState extends State<ThreadPage> {
   @override
   void initState() {
     super.initState();
-    _scroll.addListener(_onScroll);
     _load();
   }
 
@@ -77,13 +76,6 @@ class _ThreadPageState extends State<ThreadPage> {
   }
 
   String get _link => AppConfig.uri('thread-${widget.tid}-1-1.html').toString();
-
-  void _onScroll() {
-    if (!_scroll.hasClients || _loadingMore || !_hasMore) return;
-    if (_scroll.position.pixels >= _scroll.position.maxScrollExtent - 420) {
-      _loadMore();
-    }
-  }
 
   Future<void> _load() async {
     if (mounted) {
@@ -143,24 +135,37 @@ class _ThreadPageState extends State<ThreadPage> {
     await _load();
   }
 
-  Future<void> _loadMore() async {
-    if (_loadingMore || !_hasMore) return;
+  Future<void> _loadMore() => _loadPage(_page + 1);
+
+  Future<void> _loadPrevious() => _loadPage(_page - 1);
+
+  /// 显式分页：每页显示站点返回的 10 条楼层，切页时替换当前列表，
+  /// 不再滚动到底自动追加，避免不同页的楼层和评论混在一起。
+  Future<void> _loadPage(int page) async {
+    if (_loadingMore || page < 1 || (page > _page && !_hasMore)) return;
     setState(() => _loadingMore = true);
     try {
       final detail = await _repo.fetchThread(
         widget.tid,
-        page: _page + 1,
+        page: page,
         authorId: _onlyOp ? _opUid : null,
         orderDesc: _orderDesc,
       );
       if (!mounted) return;
-      final offset = _orderDesc ? 0 : _page * AppConfig.postsPerPage;
+      final offset = _orderDesc ? 0 : (page - 1) * AppConfig.postsPerPage;
       setState(() {
-        _page += 1;
-        _posts.addAll(detail.posts.map((post) => post.copyWith(floor: post.isPinned ? post.floor : post.floor + offset)));
+        _page = page;
+        _posts
+          ..clear()
+          ..addAll(detail.posts.map((post) => post.copyWith(
+            floor: post.isPinned ? post.floor : post.floor + offset,
+          )));
         _hasMore = detail.hasMore;
         _loadingMore = false;
       });
+      if (_scroll.hasClients) {
+        await _scroll.animateTo(0, duration: const Duration(milliseconds: 220), curve: Curves.easeOut);
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() => _loadingMore = false);
@@ -1637,22 +1642,25 @@ class _ThreadPageState extends State<ThreadPage> {
         child: Center(child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))),
       );
     }
-    if (_hasMore) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Center(
-          child: TextButton.icon(
-            onPressed: _loadMore,
-            icon: const Icon(Icons.expand_more_rounded, size: 18),
-            label: const Text('加载更多楼层'),
-          ),
-        ),
-      );
-    }
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 18),
-      child: Center(
-        child: Text('— 已经到底啦 —', style: TextStyle(fontSize: 11.5, color: scheme.outline)),
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 18),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          OutlinedButton.icon(
+            onPressed: _page > 1 ? _loadPrevious : null,
+            icon: const Icon(Icons.chevron_left_rounded, size: 18),
+            label: const Text('上一页'),
+          ),
+          const SizedBox(width: 16),
+          Text('第 $_page 页', style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+          const SizedBox(width: 16),
+          FilledButton.icon(
+            onPressed: _hasMore ? _loadMore : null,
+            icon: const Icon(Icons.chevron_right_rounded, size: 18),
+            label: const Text('下一页'),
+          ),
+        ],
       ),
     );
   }
