@@ -251,7 +251,7 @@ class _ThreadPageState extends State<ThreadPage> {
       final message = await _repo.addComment(
         tid: widget.tid,
         pid: post.pid,
-        message: text,
+        message: replyTo.isEmpty ? text : '回复 @$replyTo：$text',
         formhash: detail.formhash,
       );
       if (!mounted) return;
@@ -1355,7 +1355,7 @@ class _ThreadPageState extends State<ThreadPage> {
             const SizedBox(height: 4),
             Row(
               children: [
-                _floorAction(Icons.reply_rounded, '回复', () => _startReply(post), highlight: targeted && !_quoteTarget),
+                _floorAction(Icons.reply_rounded, '回复', () => _openCommentSheet(post), highlight: false),
                 _floorAction(Icons.format_quote_rounded, '引用', () => _startQuote(post), highlight: targeted && _quoteTarget),
                 _floorAction(Icons.chat_bubble_outline_rounded, '点评', () => _openCommentSheet(post), highlight: false),
                 const Spacer(),
@@ -1630,7 +1630,7 @@ class _ThreadPageState extends State<ThreadPage> {
           const SizedBox(height: 4),
           for (final comment in post.comments)
             InkWell(
-              onTap: () => _startCommentReply(post, comment),
+              onTap: () => _openCommentSheet(post, replyTo: comment.author),
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 3),
                 child: Text.rich(
