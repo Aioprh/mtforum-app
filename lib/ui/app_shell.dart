@@ -100,11 +100,11 @@ class _AppShellState extends State<AppShell> {
 
     return SafeArea(
       top: false,
-      minimum: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      minimum: const EdgeInsets.fromLTRB(16, 0, 16, 10),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(30),
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 26, sigmaY: 26),
+          filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
           child: Container(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(30),
@@ -113,28 +113,28 @@ class _AppShellState extends State<AppShell> {
                 end: Alignment.bottomRight,
                 colors: isDark
                     ? [
-                        const Color(0xFF303945).withValues(alpha: 0.34),
-                        const Color(0xFF171D26).withValues(alpha: 0.24),
+                        const Color(0xFF303945).withValues(alpha: 0.25),
+                        const Color(0xFF171D26).withValues(alpha: 0.16),
                       ]
                     : [
-                        Colors.white.withValues(alpha: 0.34),
-                        const Color(0xFFF1F5FA).withValues(alpha: 0.22),
+                        Colors.white.withValues(alpha: 0.25),
+                        const Color(0xFFF1F5FA).withValues(alpha: 0.16),
                       ],
               ),
               border: Border.all(
                 color: (isDark ? Colors.white : scheme.outlineVariant)
-                    .withValues(alpha: isDark ? 0.18 : 0.42),
+                    .withValues(alpha: isDark ? 0.16 : 0.30),
                 width: 1,
               ),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withValues(alpha: isDark ? 0.28 : 0.10),
-                  blurRadius: 24,
+                  blurRadius: 30,
                   spreadRadius: 0,
-                  offset: const Offset(0, 10),
+                  offset: const Offset(0, 12),
                 ),
                 BoxShadow(
-                  color: Colors.white.withValues(alpha: isDark ? 0.07 : 0.90),
+                  color: Colors.white.withValues(alpha: isDark ? 0.06 : 0.62),
                   blurRadius: 1,
                   offset: const Offset(0, 1),
                 ),
@@ -149,12 +149,12 @@ class _AppShellState extends State<AppShell> {
                   top: 0,
                   child: IgnorePointer(
                     child: Container(
-                      height: 1,
+                      height: 1.2,
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
                           colors: [
                             Colors.transparent,
-                            Colors.white.withValues(alpha: isDark ? 0.26 : 0.95),
+                            Colors.white.withValues(alpha: isDark ? 0.20 : 0.72),
                             Colors.transparent,
                           ],
                         ),
@@ -163,7 +163,7 @@ class _AppShellState extends State<AppShell> {
                   ),
                 ),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 7),
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
                   child: Row(
                     children: [
                       for (var i = 0; i < items.length; i++)
@@ -178,22 +178,22 @@ class _AppShellState extends State<AppShell> {
                               child: AnimatedContainer(
                                 duration: const Duration(milliseconds: 240),
                                 curve: Curves.easeOutCubic,
-                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                padding: const EdgeInsets.symmetric(vertical: 7),
                                 decoration: BoxDecoration(
                                   gradient: _index == i
                                       ? LinearGradient(
                                           begin: Alignment.topLeft,
                                           end: Alignment.bottomRight,
                                           colors: [
-                                            scheme.primary.withValues(alpha: isDark ? 0.34 : 0.18),
-                                            scheme.primary.withValues(alpha: isDark ? 0.18 : 0.08),
+                                            scheme.primary.withValues(alpha: isDark ? 0.22 : 0.10),
+                                            scheme.primary.withValues(alpha: isDark ? 0.12 : 0.04),
                                           ],
                                         )
                                       : null,
                                   borderRadius: BorderRadius.circular(24),
                                   border: _index == i
                                       ? Border.all(
-                                          color: scheme.primary.withValues(alpha: 0.28),
+                                          color: scheme.primary.withValues(alpha: 0.18),
                                         )
                                       : null,
                                 ),
