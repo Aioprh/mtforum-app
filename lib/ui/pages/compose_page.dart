@@ -276,7 +276,7 @@ class _ComposePageState extends State<ComposePage> {
   Future<void> _pickFiles() async {
     final info = await _ensureInfo();
     if (info == null) return;
-    final files = await FilePicker.pickFiles(
+    final files = await FilePicker.platform.pickFiles(
       type: FileType.any,
       allowMultiple: true,
       withData: true,
