@@ -32,8 +32,8 @@ class _AppShellState extends State<AppShell> {
     await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => const ComposePage()));
   }
 
-  void _handleBack(PopScopeState state) {
-    if (state.didPop) return;
+  void _handleBack(bool didPop) {
+    if (didPop) return;
     // 子页面由 Navigator 正常返回；只有根页面拦截系统返回手势。
     if (Navigator.of(context).canPop()) return;
     final now = DateTime.now();
@@ -53,7 +53,7 @@ class _AppShellState extends State<AppShell> {
     return PopScope(
       canPop: Navigator.of(context).canPop(),
       onPopInvokedWithResult: (didPop, result) {
-        _handleBack(PopScopeState(didPop));
+        _handleBack(didPop);
       },
       child: Scaffold(
       body: IndexedStack(index: _index, children: _pages),
