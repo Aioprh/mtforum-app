@@ -917,13 +917,18 @@ class ForumRepository {
     return text.isEmpty ? '已提交踢帖' : text;
   }
 
-  /// 版主管理：关闭 / 置顶 / 精华 / 警告 / 删除。
+  /// 版主管理：关闭 / 置顶回复 / 精华 / 警告 / 删除。
+  /// 置顶回复必须传回复 pid；其它主题级操作仍提交 tid。
   Future<String> moderate({
     required int tid,
     required int fid,
     required String formhash,
     required String action,
+    int? pid,
   }) async {
+    if (action == 'stickreply' && (pid == null || pid <= 0)) {
+      throw SiteException('缺少需要置顶的回复信息');
+    }
     final response = await _http.post(
       'forum.php',
       query: {
@@ -931,6 +936,7 @@ class ForumRepository {
         'action': action,
         'fid': '$fid',
         'tid': '$tid',
+        if (action == 'stickreply') 'pid': '$pid',
         'handlekey': 'topicadmin',
         'inajax': '1',
         'mobile': '2',
@@ -938,20 +944,26 @@ class ForumRepository {
       referer: _threadReferer(tid),
       form: {
         'formhash': formhash,
-        'moderate[]': '$tid',
+        'moderate[]': '${action == 'stickreply' ? pid : tid}',
         if (action == 'digest') 'digest': '1',
       },
     );
-    final msg = _pageMessage(parser.parse(response.body));
-    if (msg != null && _looksLikeError(msg)) throw SiteException(msg);
+    final msg = response.body.contains('<![CDATA[')
+        ? _inajaxMessage(response.body)
+        : (_pageMessage(parser.parse(response.body)) ?? '');
+    if (msg.isNotEmpty && _looksLikeError(msg)) throw SiteException(msg);
+    if (msg.isNotEmpty && (msg.contains('无权') || msg.contains('权限') ||
+        msg.contains('没有权限') || msg.contains('不允许') || msg.contains('失败'))) {
+      throw SiteException(msg);
+    }
     final labels = {
       'close': '主题已关闭',
-      'stickreply': '已置顶',
+      'stickreply': '已置顶该回复',
       'digest': '已设为精华',
       'warn': '已警告',
       'delete': '已删除',
     };
-    return labels[action] ?? '操作成功';
+    return msg.isEmpty ? (labels[action] ?? '操作成功') : msg;
   }
 
   /// 站内私信。
