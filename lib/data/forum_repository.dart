@@ -1466,7 +1466,8 @@ class ForumRepository {
     return _clean(buffer.toString());
   }
 
-  /// 消息通知：回复提醒 / @提醒 / 系统通知。
+  /// 消息通知：Discuz 标准提醒列表使用 .nts > dl > .ntc_body。
+  /// 同时兼容 Comiis 主题的自定义通知卡片结构。
   Future<List<NoticeItem>> fetchNotices({int page = 1}) async {
     final result = await _http.get(
       'home.php',
@@ -1475,17 +1476,33 @@ class ForumRepository {
     _ensureOk(result);
     final doc = parser.parse(result.body);
     final items = <NoticeItem>[];
-    final containers = doc.querySelectorAll('.comiis_notice, .comiis_noticeli, .notice, .comiis_notice_list li');
+    final seen = <String>{};
+    final containers = doc.querySelectorAll(
+      '.nts > dl, .nts dl, .comiis_notice, .comiis_noticeli, '
+      '.notice, .comiis_notice_list li',
+    );
     for (final el in containers) {
-      final text = _clean(el.text);
-      if (text.isEmpty || text.length > 400) continue;
-      final link = el.querySelector('a[href]');
+      final body = el.querySelector('.ntc_body, .comiis_notice_content, .comiis_notice_text');
+      final content = _clean(body?.text ?? '');
+      final wholeText = _clean(el.text);
+      final text = content.isNotEmpty ? content : wholeText;
+      if (text.isEmpty || text.length > 1200) continue;
+
+      // Discuz 的每条通知通常将日期放在 dl > dt，将正文放在 dd.ntc_body。
+      final dateNode = el.querySelector('dt .xg1, .time, .comiis_notice_time');
+      final link = (body ?? el).querySelector('a[href]');
+      final url = _absolute(link?.attributes['href']);
+      final key = '${text.toLowerCase()}|$url';
+      if (!seen.add(key)) continue;
+
+      final titleNode = el.querySelector('h3, .comiis_notice_title, .title');
+      final title = _clean(titleNode?.text ?? text);
       items.add(NoticeItem(
-        title: _clean(el.querySelector('h3, .comiis_notice_title, .title')?.text ?? text),
+        title: title.isEmpty ? text : title,
         text: text,
-        time: _clean(el.querySelector('.time, .comiis_notice_time')?.text ?? ''),
-        url: _absolute(link?.attributes['href']),
-        kind: _clean(el.querySelector('.type')?.text ?? ''),
+        time: _clean(dateNode?.text ?? ''),
+        url: url,
+        kind: _clean(el.attributes['class'] ?? ''),
       ));
     }
     return items;
