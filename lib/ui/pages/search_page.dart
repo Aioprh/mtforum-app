@@ -26,6 +26,9 @@ class _SearchPageState extends State<SearchPage> with AutomaticKeepAliveClientMi
   List<ForumCategory> _categories = const [];
   List<ThreadSummary> _results = const [];
   bool _loading = false;
+  bool _loadingMore = false;
+  bool _hasMore = false;
+  int _nextPage = 11;
   bool _searched = false;
   String? _error;
   int _fid = 0;
@@ -70,10 +73,13 @@ class _SearchPageState extends State<SearchPage> with AutomaticKeepAliveClientMi
       _results = const [];
     });
     try {
-      final items = await AppState.instance.repo.search(keyword, fid: _fid);
+      const batchPages = 10;
+      final items = await AppState.instance.repo.search(keyword, fid: _fid, page: 1, maxPages: batchPages);
       if (!mounted) return;
       setState(() {
         _results = items;
+        _nextPage = batchPages + 1;
+        _hasMore = items.length >= batchPages * 10;
         _loading = false;
       });
     } catch (e) {
@@ -82,6 +88,37 @@ class _SearchPageState extends State<SearchPage> with AutomaticKeepAliveClientMi
         _error = e is SiteException ? e.message : '搜索失败，请稍后重试';
         _loading = false;
       });
+    }
+  }
+
+  Future<void> _loadMore() async {
+    if (_loadingMore || !_hasMore) return;
+    final keyword = _keyword.text.trim();
+    setState(() => _loadingMore = true);
+    try {
+      const batchPages = 10;
+      final items = await AppState.instance.repo.search(
+        keyword,
+        fid: _fid,
+        page: _nextPage,
+        maxPages: batchPages,
+      );
+      if (!mounted) return;
+      final seen = _results.map((item) => item.tid).toSet();
+      final fresh = items.where((item) => seen.add(item.tid)).toList();
+      setState(() {
+        _results = [..._results, ...fresh];
+        _nextPage += batchPages;
+        _hasMore = items.length >= batchPages * 10;
+        _loadingMore = false;
+      });
+      if (fresh.isEmpty && items.isNotEmpty) {
+        _toast('本页结果与已显示帖子重复，可继续加载后续结果');
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loadingMore = false);
+      _toast(e is SiteException ? e.message : '加载更多失败，请重试');
     }
   }
 
@@ -246,8 +283,24 @@ class _SearchPageState extends State<SearchPage> with AutomaticKeepAliveClientMi
         if (index == _results.length) {
           return Padding(
             padding: const EdgeInsets.symmetric(vertical: 16),
-            child: Center(
-              child: Text('共找到 ${_results.length} 条结果', style: TextStyle(fontSize: 11.5, color: scheme.outline)),
+            child: Column(
+              children: [
+                Text('已显示 ${_results.length} 条结果', style: TextStyle(fontSize: 11.5, color: scheme.outline)),
+                if (_hasMore) ...[
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    onPressed: _loadingMore ? null : _loadMore,
+                    icon: _loadingMore
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.expand_more_rounded, size: 18),
+                    label: Text(_loadingMore ? '正在加载…' : '加载更多帖子'),
+                  ),
+                ] else
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text('没有更多结果了', style: TextStyle(fontSize: 11, color: scheme.outline)),
+                  ),
+              ],
             ),
           );
         }
