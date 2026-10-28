@@ -2343,25 +2343,27 @@ class _EditPostPageState extends State<_EditPostPage> {
           ),
           child: Row(
             children: [
-              Expanded(
-                flex: widget.isOp ? 2 : 1,
-                child: SizedBox(
-                  height: 52,
-                  child: FilledButton.icon(
-                    onPressed: isBusy ? null : _delete,
-                    icon: const Icon(Icons.delete_outline_rounded, size: 20),
-                    label: const Text('删除'),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: scheme.error,
-                      foregroundColor: scheme.onError,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              if (!widget.isOp) ...[
+                Expanded(
+                  flex: 2,
+                  child: SizedBox(
+                    height: 52,
+                    child: FilledButton.icon(
+                      onPressed: isBusy ? null : _delete,
+                      icon: const Icon(Icons.delete_outline_rounded, size: 20),
+                      label: const Text('删除'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: scheme.error,
+                        foregroundColor: scheme.onError,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 10),
+                const SizedBox(width: 10),
+              ],
               Expanded(
-                flex: widget.isOp ? 4 : 1,
+                flex: widget.isOp ? 1 : 2,
                 child: SizedBox(
                   height: 52,
                   child: FilledButton.icon(
