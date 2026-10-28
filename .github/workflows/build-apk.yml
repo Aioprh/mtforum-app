@@ -46,23 +46,47 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Set unique app version for this build
+      - name: Increment semantic app version
         env:
-          BUILD_NUMBER: ${{ github.run_number }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           python3 - <<'PY'
-          import os
           import re
+          import subprocess
           from pathlib import Path
+
           path = Path("pubspec.yaml")
           content = path.read_text()
-          build_number = int(os.environ["BUILD_NUMBER"])
-          version = f"1.0.{build_number}+{build_number}"
-          content, count = re.subn(r"(?m)^version: .*?$", f"version: {version}", content, count=1)
+          match = re.search(r"(?m)^version:\s*(\d+)\.(\d+)\.(\d+)(?:\+(\d+))?\s*$", content)
+          if not match:
+              raise SystemExit("pubspec.yaml version must use MAJOR.MINOR.PATCH+BUILD format")
+
+          major, minor, patch = map(int, match.group(1, 2, 3))
+          # Increment PATCH; carry 1.0.9 -> 1.1.0, and 1.9.9 -> 2.0.0.
+          patch += 1
+          if patch >= 10:
+              patch = 0
+              minor += 1
+          if minor >= 10:
+              minor = 0
+              major += 1
+
+          version_name = f"{major}.{minor}.{patch}"
+          # Android versionCode is numeric and strictly increases with the version.
+          version_code = major * 100_000_000 + minor * 10_000_000 + patch * 100_000 + int(match.group(4) or 0) + 1
+          new_version = f"{version_name}+{version_code}"
+          content, count = re.subn(r"(?m)^version:.*$", f"version: {new_version}", content, count=1)
           if count != 1:
-              raise SystemExit("Could not update version in pubspec.yaml")
+              raise SystemExit("Could not update pubspec.yaml version")
           path.write_text(content)
-          print(f"Building app version {version}")
+
+          # Persist the increment so the next build continues from this version.
+          subprocess.run(["git", "config", "user.name", "github-actions[bot]"], check=True)
+          subprocess.run(["git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"], check=True)
+          subprocess.run(["git", "add", "pubspec.yaml"], check=True)
+          subprocess.run(["git", "commit", "-m", f"chore: bump app version to {new_version} [skip ci]"], check=True)
+          subprocess.run(["git", "push", "origin", "HEAD:main"], check=True)
+          print(f"Building app version {new_version}")
           PY
 
       - name: Install dependencies
