@@ -46,6 +46,25 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Set unique app version for this build
+        env:
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+          path = Path("pubspec.yaml")
+          content = path.read_text()
+          build_number = int(os.environ["BUILD_NUMBER"])
+          version = f"1.0.{build_number}+{build_number}"
+          content, count = re.subn(r"(?m)^version: .*?$", f"version: {version}", content, count=1)
+          if count != 1:
+              raise SystemExit("Could not update version in pubspec.yaml")
+          path.write_text(content)
+          print(f"Building app version {version}")
+          PY
+
       - name: Install dependencies
         run: flutter pub get
 
