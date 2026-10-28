@@ -102,6 +102,35 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
     if (mode != null) await AppState.instance.setThemeMode(mode);
   }
 
+  Future<void> _pickFloatingGlassNav() async {
+    final enabled = AppState.instance.floatingGlassNav;
+    final selected = await showModalBottomSheet<bool>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 22),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('底栏样式', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 8),
+              Text('将底部导航切换为半透明、背景模糊的悬浮液态玻璃样式。', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('启用液态玻璃悬浮底栏'),
+                subtitle: const Text('关闭后恢复普通底部导航栏'),
+                value: enabled,
+                onChanged: (value) => Navigator.pop(context, value),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (selected != null) await AppState.instance.setFloatingGlassNav(selected);
+  }
+
   Future<void> _pickThemeColor() async {
     const colors = <(String, Color)>[
       ('薄荷绿', Color(0xFF12B76A)),
@@ -310,6 +339,7 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
                 _menuGroup(scheme, [
                   _MenuItem(Icons.palette_outlined, '主题外观', _pickTheme),
                   _MenuItem(Icons.color_lens_outlined, '主题颜色', _pickThemeColor),
+                  _MenuItem(Icons.blur_on_rounded, '底栏液态玻璃悬浮', _pickFloatingGlassNav),
                   _MenuItem(Icons.info_outline_rounded, '关于本应用', () {
                     Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AboutPage()));
                   }),
