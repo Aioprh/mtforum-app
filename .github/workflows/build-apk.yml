@@ -73,8 +73,12 @@ jobs:
               major += 1
 
           version_name = f"{major}.{minor}.{patch}"
-          # Android versionCode is numeric and strictly increases with the version.
-          version_code = major * 100_000_000 + minor * 10_000_000 + patch * 100_000 + int(match.group(4) or 0) + 1
+          # Keep Android versionCode within signed 32-bit range. The previous
+          # formula repeatedly added the old build number and overflowed Flutter's parser.
+          previous_code = int(match.group(4) or 0)
+          version_code = previous_code + 1
+          if version_code > 2147483647:
+              raise SystemExit("Android versionCode exceeded the maximum supported integer")
           new_version = f"{version_name}+{version_code}"
           content, count = re.subn(r"(?m)^version:.*$", f"version: {new_version}", content, count=1)
           if count != 1:
