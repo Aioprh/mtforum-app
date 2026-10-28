@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../../core/app_config.dart';
-import '../../state/app_state.dart';
 import 'internal_browser_page.dart';
 import 'pm_list_page.dart';
 
