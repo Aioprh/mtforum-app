@@ -156,7 +156,7 @@ class _ThreadPageState extends State<ThreadPage> {
       final offset = _orderDesc ? 0 : _page * AppConfig.postsPerPage;
       setState(() {
         _page += 1;
-        _posts.addAll(detail.posts.map((post) => post.copyWith(floor: post.floor + offset)));
+        _posts.addAll(detail.posts.map((post) => post.copyWith(floor: post.isPinned ? post.floor : post.floor + offset)));
         _hasMore = detail.hasMore;
         _loadingMore = false;
       });
@@ -760,7 +760,7 @@ class _ThreadPageState extends State<ThreadPage> {
         page++;
         final next = await _repo.fetchThread(widget.tid, page: page);
         final offset = (page - 1) * AppConfig.postsPerPage;
-        allPosts.addAll(next.posts.map((post) => post.copyWith(floor: post.floor + offset)));
+        allPosts.addAll(next.posts.map((post) => post.copyWith(floor: post.isPinned ? post.floor : post.floor + offset)));
         hasMore = next.hasMore;
         if (next.posts.isEmpty && hasMore) break;
       }
