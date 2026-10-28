@@ -697,7 +697,7 @@ class _ThreadPageState extends State<ThreadPage> {
   Future<void> _editPost(ForumPost post) async {
     final detail = _detail;
     if (detail == null) return;
-    final ok = await Navigator.of(context).push<bool>(
+    final result = await Navigator.of(context).push<Object?>(
       MaterialPageRoute(
         builder: (_) => _EditPostPage(
           fid: detail.fid,
@@ -710,8 +710,10 @@ class _ThreadPageState extends State<ThreadPage> {
         ),
       ),
     );
-    if (ok == true && mounted) {
+    if (result == true && mounted) {
       _toast('已保存修改');
+      await _load();
+    } else if (result == 'deleted' && mounted) {
       await _load();
     }
   }
@@ -2099,6 +2101,44 @@ class _EditPostPageState extends State<_EditPostPage> {
     );
   }
 
+  Future<void> _delete() async {
+    if (_saving || _uploading) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('删除确认'),
+        content: Text(widget.isOp ? '确定删除整篇主题吗？删除后不可恢复。' : '确定删除自己的这条回复吗？删除后不可恢复。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('取消')),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: FilledButton.styleFrom(backgroundColor: Theme.of(dialogContext).colorScheme.error),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() { _saving = true; _error = null; });
+    try {
+      final message = await AppState.instance.repo.deletePost(
+        fid: widget.fid,
+        tid: widget.tid,
+        pid: widget.pid,
+        formhash: widget.formhash,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      Navigator.of(context).pop('deleted');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _error = e is SiteException ? e.message : '删除失败，请稍后重试';
+      });
+    }
+  }
+
   Future<void> _save() async {
     final subject = widget.isOp ? _subject.text.trim() : widget.subject;
     final message = _message.text.trim();
@@ -2301,16 +2341,42 @@ class _EditPostPageState extends State<_EditPostPage> {
             color: scheme.surface,
             border: Border(top: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.55))),
           ),
-          child: SizedBox(
-            height: 52,
-            child: FilledButton.icon(
-              onPressed: isBusy ? null : _save,
-              icon: _saving
-                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : const Icon(Icons.check_rounded, size: 20),
-              label: Text(_saving ? '正在保存修改…' : '保存修改', style: const TextStyle(fontWeight: FontWeight.w700)),
-              style: FilledButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
-            ),
+          child: Row(
+            children: [
+              if (widget.isOp) ...[
+                Expanded(
+                  flex: 2,
+                  child: SizedBox(
+                    height: 52,
+                    child: FilledButton.icon(
+                      onPressed: isBusy ? null : _delete,
+                      icon: const Icon(Icons.delete_outline_rounded, size: 20),
+                      label: const Text('删除'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: scheme.error,
+                        foregroundColor: scheme.onError,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+              ],
+              Expanded(
+                flex: widget.isOp ? 4 : 1,
+                child: SizedBox(
+                  height: 52,
+                  child: FilledButton.icon(
+                    onPressed: isBusy ? null : _save,
+                    icon: _saving
+                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        : const Icon(Icons.check_rounded, size: 20),
+                    label: Text(_saving ? '正在保存修改…' : '保存修改', style: const TextStyle(fontWeight: FontWeight.w700)),
+                    style: FilledButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
