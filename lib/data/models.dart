@@ -238,6 +238,7 @@ class ForumPost {
     this.level = '',
     this.location = '',
     this.isOp = false,
+    this.isPinned = false,
     this.likes = 0,
     this.images = const <String>[],
     this.comments = const <ForumComment>[],
@@ -255,6 +256,7 @@ class ForumPost {
   final String level;
   final String location;
   final bool isOp;
+  final bool isPinned;
   final int likes;
   final List<String> images;
   final List<ForumComment> comments;
@@ -262,7 +264,7 @@ class ForumPost {
   final String rateSummary;
 
   /// 楼层标签：主题正文不参与评论排序；首条评论为沙发，第十楼为下水道。
-  String get floorLabel => seatLabel;
+  String get floorLabel => isPinned ? '置顶 ${floor}#' : seatLabel;
 
   String get seatLabel {
     if (floor <= 1) return '';
@@ -274,7 +276,7 @@ class ForumPost {
     return index >= 0 && index < seats.length ? seats[index] : '$floor楼';
   }
 
-  ForumPost copyWith({int? floor, int? uid, String? avatar, bool? isOp}) => ForumPost(
+  ForumPost copyWith({int? floor, int? uid, String? avatar, bool? isOp, bool? isPinned}) => ForumPost(
         pid: pid,
         author: author,
         avatar: avatar ?? this.avatar,
@@ -285,6 +287,7 @@ class ForumPost {
         level: level,
         location: location,
         isOp: isOp ?? this.isOp,
+        isPinned: isPinned ?? this.isPinned,
         likes: likes,
         images: images,
         comments: comments,
