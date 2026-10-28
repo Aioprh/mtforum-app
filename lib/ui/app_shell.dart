@@ -87,59 +87,154 @@ class _AppShellState extends State<AppShell> {
   }
 
   Widget _buildFloatingGlassNav(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
     const items = [
       (Icons.home_outlined, Icons.home_rounded, '首页'),
       (Icons.grid_view_outlined, Icons.grid_view_rounded, '版块'),
       (Icons.search_rounded, Icons.search_rounded, '搜索'),
       (Icons.person_outline_rounded, Icons.person_rounded, '我的'),
     ];
+
     return SafeArea(
       top: false,
-      minimum: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+      minimum: const EdgeInsets.fromLTRB(16, 0, 16, 12),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(28),
+        borderRadius: BorderRadius.circular(30),
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+          filter: ImageFilter.blur(sigmaX: 26, sigmaY: 26),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
             decoration: BoxDecoration(
-              color: (isDark ? const Color(0xFF202630) : Colors.white).withValues(alpha: isDark ? 0.78 : 0.72),
-              borderRadius: BorderRadius.circular(28),
-              border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.55)),
+              borderRadius: BorderRadius.circular(30),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: isDark
+                    ? [
+                        const Color(0xFF303945).withValues(alpha: 0.88),
+                        const Color(0xFF171D26).withValues(alpha: 0.82),
+                      ]
+                    : [
+                        Colors.white.withValues(alpha: 0.84),
+                        const Color(0xFFF1F5FA).withValues(alpha: 0.72),
+                      ],
+              ),
+              border: Border.all(
+                color: (isDark ? Colors.white : scheme.outlineVariant)
+                    .withValues(alpha: isDark ? 0.20 : 0.72),
+                width: 1,
+              ),
               boxShadow: [
-                BoxShadow(color: Colors.black.withValues(alpha: isDark ? 0.22 : 0.08), blurRadius: 24, offset: const Offset(0, 8)),
-                BoxShadow(color: Colors.white.withValues(alpha: isDark ? 0.05 : 0.8), blurRadius: 1, offset: const Offset(0, 1)),
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: isDark ? 0.28 : 0.10),
+                  blurRadius: 28,
+                  spreadRadius: 0,
+                  offset: const Offset(0, 10),
+                ),
+                BoxShadow(
+                  color: Colors.white.withValues(alpha: isDark ? 0.07 : 0.90),
+                  blurRadius: 1,
+                  offset: const Offset(0, 1),
+                ),
               ],
             ),
-            child: Row(
+            child: Stack(
               children: [
-                for (var i = 0; i < items.length; i++)
-                  Expanded(
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(22),
-                      onTap: () => setState(() => _index = i),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 220),
-                        curve: Curves.easeOutCubic,
-                        padding: const EdgeInsets.symmetric(vertical: 7),
-                        decoration: BoxDecoration(
-                          color: _index == i ? scheme.primary.withValues(alpha: isDark ? 0.28 : 0.14) : Colors.transparent,
-                          borderRadius: BorderRadius.circular(22),
-                          border: _index == i ? Border.all(color: scheme.primary.withValues(alpha: 0.22)) : null,
-                        ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(_index == i ? items[i].$2 : items[i].$1, size: 22, color: _index == i ? scheme.primary : scheme.onSurfaceVariant),
-                            const SizedBox(height: 3),
-                            Text(items[i].$3, style: TextStyle(fontSize: 11, fontWeight: _index == i ? FontWeight.w700 : FontWeight.w500, color: _index == i ? scheme.primary : scheme.onSurfaceVariant)),
+                // 顶部柔和高光，让玻璃边缘更有通透感。
+                Positioned(
+                  left: 24,
+                  right: 24,
+                  top: 0,
+                  child: IgnorePointer(
+                    child: Container(
+                      height: 1,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            Colors.transparent,
+                            Colors.white.withValues(alpha: isDark ? 0.26 : 0.95),
+                            Colors.transparent,
                           ],
                         ),
                       ),
                     ),
                   ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 7),
+                  child: Row(
+                    children: [
+                      for (var i = 0; i < items.length; i++)
+                        Expanded(
+                          child: Semantics(
+                            button: true,
+                            selected: _index == i,
+                            label: items[i].$3,
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(24),
+                              onTap: () => setState(() => _index = i),
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 240),
+                                curve: Curves.easeOutCubic,
+                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                decoration: BoxDecoration(
+                                  gradient: _index == i
+                                      ? LinearGradient(
+                                          begin: Alignment.topLeft,
+                                          end: Alignment.bottomRight,
+                                          colors: [
+                                            scheme.primary.withValues(alpha: isDark ? 0.34 : 0.18),
+                                            scheme.primary.withValues(alpha: isDark ? 0.18 : 0.08),
+                                          ],
+                                        )
+                                      : null,
+                                  borderRadius: BorderRadius.circular(24),
+                                  border: _index == i
+                                      ? Border.all(
+                                          color: scheme.primary.withValues(alpha: 0.28),
+                                        )
+                                      : null,
+                                ),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    AnimatedSwitcher(
+                                      duration: const Duration(milliseconds: 180),
+                                      child: Icon(
+                                        _index == i ? items[i].$2 : items[i].$1,
+                                        key: ValueKey('nav-icon-$i-$_index'),
+                                        size: 22,
+                                        color: _index == i
+                                            ? scheme.primary
+                                            : scheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 3),
+                                    Text(
+                                      items[i].$3,
+                                      maxLines: 1,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        height: 1.15,
+                                        letterSpacing: 0.1,
+                                        fontWeight: _index == i
+                                            ? FontWeight.w700
+                                            : FontWeight.w500,
+                                        color: _index == i
+                                            ? scheme.primary
+                                            : scheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
@@ -147,4 +242,5 @@ class _AppShellState extends State<AppShell> {
       ),
     );
   }
+}
 }
