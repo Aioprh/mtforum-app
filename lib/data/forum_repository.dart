@@ -1873,7 +1873,7 @@ class ForumRepository {
   }
 
   /// Discuz 原生搜索：formhash -> POST 关键词 -> searchid 翻页。
-  Future<List<ThreadSummary>> search(String keyword, {int fid = 0, int maxPages = 3}) async {
+  Future<List<ThreadSummary>> search(String keyword, {int fid = 0, int maxPages = 20}) async {
     final page = await _http.get('search.php', query: {'mod': 'forum', 'mobile': '2'});
     _ensureOk(page);
     final formHash = _findFormhash(page.body);
