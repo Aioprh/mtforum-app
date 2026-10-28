@@ -1902,6 +1902,7 @@ class _EditPostPageState extends State<_EditPostPage> {
   String? _error;
   final ImagePicker _imagePicker = ImagePicker();
   _EditPanel? _panel;
+  String? _editMediaKind;
   final TextEditingController _mentionController = TextEditingController();
   final TextEditingController _insertUrlController = TextEditingController();
   final TextEditingController _insertLabelController = TextEditingController();
@@ -1933,7 +1934,7 @@ class _EditPostPageState extends State<_EditPostPage> {
 
   void _toggleEditPanel(_EditPanel panel) {
     FocusScope.of(context).unfocus();
-    setState(() => _panel = _panel == panel ? null : panel);
+    setState(() { _panel = _panel == panel ? null : panel; _editMediaKind = null; });
     if (panel == _EditPanel.mention && _panel == panel) _loadEditFriends();
   }
 
@@ -2422,16 +2423,22 @@ class _EditPostPageState extends State<_EditPostPage> {
               ('引用','quote'), ('代码','code'), ('加粗','b'), ('斜体','i'),
               ('隐藏内容','hide'), ('免费信息','free'),
             ]) ActionChip(label: Text(item.$1), onPressed: () => _insertEditTag(item.$2)),
-            ActionChip(label: const Text('网络图片'), onPressed: () => _insertEditMedia('img')),
-            ActionChip(label: const Text('音频'), onPressed: () => _insertEditMedia('audio')),
-            ActionChip(label: const Text('视频'), onPressed: () => _insertEditMedia('video')),
-            ActionChip(label: const Text('Flash'), onPressed: () => _insertEditMedia('flash')),
+            ActionChip(label: const Text('网络图片'), onPressed: () => setState(() => _editMediaKind = 'img')),
+            ActionChip(label: const Text('音频'), onPressed: () => setState(() => _editMediaKind = 'audio')),
+            ActionChip(label: const Text('视频'), onPressed: () => setState(() => _editMediaKind = 'video')),
+            ActionChip(label: const Text('Flash'), onPressed: () => setState(() => _editMediaKind = 'flash')),
           ]),
           const SizedBox(height: 8),
           TextField(controller: _insertUrlController, keyboardType: TextInputType.url,
             decoration: const InputDecoration(labelText: '链接 / 媒体地址', isDense: true)),
           TextField(controller: _insertLabelController, decoration: const InputDecoration(labelText: '链接显示文字（可选）', isDense: true)),
-          Align(alignment: Alignment.centerRight, child: FilledButton(onPressed: _insertEditLink, child: const Text('插入链接'))),
+          Wrap(spacing: 8, children: [
+            FilledButton(onPressed: _insertEditLink, child: const Text('插入链接')),
+            if (_editMediaKind != null)
+              FilledButton.tonal(onPressed: () => _insertEditMedia(_editMediaKind!), child: Text(switch (_editMediaKind) {
+                'img' => '插入网络图片', 'audio' => '插入音频', 'video' => '插入视频', _ => '插入 Flash',
+              })),
+          ]),
         ]));
       case _EditPanel.attach:
         return shell(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
