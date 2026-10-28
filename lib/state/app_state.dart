@@ -13,6 +13,8 @@ class AppState extends ChangeNotifier {
   static const String _themeKey = 'mt_forum_theme';
   static const String _themeSeedKey = 'mt_forum_theme_seed';
   static const String _floatingGlassNavKey = 'mt_forum_floating_glass_nav';
+  static const String _floatingGlassNavOpacityKey = 'mt_forum_floating_glass_nav_opacity';
+  static const String _floatingGlassNavBlurKey = 'mt_forum_floating_glass_nav_blur';
   static const String _autoSignInDateKey = 'mt_forum_auto_signin_date';
   bool _autoSignInRunning = false;
   String? _autoSignInAttemptDate;
@@ -23,6 +25,8 @@ class AppState extends ChangeNotifier {
   ThemeMode themeMode = ThemeMode.system;
   Color themeSeedColor = const Color(0xFF607080);
   bool floatingGlassNav = false;
+  double floatingGlassNavOpacity = 0.25;
+  double floatingGlassNavBlur = 30.0;
   UserProfile? profile;
   bool localReady = false;
   bool profileLoading = false;
@@ -39,6 +43,8 @@ class AppState extends ChangeNotifier {
     final theme = prefs.getString(_themeKey);
     themeSeedColor = Color(prefs.getInt(_themeSeedKey) ?? 0xFF607080);
     floatingGlassNav = prefs.getBool(_floatingGlassNavKey) ?? false;
+    floatingGlassNavOpacity = (prefs.getDouble(_floatingGlassNavOpacityKey) ?? 0.25).clamp(0.05, 0.65).toDouble();
+    floatingGlassNavBlur = (prefs.getDouble(_floatingGlassNavBlurKey) ?? 30.0).clamp(0.0, 40.0).toDouble();
     themeMode = switch (theme) {
       'light' => ThemeMode.light,
       'dark' => ThemeMode.dark,
@@ -134,6 +140,15 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_floatingGlassNavKey, enabled);
+  }
+
+  Future<void> setFloatingGlassNavAppearance({required double opacity, required double blur}) async {
+    floatingGlassNavOpacity = opacity.clamp(0.05, 0.65).toDouble();
+    floatingGlassNavBlur = blur.clamp(0.0, 40.0).toDouble();
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_floatingGlassNavOpacityKey, floatingGlassNavOpacity);
+    await prefs.setDouble(_floatingGlassNavBlurKey, floatingGlassNavBlur);
   }
 
   Future<void> setThemeSeedColor(Color color) async {
