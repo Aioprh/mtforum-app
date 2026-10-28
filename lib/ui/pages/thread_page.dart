@@ -2451,6 +2451,19 @@ class _EditPostPageState extends State<_EditPostPage> {
             leading: Icon(item.error != null ? Icons.error_outline : item.uploading ? Icons.cloud_upload_outlined : item.image ? Icons.image_outlined : Icons.insert_drive_file_outlined),
             title: Text(item.name, maxLines: 1, overflow: TextOverflow.ellipsis),
             subtitle: Text(item.error ?? (item.uploading ? '上传中' : item.aid == null ? '待上传' : '已上传 · aid ${item.aid}')),
+            trailing: IconButton(
+              tooltip: '移除附件',
+              onPressed: item.uploading ? null : () {
+                final aid = item.aid;
+                if (aid != null) {
+                  final tag = item.image ? '[attachimg]$aid[/attachimg]' : '[attach]$aid[/attach]';
+                  _message.text = _message.text.replaceAll(tag, '');
+                  _message.selection = TextSelection.collapsed(offset: _message.text.length);
+                }
+                setState(() => _attachments.remove(item));
+              },
+              icon: const Icon(Icons.close_rounded, size: 18),
+            ),
           ),
         ]));
     }
