@@ -265,9 +265,21 @@ class ForumRepository {
   }
 
   ForumPost? _parsePost(Element el, int floor) {
-    final pidMatch = RegExp(r'pid(\d+)').firstMatch(el.attributes['id'] ?? '');
+    final pidMatch = RegExp(r'pid(\\d+)').firstMatch(el.attributes['id'] ?? '');
     if (pidMatch == null) return null;
     final pid = int.tryParse(pidMatch.group(1)!) ?? 0;
+
+    // Discuz 置顶回复会被移动到回复列表顶部，但楼层号仍应保留原始位置。
+    // 手机模板通常在来源标记中显示「来自5#」，不能用当前 DOM 顺序重算。
+    var originalFloor = floor;
+    final floorText = [
+      ...el.querySelectorAll('[class*="floor"], [class*="from"], .comiis_postli_time, .comiis_postli_times'),
+      el,
+    ].map((node) => _clean(node.text)).join(' ');
+    final originalFloorMatch = RegExp(r'来自\\s*(\\d+)\\s*#').firstMatch(floorText);
+    if (originalFloorMatch != null) {
+      originalFloor = int.tryParse(originalFloorMatch.group(1)!) ?? floor;
+    }
 
     final author = _clean(el.querySelector('.top_user')?.text ?? '');
     final uid = _postUid(el);
@@ -297,7 +309,7 @@ class ForumRepository {
       avatar: avatar,
       time: time,
       html: _sanitize(contentEl.innerHtml),
-      floor: floor,
+      floor: originalFloor,
       uid: uid,
       level: level,
       location: location,
