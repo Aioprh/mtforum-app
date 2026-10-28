@@ -2291,10 +2291,10 @@ class _EditPostPageState extends State<_EditPostPage> {
 
   Widget _editPanelContent(ColorScheme scheme) {
     Widget shell(Widget child) => Container(
-      constraints: const BoxConstraints(maxHeight: 230),
+      constraints: const BoxConstraints(maxHeight: 320),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: scheme.surfaceContainer.withValues(alpha: 0.98),
+        color: scheme.surfaceContainerLow,
         border: Border(bottom: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.65))),
       ),
       child: SingleChildScrollView(child: child),
@@ -2308,7 +2308,7 @@ class _EditPostPageState extends State<_EditPostPage> {
         return shell(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             Expanded(child: TextField(controller: _mentionController, onChanged: (_) => setState(() {}),
-              decoration: const InputDecoration(hintText: '搜索好友或输入用户名', isDense: true, prefixIcon: Icon(Icons.search)))),
+              decoration: const InputDecoration(hintText: '搜索好友或输入用户名', isDense: true, prefixIcon: Icon(Icons.search), border: OutlineInputBorder()))),
             const SizedBox(width: 8),
             FilledButton(onPressed: _insertEditMention, child: const Text('@添加')),
           ]),
@@ -2322,28 +2322,59 @@ class _EditPostPageState extends State<_EditPostPage> {
             leading: const Icon(Icons.alternate_email), onTap: () => _insertEditMention(friend.username)),
         ]));
       case _EditPanel.insert:
+        const chips = <(String, String, String)>[
+          ('url', '文字链接', 'url'), ('img', '网络图片', 'img'),
+          ('audio', 'MP3 音乐', 'audio'), ('video', '网络视频', 'video'),
+          ('flash', 'Flash', 'flash'), ('quote', '引用', 'quote'),
+          ('code', '代码', 'code'), ('b', '加粗', 'b'), ('i', '斜体', 'i'),
+          ('free', '免费信息', 'free'), ('hide', '隐藏内容', 'hide'),
+        ];
+        final isLink = _editMediaKind == 'url';
+        final isMedia = const {'img', 'audio', 'video', 'flash'}.contains(_editMediaKind);
         return shell(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Wrap(spacing: 6, runSpacing: 4, children: [
-            for (final item in <(String,String)>[
-              ('引用','quote'), ('代码','code'), ('加粗','b'), ('斜体','i'),
-              ('隐藏内容','hide'), ('免费信息','free'),
-            ]) ActionChip(label: Text(item.$1), onPressed: () => _insertEditTag(item.$2)),
-            ActionChip(label: const Text('网络图片'), onPressed: () => setState(() => _editMediaKind = 'img')),
-            ActionChip(label: const Text('音频'), onPressed: () => setState(() => _editMediaKind = 'audio')),
-            ActionChip(label: const Text('视频'), onPressed: () => setState(() => _editMediaKind = 'video')),
-            ActionChip(label: const Text('Flash'), onPressed: () => setState(() => _editMediaKind = 'flash')),
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            for (final chip in chips)
+              ChoiceChip(
+                label: Text(chip.$2, style: TextStyle(fontSize: 12,
+                  color: _editMediaKind == chip.$1 ? scheme.onPrimaryContainer : scheme.onSurface)),
+                backgroundColor: scheme.surface,
+                selectedColor: scheme.primaryContainer,
+                side: BorderSide(color: _editMediaKind == chip.$1
+                  ? scheme.primary.withValues(alpha: 0.65)
+                  : scheme.outlineVariant.withValues(alpha: 0.8)),
+                selected: _editMediaKind == chip.$1,
+                onSelected: (_) {
+                  if (const {'quote', 'code', 'b', 'i', 'free', 'hide'}.contains(chip.$1)) {
+                    _insertEditTag(chip.$3);
+                    return;
+                  }
+                  setState(() {
+                    _editMediaKind = chip.$1;
+                    _insertUrlController.clear();
+                    _insertLabelController.clear();
+                  });
+                },
+              ),
           ]),
-          const SizedBox(height: 8),
-          TextField(controller: _insertUrlController, keyboardType: TextInputType.url,
-            decoration: const InputDecoration(labelText: '链接 / 媒体地址', isDense: true)),
-          TextField(controller: _insertLabelController, decoration: const InputDecoration(labelText: '链接显示文字（可选）', isDense: true)),
-          Wrap(spacing: 8, children: [
-            FilledButton(onPressed: _insertEditLink, child: const Text('插入链接')),
-            if (_editMediaKind != null)
-              FilledButton.tonal(onPressed: () => _insertEditMedia(_editMediaKind!), child: Text(switch (_editMediaKind) {
-                'img' => '插入网络图片', 'audio' => '插入音频', 'video' => '插入视频', _ => '插入 Flash',
-              })),
-          ]),
+          if (isLink || isMedia) ...[
+            const SizedBox(height: 12),
+            TextField(controller: _insertUrlController, keyboardType: TextInputType.url,
+              decoration: InputDecoration(labelText: isLink ? '链接网址' : '链接 / 媒体地址',
+                hintText: 'https://', isDense: true, border: const OutlineInputBorder())),
+            if (isLink) ...[
+              const SizedBox(height: 10),
+              TextField(controller: _insertLabelController,
+                decoration: const InputDecoration(labelText: '链接文字（可留空）', isDense: true, border: OutlineInputBorder())),
+            ],
+            const SizedBox(height: 10),
+            SizedBox(width: double.infinity, child: FilledButton.icon(
+              onPressed: isLink ? _insertEditLink : () => _insertEditMedia(_editMediaKind!),
+              icon: const Icon(Icons.add_link_rounded),
+              label: Text(isLink ? '插入链接' : '插入媒体内容'))),
+          ] else
+            Padding(padding: const EdgeInsets.only(top: 10),
+              child: Text('选择“文字链接”或媒体类型后，填写地址并点击插入；格式标签会直接包裹选中的正文。',
+                style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant))),
         ]));
       case _EditPanel.attach:
         return shell(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -2356,20 +2387,15 @@ class _EditPostPageState extends State<_EditPostPage> {
             leading: Icon(item.error != null ? Icons.error_outline : item.uploading ? Icons.cloud_upload_outlined : item.image ? Icons.image_outlined : Icons.insert_drive_file_outlined),
             title: Text(item.name, maxLines: 1, overflow: TextOverflow.ellipsis),
             subtitle: Text(item.error ?? (item.uploading ? '上传中' : item.aid == null ? '待上传' : '已上传 · aid ${item.aid}')),
-            trailing: IconButton(
-              tooltip: '移除附件',
-              onPressed: item.uploading ? null : () {
-                final aid = item.aid;
-                if (aid != null) {
-                  final tag = item.image ? '[attachimg]$aid[/attachimg]' : '[attach]$aid[/attach]';
-                  _message.text = _message.text.replaceAll(tag, '');
-                  _message.selection = TextSelection.collapsed(offset: _message.text.length);
-                }
-                setState(() => _attachments.remove(item));
-              },
-              icon: const Icon(Icons.close_rounded, size: 18),
-            ),
-          ),
+            trailing: IconButton(tooltip: '移除附件', onPressed: item.uploading ? null : () {
+              final aid = item.aid;
+              if (aid != null) {
+                final tag = item.image ? '[attachimg]$aid[/attachimg]' : '[attach]$aid[/attach]';
+                _message.text = _message.text.replaceAll(tag, '');
+                _message.selection = TextSelection.collapsed(offset: _message.text.length);
+              }
+              setState(() => _attachments.remove(item));
+            }, icon: const Icon(Icons.close_rounded, size: 18))),
         ]));
     }
   }
