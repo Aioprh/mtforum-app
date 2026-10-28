@@ -26,8 +26,8 @@ class MtForumApp extends StatelessWidget {
       builder: (context, _) => MaterialApp(
         title: AppConfig.appName,
         debugShowCheckedModeBanner: false,
-        theme: AppTheme.light(),
-        darkTheme: AppTheme.dark(),
+        theme: AppTheme.light(AppState.instance.themeSeedColor),
+        darkTheme: AppTheme.dark(AppState.instance.themeSeedColor),
         themeMode: AppState.instance.themeMode,
         locale: const Locale('zh', 'CN'),
         supportedLocales: const [Locale('zh', 'CN'), Locale('en', 'US')],
