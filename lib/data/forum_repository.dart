@@ -152,6 +152,21 @@ class ForumRepository {
     for (var i = 0; i < posts.length; i++) {
       posts[i] = posts[i].copyWith(isOp: hasThreadOpener && i == 0);
     }
+    // 置顶回复会移动到主题正文后面的第一条回复位置；保留它的原楼号，
+    // 并让其他未标注楼号的回复按原顺序连续编号、跳过被占用的楼号。
+    if (page == 1 && !orderDesc && authorId == null) {
+      final pinnedFloors = posts.where((p) => p.isPinned).map((p) => p.floor).toSet();
+      var nextFloor = 2;
+      for (var i = 0; i < posts.length; i++) {
+        final post = posts[i];
+        if (post.isOp || post.isPinned) continue;
+        while (pinnedFloors.contains(nextFloor)) {
+          nextFloor++;
+        }
+        posts[i] = post.copyWith(floor: nextFloor);
+        nextFloor++;
+      }
+    }
     // 楼主楼层偶发取不到 uid，退回用楼顶作者区再补一次。
     if (posts.isNotEmpty && posts.first.uid == 0) {
       final href = doc.querySelector('.comiis_postli_top a[href*="uid="]')?.attributes['href'] ?? '';
@@ -272,11 +287,13 @@ class ForumRepository {
     // Discuz 置顶回复会被移动到回复列表顶部，但楼层号仍应保留原始位置。
     // 手机模板通常在来源标记中显示「来自5#」，不能用当前 DOM 顺序重算。
     var originalFloor = floor;
-    final floorText = [
-      ...el.querySelectorAll('[class*="floor"], [class*="from"], .comiis_postli_time, .comiis_postli_times'),
-      el,
+    // 只从楼层/来源元数据中读取原楼号，不能扫描整条帖子正文，
+    // 否则正文引用“来自5#”也会污染其他评论的楼层标签。
+    final floorMeta = [
+      ...el.querySelectorAll('[class*="floor"], .comiis_postli_time, .comiis_postli_times'),
     ].map((node) => _clean(node.text)).join(' ');
-    final originalFloorMatch = RegExp(r'来自\s*(\d+)\s*#').firstMatch(floorText);
+    final originalFloorMatch = RegExp(r'来自\s*(\d+)\s*#').firstMatch(floorMeta);
+    final isPinned = originalFloorMatch != null;
     if (originalFloorMatch != null) {
       originalFloor = int.tryParse(originalFloorMatch.group(1)!) ?? floor;
     }
@@ -310,6 +327,7 @@ class ForumRepository {
       time: time,
       html: _sanitize(contentEl.innerHtml),
       floor: originalFloor,
+      isPinned: isPinned,
       uid: uid,
       level: level,
       location: location,
