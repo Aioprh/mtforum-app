@@ -264,7 +264,7 @@ class ForumPost {
   final String rateSummary;
 
   /// 楼层标签：主题正文不参与评论排序；首条评论为沙发，第十楼为下水道。
-  String get floorLabel => isPinned ? '置顶 ${floor}#' : seatLabel;
+  String get floorLabel => isPinned ? '置顶 $floor#' : seatLabel;
 
   String get seatLabel {
     if (floor <= 1) return '';
