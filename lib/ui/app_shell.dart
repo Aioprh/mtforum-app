@@ -61,6 +61,7 @@ class _AppShellState extends State<AppShell> {
       child: AnimatedBuilder(
         animation: AppState.instance,
         builder: (context, _) => Scaffold(
+      extendBody: AppState.instance.floatingGlassNav,
       body: IndexedStack(index: _index, children: _pages),
       floatingActionButton: _index <= 1
           ? FloatingActionButton.extended(
@@ -112,23 +113,23 @@ class _AppShellState extends State<AppShell> {
                 end: Alignment.bottomRight,
                 colors: isDark
                     ? [
-                        const Color(0xFF303945).withValues(alpha: 0.88),
-                        const Color(0xFF171D26).withValues(alpha: 0.82),
+                        const Color(0xFF303945).withValues(alpha: 0.34),
+                        const Color(0xFF171D26).withValues(alpha: 0.24),
                       ]
                     : [
-                        Colors.white.withValues(alpha: 0.84),
-                        const Color(0xFFF1F5FA).withValues(alpha: 0.72),
+                        Colors.white.withValues(alpha: 0.34),
+                        const Color(0xFFF1F5FA).withValues(alpha: 0.22),
                       ],
               ),
               border: Border.all(
                 color: (isDark ? Colors.white : scheme.outlineVariant)
-                    .withValues(alpha: isDark ? 0.20 : 0.72),
+                    .withValues(alpha: isDark ? 0.18 : 0.42),
                 width: 1,
               ),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withValues(alpha: isDark ? 0.28 : 0.10),
-                  blurRadius: 28,
+                  blurRadius: 24,
                   spreadRadius: 0,
                   offset: const Offset(0, 10),
                 ),
