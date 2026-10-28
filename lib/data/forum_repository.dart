@@ -1873,14 +1873,20 @@ class ForumRepository {
   }
 
   /// Discuz 原生搜索：formhash -> POST 关键词 -> searchid 翻页。
-  Future<List<ThreadSummary>> search(String keyword, {int fid = 0, int maxPages = 20}) async {
-    final page = await _http.get('search.php', query: {'mod': 'forum', 'mobile': '2'});
-    _ensureOk(page);
-    final formHash = _findFormhash(page.body);
+  Future<List<ThreadSummary>> search(
+    String keyword, {
+    int fid = 0,
+    int page = 1,
+    int maxPages = 10,
+  }) async {
+    final landing = await _http.get('search.php', query: {'mod': 'forum', 'mobile': '2'});
+    _ensureOk(landing);
+    final formHash = _findFormhash(landing.body);
     if (formHash.isEmpty) {
-      throw SiteException(_pageMessage(parser.parse(page.body)) ?? '搜索需要登录，请先登录');
+      throw SiteException(_pageMessage(parser.parse(landing.body)) ?? '搜索需要登录，请先登录');
     }
 
+    // 每次分页请求都重新获取 searchid，避免依赖已过期的 Discuz 搜索会话。
     final response = await _http.post(
       'search.php',
       referer: AppConfig.uri('search.php', {'mod': 'forum', 'mobile': '2'}).toString(),
@@ -1892,7 +1898,7 @@ class ForumRepository {
         if (fid > 0) 'srchfid[]': '$fid',
       },
     );
-    final sid = RegExp(r'searchid=(\d+)').firstMatch(response.body)?.group(1);
+    final sid = RegExp(r'searchid=(\\d+)').firstMatch(response.body)?.group(1);
     if (sid == null) {
       final items = _parseThreadList(response.body);
       if (items.isNotEmpty) return items;
@@ -1903,7 +1909,8 @@ class ForumRepository {
 
     final results = <ThreadSummary>[];
     final seen = <int>{};
-    for (var pageNo = 1; pageNo <= maxPages; pageNo++) {
+    final lastPage = page + maxPages - 1;
+    for (var pageNo = page; pageNo <= lastPage; pageNo++) {
       final result = await _http.get(
         'search.php',
         query: {
@@ -1918,7 +1925,9 @@ class ForumRepository {
         },
       );
       _ensureOk(result);
-      final items = _parseThreadList(result.body);
+      var items = _parseThreadList(result.body);
+      // 搜索结果模板不一定使用首页列表的 li.forumlist_li 结构，解析不到时用宽松规则兜底。
+      if (items.isEmpty) items = _parseLooseThreads(result.body);
       if (items.isEmpty) break;
       for (final item in items) {
         if (seen.add(item.tid)) results.add(item);
