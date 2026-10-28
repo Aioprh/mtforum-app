@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../services/offline_thread_cache.dart';
@@ -1882,6 +1883,17 @@ class _EditPostPage extends StatefulWidget {
   State<_EditPostPage> createState() => _EditPostPageState();
 }
 
+enum _EditPanel { emoji, mention, insert, attach }
+
+class _EditAttachment {
+  _EditAttachment({required this.name, required this.image});
+  final String name;
+  final bool image;
+  int? aid;
+  bool uploading = false;
+  String? error;
+}
+
 class _EditPostPageState extends State<_EditPostPage> {
   late final TextEditingController _subject = TextEditingController(text: widget.subject);
   late final TextEditingController _message = TextEditingController(text: widget.message);
@@ -1889,11 +1901,22 @@ class _EditPostPageState extends State<_EditPostPage> {
   bool _uploading = false;
   String? _error;
   final ImagePicker _imagePicker = ImagePicker();
+  _EditPanel? _panel;
+  final TextEditingController _mentionController = TextEditingController();
+  final TextEditingController _insertUrlController = TextEditingController();
+  final TextEditingController _insertLabelController = TextEditingController();
+  List<FriendItem> _friends = const <FriendItem>[];
+  bool _friendsLoading = false;
+  String? _friendsError;
+  final List<_EditAttachment> _attachments = <_EditAttachment>[];
 
   @override
   void dispose() {
     _subject.dispose();
     _message.dispose();
+    _mentionController.dispose();
+    _insertUrlController.dispose();
+    _insertLabelController.dispose();
     super.dispose();
   }
 
@@ -1906,6 +1929,129 @@ class _EditPostPageState extends State<_EditPostPage> {
       text: text,
       selection: TextSelection.collapsed(offset: start + value.length),
     );
+  }
+
+  void _toggleEditPanel(_EditPanel panel) {
+    FocusScope.of(context).unfocus();
+    setState(() => _panel = _panel == panel ? null : panel);
+    if (panel == _EditPanel.mention && _panel == panel) _loadEditFriends();
+  }
+
+  Future<void> _loadEditFriends({bool force = false}) async {
+    if (_friendsLoading || (!force && _friends.isNotEmpty)) return;
+    if (!AppState.instance.isLoggedIn) {
+      setState(() => _friendsError = '登录后可读取论坛好友列表');
+      return;
+    }
+    setState(() { _friendsLoading = true; _friendsError = null; });
+    try {
+      final value = await AppState.instance.repo.fetchFriends();
+      if (!mounted) return;
+      setState(() { _friends = value; _friendsError = null; });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _friendsError = e is SiteException ? e.message : '好友列表加载失败');
+    } finally {
+      if (mounted) setState(() => _friendsLoading = false);
+    }
+  }
+
+  Future<void> _uploadFiles({required bool image}) async {
+    if (_uploading || _saving) return;
+    try {
+      final info = await AppState.instance.repo.fetchComposeInfo(widget.fid);
+      if (!mounted) return;
+      if (image) {
+        final picked = await _imagePicker.pickMultiImage(maxWidth: 1600, imageQuality: 78);
+        for (final file in picked) {
+          if (!mounted) return;
+          final item = _EditAttachment(name: file.name, image: true);
+          setState(() { _attachments.add(item); _uploading = true; _error = null; });
+          try {
+            final aid = await AppState.instance.repo.uploadAttachment(
+              bytes: await file.readAsBytes(), filename: file.name,
+              uploadHash: info.uploadHash, uid: info.uid,
+              referer: AppConfig.uri('forum.php', {'mod':'post','action':'edit','fid':'${widget.fid}','tid':'${widget.tid}','pid':'${widget.pid}','mobile':'2'}).toString(),
+              image: true,
+            );
+            if (!mounted) return;
+            item.aid = aid;
+            _insertAtCursor('\\n[attachimg]$aid[/attachimg]\\n');
+          } catch (e) {
+            if (!mounted) return;
+            item.error = e is SiteException ? e.message : '图片上传失败';
+            setState(() => _error = item.error);
+          } finally {
+            if (mounted) setState(() { item.uploading = false; _uploading = false; });
+          }
+        }
+      } else {
+        final picked = await FilePicker.pickFiles(type: FileType.any, allowMultiple: true);
+        if (picked.isEmpty) return;
+        for (final file in picked) {
+          if (!mounted) return;
+          final item = _EditAttachment(name: file.name, image: false);
+          setState(() { _attachments.add(item); _uploading = true; _error = null; });
+          try {
+            final bytes = await file.readAsBytes();
+            final aid = await AppState.instance.repo.uploadAttachment(
+              bytes: bytes, filename: file.name,
+              uploadHash: info.uploadHash, uid: info.uid,
+              referer: AppConfig.uri('forum.php', {'mod':'post','action':'edit','fid':'${widget.fid}','tid':'${widget.tid}','pid':'${widget.pid}','mobile':'2'}).toString(),
+              image: false,
+            );
+            if (!mounted) return;
+            item.aid = aid;
+            _insertAtCursor('\\n[attach]$aid[/attach]\\n');
+          } catch (e) {
+            if (!mounted) return;
+            item.error = e is SiteException ? e.message : '附件上传失败';
+            setState(() => _error = item.error);
+          } finally {
+            if (mounted) setState(() { item.uploading = false; _uploading = false; });
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) setState(() => _error = e is SiteException ? e.message : '上传失败，请重试');
+    }
+  }
+
+  void _insertEditMention([String? username]) {
+    final name = (username ?? _mentionController.text).trim();
+    if (name.isEmpty) { setState(() => _error = '请输入要 @ 的用户名'); return; }
+    _insertAtCursor('@$name ');
+    _mentionController.clear();
+    setState(() => _panel = null);
+  }
+
+  void _insertEditTag(String tag) {
+    _wrapTag(tag);
+    setState(() => _panel = null);
+  }
+
+  Future<void> _insertEditLink() async {
+    final url = _insertUrlController.text.trim();
+    final label = _insertLabelController.text.trim();
+    if (url.isEmpty) { setState(() => _error = '请输入链接网址'); return; }
+    _insertAtCursor('[url=$url]${label.isEmpty ? url : label}[/url]');
+    _insertUrlController.clear(); _insertLabelController.clear();
+    setState(() => _panel = null);
+  }
+
+  Future<void> _insertEditMedia(String kind) async {
+    final url = _insertUrlController.text.trim();
+    if (url.isEmpty) { setState(() => _error = '请输入链接地址'); return; }
+    final tag = switch (kind) {
+      'img' => '[img]$url[/img]',
+      'audio' => '[audio]$url[/audio]',
+      'video' => '[media=x,500,375]$url[/media]',
+      'flash' => '[flash=480,400]$url[/flash]',
+      _ => url,
+    };
+    _insertAtCursor(tag);
+    _insertUrlController.clear();
+    setState(() => _panel = null);
   }
 
   Future<void> _uploadImages() async {
@@ -2031,6 +2177,7 @@ class _EditPostPageState extends State<_EditPostPage> {
       return;
     }
     setState(() {
+      _panel = null;
       _saving = true;
       _error = null;
     });
@@ -2150,11 +2297,11 @@ class _EditPostPageState extends State<_EditPostPage> {
                       spacing: 4,
                       runSpacing: 4,
                       children: [
-                        _editorTool(Icons.add_photo_alternate_outlined, '上传图片', _uploading ? null : _uploadImages),
-                        _editorTool(Icons.image_outlined, '网络图片', () => _insertMediaTag('img')),
-                        _editorTool(Icons.link_rounded, '链接', _insertLink),
-                        _editorTool(Icons.audio_file_outlined, '音频', () => _insertMediaTag('audio')),
-                        _editorTool(Icons.video_library_outlined, '视频', () => _insertMediaTag('video')),
+                        _editorTool(Icons.sentiment_satisfied_alt_rounded, '表情', () => _toggleEditPanel(_EditPanel.emoji)),
+                        _editorTool(Icons.alternate_email_rounded, '@朋友', () => _toggleEditPanel(_EditPanel.mention)),
+                        _editorTool(Icons.send_rounded, '插入', () => _toggleEditPanel(_EditPanel.insert)),
+                        _editorTool(Icons.attach_file_rounded, '附件', () => _toggleEditPanel(_EditPanel.attach)),
+                        _editorTool(Icons.add_photo_alternate_outlined, '上传图片', _uploading ? null : () => _uploadFiles(image: true)),
                         _editorTool(Icons.format_bold_rounded, '加粗', () => _wrapTag('b')),
                         _editorTool(Icons.format_italic_rounded, '斜体', () => _wrapTag('i')),
                         _editorTool(Icons.format_quote_rounded, '引用', () => _wrapTag('quote')),
@@ -2162,6 +2309,7 @@ class _EditPostPageState extends State<_EditPostPage> {
                       ],
                     ),
                   ),
+                  if (_panel != null) _editPanelContent(scheme),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
                     child: TextField(
@@ -2234,6 +2382,74 @@ class _EditPostPageState extends State<_EditPostPage> {
       ),
     );
   }
+
+  Widget _editPanelContent(ColorScheme scheme) {
+    Widget shell(Widget child) => Container(
+      constraints: const BoxConstraints(maxHeight: 230),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainer.withValues(alpha: 0.98),
+        border: Border(bottom: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.65))),
+      ),
+      child: SingleChildScrollView(child: child),
+    );
+    switch (_panel!) {
+      case _EditPanel.emoji:
+        return EmojiPanel(onSelected: (emoji) => _insertAtCursor(_emojiInsertion(emoji)));
+      case _EditPanel.mention:
+        final key = _mentionController.text.trim().toLowerCase();
+        final friends = _friends.where((f) => key.isEmpty || f.username.toLowerCase().contains(key)).take(12);
+        return shell(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Expanded(child: TextField(controller: _mentionController, onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(hintText: '搜索好友或输入用户名', isDense: true, prefixIcon: Icon(Icons.search)))),
+            const SizedBox(width: 8),
+            FilledButton(onPressed: _insertEditMention, child: const Text('@添加')),
+          ]),
+          Row(children: [
+            Expanded(child: Text(_friendsError ?? (_friendsLoading ? '正在加载好友…' : '选择好友可插入 @用户名，也可手动输入。'),
+              style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant))),
+            IconButton(onPressed: _friendsLoading ? null : () => _loadEditFriends(force: true), icon: const Icon(Icons.refresh)),
+          ]),
+          if (_friendsLoading) const LinearProgressIndicator(),
+          for (final friend in friends) ListTile(dense: true, title: Text(friend.username),
+            leading: const Icon(Icons.alternate_email), onTap: () => _insertEditMention(friend.username)),
+        ]));
+      case _EditPanel.insert:
+        return shell(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Wrap(spacing: 6, runSpacing: 4, children: [
+            for (final item in <(String,String)>[
+              ('引用','quote'), ('代码','code'), ('加粗','b'), ('斜体','i'),
+              ('隐藏内容','hide'), ('免费信息','free'),
+            ]) ActionChip(label: Text(item.$1), onPressed: () => _insertEditTag(item.$2)),
+            ActionChip(label: const Text('网络图片'), onPressed: () => _insertEditMedia('img')),
+            ActionChip(label: const Text('音频'), onPressed: () => _insertEditMedia('audio')),
+            ActionChip(label: const Text('视频'), onPressed: () => _insertEditMedia('video')),
+            ActionChip(label: const Text('Flash'), onPressed: () => _insertEditMedia('flash')),
+          ]),
+          const SizedBox(height: 8),
+          TextField(controller: _insertUrlController, keyboardType: TextInputType.url,
+            decoration: const InputDecoration(labelText: '链接 / 媒体地址', isDense: true)),
+          TextField(controller: _insertLabelController, decoration: const InputDecoration(labelText: '链接显示文字（可选）', isDense: true)),
+          Align(alignment: Alignment.centerRight, child: FilledButton(onPressed: _insertEditLink, child: const Text('插入链接'))),
+        ]));
+      case _EditPanel.attach:
+        return shell(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          SizedBox(width: double.infinity, child: FilledButton.icon(
+            onPressed: _uploading ? null : () => _uploadFiles(image: false),
+            icon: const Icon(Icons.attach_file), label: Text(_uploading ? '正在上传…' : '添加文件 / 选择附件'))),
+          Text('支持多选文件；格式及大小由论坛附件规则决定。上传成功后会在光标处插入附件标记。',
+            style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+          for (final item in _attachments) ListTile(dense: true,
+            leading: Icon(item.error != null ? Icons.error_outline : item.uploading ? Icons.cloud_upload_outlined : item.image ? Icons.image_outlined : Icons.insert_drive_file_outlined),
+            title: Text(item.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+            subtitle: Text(item.error ?? (item.uploading ? '上传中' : item.aid == null ? '待上传' : '已上传 · aid ${item.aid}')),
+          ),
+        ]));
+    }
+  }
+
+  String _emojiInsertion(String emoji) => emoji;
 
   Widget _editorTool(IconData icon, String label, VoidCallback? onPressed) {
     final scheme = Theme.of(context).colorScheme;
