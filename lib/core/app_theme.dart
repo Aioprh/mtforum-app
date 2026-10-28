@@ -6,7 +6,7 @@ import 'app_config.dart';
 class AppTheme {
   const AppTheme._();
 
-  static const Color defaultSeed = Color(0xFF12B76A);
+  static const Color defaultSeed = Color(0xFF607080);
 
   static ThemeData light([Color seed = defaultSeed]) {
     final scheme = ColorScheme.fromSeed(seedColor: seed, brightness: Brightness.light);
