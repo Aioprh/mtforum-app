@@ -1830,13 +1830,137 @@ class _EditPostPageState extends State<_EditPostPage> {
   late final TextEditingController _subject = TextEditingController(text: widget.subject);
   late final TextEditingController _message = TextEditingController(text: widget.message);
   bool _saving = false;
+  bool _uploading = false;
   String? _error;
+  final ImagePicker _imagePicker = ImagePicker();
 
   @override
   void dispose() {
     _subject.dispose();
     _message.dispose();
     super.dispose();
+  }
+
+  void _insertAtCursor(String value) {
+    final selection = _message.selection;
+    final start = selection.isValid ? selection.start : _message.text.length;
+    final end = selection.isValid ? selection.end : _message.text.length;
+    final text = _message.text.replaceRange(start, end, value);
+    _message.value = TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: start + value.length),
+    );
+  }
+
+  Future<void> _uploadImages() async {
+    if (_uploading || _saving) return;
+    try {
+      final picked = await _imagePicker.pickMultiImage(maxWidth: 1600, imageQuality: 82);
+      if (picked.isEmpty || !mounted) return;
+      setState(() {
+        _uploading = true;
+        _error = null;
+      });
+      final info = await AppState.instance.repo.fetchComposeInfo(widget.fid);
+      for (final file in picked) {
+        if (!mounted) return;
+        final bytes = await file.readAsBytes();
+        final aid = await AppState.instance.repo.uploadAttachment(
+          bytes: bytes,
+          filename: file.name,
+          uploadHash: info.uploadHash,
+          uid: info.uid,
+          referer: AppConfig.uri('forum.php', {
+            'mod': 'post',
+            'action': 'edit',
+            'fid': '${widget.fid}',
+            'tid': '${widget.tid}',
+            'pid': '${widget.pid}',
+            'mobile': '2',
+          }).toString(),
+          image: true,
+        );
+        if (!mounted) return;
+        _insertAtCursor('\n[attachimg]$aid[/attachimg]\n');
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e is SiteException ? e.message : '图片上传失败，请重试');
+    } finally {
+      if (mounted) setState(() => _uploading = false);
+    }
+  }
+
+  Future<void> _insertLink() async {
+    final urlController = TextEditingController();
+    final labelController = TextEditingController();
+    final result = await showDialog<(String, String)>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('插入链接'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(controller: urlController, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: '链接地址')),
+            TextField(controller: labelController, decoration: const InputDecoration(labelText: '显示文字（可选）')),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, (urlController.text.trim(), labelController.text.trim())), child: const Text('插入')),
+        ],
+      ),
+    );
+    final url = result?.$1 ?? '';
+    final label = result?.$2 ?? '';
+    urlController.dispose();
+    labelController.dispose();
+    if (url.isEmpty || !mounted) return;
+    _insertAtCursor('[url=$url]${label.isEmpty ? url : label}[/url]');
+  }
+
+  Future<void> _insertMediaTag(String kind) async {
+    final controller = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(switch (kind) {
+          'img' => '插入网络图片',
+          'audio' => '插入音频',
+          'video' => '插入视频',
+          _ => '插入媒体',
+        }),
+        content: TextField(controller: controller, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: '网络地址')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, controller.text.trim()), child: const Text('插入')),
+        ],
+      ),
+    );
+    controller.dispose();
+    final url = result ?? '';
+    if (url.isEmpty || !mounted) return;
+    final tag = switch (kind) {
+      'img' => '[img]$url[/img]',
+      'audio' => '[audio]$url[/audio]',
+      'video' => '[media=x,500,375]$url[/media]',
+      _ => url,
+    };
+    _insertAtCursor(tag);
+  }
+
+  void _wrapTag(String tag) {
+    final selection = _message.selection;
+    final start = selection.isValid ? selection.start : _message.text.length;
+    final end = selection.isValid ? selection.end : _message.text.length;
+    final selected = start < end ? _message.text.substring(start, end) : '';
+    final open = '[$tag]';
+    final close = '[/$tag]';
+    final value = '$open$selected$close';
+    _message.value = TextEditingValue(
+      text: _message.text.replaceRange(start, end, value),
+      selection: TextSelection.collapsed(offset: start + open.length + selected.length),
+    );
   }
 
   Future<void> _save() async {
@@ -1905,6 +2029,35 @@ class _EditPostPageState extends State<_EditPostPage> {
               ),
               const SizedBox(height: 14),
             ],
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              decoration: BoxDecoration(
+                color: scheme.surfaceContainerLow,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                border: Border.all(color: scheme.outlineVariant),
+              ),
+              child: Wrap(
+                spacing: 4,
+                runSpacing: 2,
+                children: [
+                  IconButton(
+                    tooltip: '上传图片',
+                    onPressed: _uploading || _saving ? null : _uploadImages,
+                    icon: _uploading
+                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.add_photo_alternate_outlined),
+                  ),
+                  IconButton(tooltip: '插入网络图片', onPressed: _saving ? null : () => _insertMediaTag('img'), icon: const Icon(Icons.image_outlined)),
+                  IconButton(tooltip: '插入链接', onPressed: _saving ? null : _insertLink, icon: const Icon(Icons.link_rounded)),
+                  IconButton(tooltip: '插入音频', onPressed: _saving ? null : () => _insertMediaTag('audio'), icon: const Icon(Icons.audio_file_outlined)),
+                  IconButton(tooltip: '插入视频', onPressed: _saving ? null : () => _insertMediaTag('video'), icon: const Icon(Icons.video_library_outlined)),
+                  IconButton(tooltip: '加粗', onPressed: _saving ? null : () => _wrapTag('b'), icon: const Icon(Icons.format_bold_rounded)),
+                  IconButton(tooltip: '斜体', onPressed: _saving ? null : () => _wrapTag('i'), icon: const Icon(Icons.format_italic_rounded)),
+                  IconButton(tooltip: '引用', onPressed: _saving ? null : () => _wrapTag('quote'), icon: const Icon(Icons.format_quote_rounded)),
+                  IconButton(tooltip: '代码', onPressed: _saving ? null : () => _wrapTag('code'), icon: const Icon(Icons.code_rounded)),
+                ],
+              ),
+            ),
             TextField(
               controller: _message,
               minLines: 10,
@@ -1913,7 +2066,8 @@ class _EditPostPageState extends State<_EditPostPage> {
               decoration: const InputDecoration(
                 labelText: '内容',
                 alignLabelWithHint: true,
-                hintText: '支持 Discuz BBCode',
+                hintText: '支持 Discuz BBCode；选中文字后可套用格式',
+                border: OutlineInputBorder(borderRadius: BorderRadius.vertical(bottom: Radius.circular(12))),
               ),
             ),
             if (_error != null) ...[
