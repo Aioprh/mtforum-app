@@ -1,13 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
-
-import '../../core/http_session.dart';
 import '../../core/app_config.dart';
-import '../../data/models.dart';
 import '../../state/app_state.dart';
-import '../widgets/state_views.dart';
-import 'login_page.dart';
-import 'thread_page.dart';
 import 'internal_browser_page.dart';
 import 'pm_list_page.dart';
 
@@ -20,15 +13,6 @@ class NotificationsPage extends StatefulWidget {
 }
 
 class _NotificationsPageState extends State<NotificationsPage> {
-  final List<NoticeItem> _items = [];
-  bool _loading = true;
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-  }
-
   Future<void> _openCategory(String title, String url) async {
     if (title == '我的消息') {
       await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PmListPage()));
@@ -37,31 +21,6 @@ class _NotificationsPageState extends State<NotificationsPage> {
     await Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => InternalBrowserPage(url: AppConfig.uri(url).toString(), title: title),
     ));
-  }
-
-  Future<void> _openLogin() async {
-    final ok = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => const LoginPage()),
-    );
-    if (ok == true) _load();
-  }
-
-  void _openItem(NoticeItem item) {
-    final thread = RegExp(r'thread-(\d+)-\d+-\d+\.html').firstMatch(item.url);
-    if (thread != null) {
-      Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => ThreadPage(tid: int.parse(thread.group(1)!))),
-      );
-      return;
-    }
-    final tid = RegExp(r'[?&]tid=(\d+)').firstMatch(item.url)?.group(1);
-    if (tid != null) {
-      Navigator.of(context).push(MaterialPageRoute(builder: (_) => ThreadPage(tid: int.parse(tid))));
-      return;
-    }
-    if (item.url.isNotEmpty) {
-      launchUrl(Uri.parse(item.url), mode: LaunchMode.externalApplication);
-    }
   }
 
   @override
