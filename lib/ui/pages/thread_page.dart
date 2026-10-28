@@ -243,7 +243,7 @@ class _ThreadPageState extends State<ThreadPage> {
       useSafeArea: true,
       builder: (_) => _CommentSheet(
         title: '点评 · ${post.floorLabel}',
-        hint: replyTo.isEmpty ? '说点什么…' : '回复 @$replyTo…',
+        hint: replyTo.isEmpty ? '说点什么…' : '回复这条点评…',
       ),
     );
     if (text == null || text.isEmpty || !mounted) return;
@@ -251,7 +251,7 @@ class _ThreadPageState extends State<ThreadPage> {
       final message = await _repo.addComment(
         tid: widget.tid,
         pid: post.pid,
-        message: replyTo.isEmpty ? text : '回复 @$replyTo：$text',
+        message: text,
         formhash: detail.formhash,
       );
       if (!mounted) return;
