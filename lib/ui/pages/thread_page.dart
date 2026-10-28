@@ -1355,7 +1355,7 @@ class _ThreadPageState extends State<ThreadPage> {
             const SizedBox(height: 4),
             Row(
               children: [
-                _floorAction(Icons.reply_rounded, '回复', () => _openCommentSheet(post), highlight: false),
+                _floorAction(Icons.reply_rounded, '回复', () => _startReply(post), highlight: false),
                 _floorAction(Icons.format_quote_rounded, '引用', () => _startQuote(post), highlight: targeted && _quoteTarget),
                 _floorAction(Icons.chat_bubble_outline_rounded, '点评', () => _openCommentSheet(post), highlight: false),
                 const Spacer(),
@@ -1630,7 +1630,7 @@ class _ThreadPageState extends State<ThreadPage> {
           const SizedBox(height: 4),
           for (final comment in post.comments)
             InkWell(
-              onTap: () => _openCommentSheet(post, replyTo: comment.author),
+              onTap: () => _startCommentReply(post, comment),
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 3),
                 child: Text.rich(
