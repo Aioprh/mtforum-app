@@ -103,32 +103,92 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
   }
 
   Future<void> _pickFloatingGlassNav() async {
-    final enabled = AppState.instance.floatingGlassNav;
-    final selected = await showModalBottomSheet<bool>(
+    final appState = AppState.instance;
+    var enabled = appState.floatingGlassNav;
+    var opacity = appState.floatingGlassNavOpacity;
+    var blur = appState.floatingGlassNavBlur;
+    final result = await showModalBottomSheet<({bool enabled, double opacity, double blur})>(
       context: context,
+      isScrollControlled: true,
       showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 22),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('底栏样式', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-              const SizedBox(height: 8),
-              Text('将底部导航切换为半透明、背景模糊的悬浮液态玻璃样式。', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('启用液态玻璃悬浮底栏'),
-                subtitle: const Text('关闭后恢复普通底部导航栏'),
-                value: enabled,
-                onChanged: (value) => Navigator.pop(context, value),
-              ),
-            ],
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setSheetState) => SafeArea(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              20, 4, 20, 22 + MediaQuery.viewInsetsOf(context).bottom,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Center(
+                  child: Text('底栏样式', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '保留当前底栏形状，自定义玻璃背景的透明度和模糊强度。',
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('启用液态玻璃悬浮底栏'),
+                  subtitle: const Text('关闭后恢复普通底部导航栏'),
+                  value: enabled,
+                  onChanged: (value) => setSheetState(() => enabled = value),
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    const Expanded(child: Text('玻璃透明度', style: TextStyle(fontWeight: FontWeight.w600))),
+                    Text('${(opacity * 100).round()}%'),
+                  ],
+                ),
+                Slider(
+                  value: opacity,
+                  min: 0.05,
+                  max: 0.65,
+                  divisions: 12,
+                  label: '${(opacity * 100).round()}%',
+                  onChanged: (value) => setSheetState(() => opacity = value),
+                ),
+                Row(
+                  children: [
+                    const Expanded(child: Text('背景模糊度', style: TextStyle(fontWeight: FontWeight.w600))),
+                    Text('${blur.round()}'),
+                  ],
+                ),
+                Slider(
+                  value: blur,
+                  min: 0,
+                  max: 40,
+                  divisions: 16,
+                  label: blur.round().toString(),
+                  onChanged: (value) => setSheetState(() => blur = value),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: () => Navigator.pop(
+                      sheetContext,
+                      (enabled: enabled, opacity: opacity, blur: blur),
+                    ),
+                    child: const Text('保存设置'),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
     );
-    if (selected != null) await AppState.instance.setFloatingGlassNav(selected);
+    if (result != null) {
+      await appState.setFloatingGlassNav(result.enabled);
+      await appState.setFloatingGlassNavAppearance(
+        opacity: result.opacity,
+        blur: result.blur,
+      );
+    }
   }
 
   Future<void> _pickThemeColor() async {
