@@ -240,7 +240,9 @@ class _SearchPageState extends State<SearchPage> with AutomaticKeepAliveClientMi
             children: [
               for (final word in _suggestions)
                 ActionChip(
-                  label: Text(word),
+                  label: Text(word, style: TextStyle(color: scheme.onSurfaceVariant, fontWeight: FontWeight.w600)),
+                  backgroundColor: scheme.surfaceContainerHighest,
+                  side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.45)),
                   onPressed: () {
                     _keyword.text = word;
                     _search();
