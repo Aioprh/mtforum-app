@@ -1589,7 +1589,27 @@ class _ThreadPageState extends State<ThreadPage> {
     );
   }
 
-  /// 楼中楼点评列表：点击任意一条即可继续回复该楼。
+  /// 回复某条点评：Discuz 的点评本身不是独立帖子，没有可用于 reppost 的 pid。
+  /// 将点评内容引用到正式回复编辑器，并关联其所属楼层，避免 action=comment
+  /// 将内容再次提交为普通点评。
+  void _startCommentReply(ForumPost post, ForumComment comment) {
+    final author = comment.author.isEmpty ? '匿名' : comment.author;
+    final quotedText = comment.text.trim();
+    final timeLabel = comment.time.isEmpty ? '' : ' 发表于 ${comment.time}';
+    insertAtCursor(
+      _replyController,
+      '[quote][size=2][color=#999999]回复 $author$timeLabel[/color][/size]\\n'
+      '$quotedText\\n[/quote]\\n',
+    );
+    setState(() {
+      _replyTarget = post;
+      _quoteTarget = true;
+      _showEmoji = false;
+    });
+    _replyFocus.requestFocus();
+  }
+
+  /// 楼中楼点评列表：点击任意一条可针对该条点评发起正式回复。
   Widget _commentList(ForumPost post) {
     final scheme = Theme.of(context).colorScheme;
     return Container(
@@ -1608,7 +1628,7 @@ class _ThreadPageState extends State<ThreadPage> {
           const SizedBox(height: 4),
           for (final comment in post.comments)
             InkWell(
-              onTap: () => _openCommentSheet(post, replyTo: comment.author),
+              onTap: () => _startCommentReply(post, comment),
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 3),
                 child: Text.rich(
