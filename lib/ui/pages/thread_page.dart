@@ -1987,9 +1987,11 @@ class _EditPostPageState extends State<_EditPostPage> {
           }
         }
       } else {
-        final result = await FilePicker.platform.pickFiles(type: FileType.any, allowMultiple: true);
-        if (result == null || result.files.isEmpty) return;
-        for (final file in result.files) {
+        // Use the same FilePicker wrapper/API as the publish-post page.
+        // This project exposes FilePicker.pickFiles() returning a file list.
+        final files = await FilePicker.pickFiles(type: FileType.any);
+        if (files.isEmpty) return;
+        for (final file in files) {
           if (!mounted) return;
           final item = _EditAttachment(name: file.name, image: false);
           setState(() { _attachments.add(item); _uploading = true; _error = null; });
