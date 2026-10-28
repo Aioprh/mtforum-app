@@ -515,7 +515,7 @@ class _ThreadPageState extends State<ThreadPage> {
     }
   }
 
-  Future<void> _moderate(String action, String label) async {
+  Future<void> _moderate(String action, String label, {int? pid}) async {
     if (!await _ensureLogin()) return;
     final detail = _detail;
     if (detail == null || detail.formhash.isEmpty) {
@@ -526,8 +526,10 @@ class _ThreadPageState extends State<ThreadPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('$label主题'),
-        content: Text('确定要对「${detail.title}」执行$label操作吗？'),
+        title: Text(action == 'stickreply' ? '置顶回复' : '$label主题'),
+        content: Text(action == 'stickreply'
+            ? '确定要置顶第 ${_posts.firstWhere((p) => p.pid == pid, orElse: () => _posts.first).floor} 楼的回复吗？'
+            : '确定要对「${detail.title}」执行$label操作吗？'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
           FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('确定')),
@@ -541,6 +543,48 @@ class _ThreadPageState extends State<ThreadPage> {
         fid: detail.fid,
         formhash: detail.formhash,
         action: action,
+        pid: pid,
+      );
+      if (!mounted) return;
+      _toast(message);
+      await _load();
+    } catch (e) {
+      _toast(_message(e));
+    }
+  }
+
+  /// 主题作者可以尝试置顶自己在本主题中的回复；最终权限仍由论坛服务端校验。
+  Future<void> _pinOwnReply(ForumPost post) async {
+    if (post.isOp || !_isMine(post) || _posts.isEmpty || !_isMine(_posts.first)) {
+      _toast('只能置顶自己主题中的自己的回复');
+      return;
+    }
+    if (!await _ensureLogin()) return;
+    final detail = _detail;
+    if (detail == null || detail.formhash.isEmpty) {
+      _toast('置顶信息已失效，请刷新后重试');
+      return;
+    }
+    if (!mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('置顶我的回复'),
+        content: Text('确定要将自己发布的第 ${post.floor} 楼回复置顶吗？如果论坛未开放此权限，服务端会返回原因。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('置顶')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      final message = await _repo.moderate(
+        tid: widget.tid,
+        fid: detail.fid,
+        formhash: detail.formhash,
+        action: 'stickreply',
+        pid: post.pid,
       );
       if (!mounted) return;
       _toast(message);
@@ -605,7 +649,9 @@ class _ThreadPageState extends State<ThreadPage> {
       case 'delete':
         await _deletePost(post);
       case 'stick':
-        await _moderate('stickreply', '置顶');
+        await _moderate('stickreply', '置顶回复', pid: post.pid);
+      case 'pinOwnReply':
+        await _pinOwnReply(post);
       case 'digest':
         await _moderate('digest', '精华');
       case 'close':
@@ -1357,7 +1403,7 @@ class _ThreadPageState extends State<ThreadPage> {
                           dense: true,
                           contentPadding: EdgeInsets.zero,
                           leading: Icon(Icons.vertical_align_top_rounded, size: 20),
-                          title: Text('置顶'),
+                          title: Text('置顶回复'),
                         ),
                       ),
                       const PopupMenuItem(
@@ -1388,6 +1434,16 @@ class _ThreadPageState extends State<ThreadPage> {
                         ),
                       ),
                     ],
+                    if (!post.isOp && _isMine(post) && _posts.isNotEmpty && _isMine(_posts.first))
+                      const PopupMenuItem(
+                        value: 'pinOwnReply',
+                        child: ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(Icons.push_pin_outlined, size: 20),
+                          title: Text('置顶我的回复'),
+                        ),
+                      ),
                     if (_isMine(post)) ...[
                       const PopupMenuItem(
                         value: 'edit',
