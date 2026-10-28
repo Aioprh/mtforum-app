@@ -12,6 +12,7 @@ class AppState extends ChangeNotifier {
 
   static const String _themeKey = 'mt_forum_theme';
   static const String _themeSeedKey = 'mt_forum_theme_seed';
+  static const String _floatingGlassNavKey = 'mt_forum_floating_glass_nav';
   static const String _autoSignInDateKey = 'mt_forum_auto_signin_date';
   bool _autoSignInRunning = false;
   String? _autoSignInAttemptDate;
@@ -20,7 +21,8 @@ class AppState extends ChangeNotifier {
   final HttpSession session = HttpSession.instance;
 
   ThemeMode themeMode = ThemeMode.system;
-  Color themeSeedColor = const Color(0xFF12B76A);
+  Color themeSeedColor = const Color(0xFF607080);
+  bool floatingGlassNav = false;
   UserProfile? profile;
   bool localReady = false;
   bool profileLoading = false;
@@ -35,7 +37,8 @@ class AppState extends ChangeNotifier {
     await repo.init();
     final prefs = await SharedPreferences.getInstance();
     final theme = prefs.getString(_themeKey);
-    themeSeedColor = Color(prefs.getInt(_themeSeedKey) ?? 0xFF12B76A);
+    themeSeedColor = Color(prefs.getInt(_themeSeedKey) ?? 0xFF607080);
+    floatingGlassNav = prefs.getBool(_floatingGlassNavKey) ?? false;
     themeMode = switch (theme) {
       'light' => ThemeMode.light,
       'dark' => ThemeMode.dark,
@@ -124,6 +127,13 @@ class AppState extends ChangeNotifier {
       ThemeMode.dark => 'dark',
       ThemeMode.system => 'system',
     });
+  }
+
+  Future<void> setFloatingGlassNav(bool enabled) async {
+    floatingGlassNav = enabled;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_floatingGlassNavKey, enabled);
   }
 
   Future<void> setThemeSeedColor(Color color) async {
