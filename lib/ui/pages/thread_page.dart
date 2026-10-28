@@ -1987,9 +1987,9 @@ class _EditPostPageState extends State<_EditPostPage> {
           }
         }
       } else {
-        final picked = await FilePicker.pickFiles(type: FileType.any, allowMultiple: true);
-        if (picked.isEmpty) return;
-        for (final file in picked) {
+        final result = await FilePicker.platform.pickFiles(type: FileType.any, allowMultiple: true);
+        if (result == null || result.files.isEmpty) return;
+        for (final file in result.files) {
           if (!mounted) return;
           final item = _EditAttachment(name: file.name, image: false);
           setState(() { _attachments.add(item); _uploading = true; _error = null; });
@@ -2053,103 +2053,6 @@ class _EditPostPageState extends State<_EditPostPage> {
     _insertAtCursor(tag);
     _insertUrlController.clear();
     setState(() => _panel = null);
-  }
-
-  Future<void> _uploadImages() async {
-    if (_uploading || _saving) return;
-    try {
-      final picked = await _imagePicker.pickMultiImage(maxWidth: 1600, imageQuality: 82);
-      if (picked.isEmpty || !mounted) return;
-      setState(() {
-        _uploading = true;
-        _error = null;
-      });
-      final info = await AppState.instance.repo.fetchComposeInfo(widget.fid);
-      for (final file in picked) {
-        if (!mounted) return;
-        final bytes = await file.readAsBytes();
-        final aid = await AppState.instance.repo.uploadAttachment(
-          bytes: bytes,
-          filename: file.name,
-          uploadHash: info.uploadHash,
-          uid: info.uid,
-          referer: AppConfig.uri('forum.php', {
-            'mod': 'post',
-            'action': 'edit',
-            'fid': '${widget.fid}',
-            'tid': '${widget.tid}',
-            'pid': '${widget.pid}',
-            'mobile': '2',
-          }).toString(),
-          image: true,
-        );
-        if (!mounted) return;
-        _insertAtCursor('\n[attachimg]$aid[/attachimg]\n');
-      }
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _error = e is SiteException ? e.message : '图片上传失败，请重试');
-    } finally {
-      if (mounted) setState(() => _uploading = false);
-    }
-  }
-
-  Future<void> _insertLink() async {
-    final urlController = TextEditingController();
-    final labelController = TextEditingController();
-    final result = await showDialog<(String, String)>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('插入链接'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(controller: urlController, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: '链接地址')),
-            TextField(controller: labelController, decoration: const InputDecoration(labelText: '显示文字（可选）')),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(dialogContext, (urlController.text.trim(), labelController.text.trim())), child: const Text('插入')),
-        ],
-      ),
-    );
-    final url = result?.$1 ?? '';
-    final label = result?.$2 ?? '';
-    urlController.dispose();
-    labelController.dispose();
-    if (url.isEmpty || !mounted) return;
-    _insertAtCursor('[url=$url]${label.isEmpty ? url : label}[/url]');
-  }
-
-  Future<void> _insertMediaTag(String kind) async {
-    final controller = TextEditingController();
-    final result = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(switch (kind) {
-          'img' => '插入网络图片',
-          'audio' => '插入音频',
-          'video' => '插入视频',
-          _ => '插入媒体',
-        }),
-        content: TextField(controller: controller, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: '网络地址')),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(dialogContext, controller.text.trim()), child: const Text('插入')),
-        ],
-      ),
-    );
-    controller.dispose();
-    final url = result ?? '';
-    if (url.isEmpty || !mounted) return;
-    final tag = switch (kind) {
-      'img' => '[img]$url[/img]',
-      'audio' => '[audio]$url[/audio]',
-      'video' => '[media=x,500,375]$url[/media]',
-      _ => url,
-    };
-    _insertAtCursor(tag);
   }
 
   void _wrapTag(String tag) {
