@@ -281,9 +281,9 @@ class _ComposePageState extends State<ComposePage> {
       allowMultiple: true,
       withData: true,
     );
-    if (files.isEmpty) return;
+    if (files == null || files.files.isEmpty) return;
     if (!mounted) return;
-    for (final file in files) {
+    for (final file in files.files) {
       final Uint8List bytes;
       try {
         bytes = await file.readAsBytes();
