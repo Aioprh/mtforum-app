@@ -72,6 +72,9 @@ class _ComposePageState extends State<ComposePage> {
   ComposeInfo? _info;
   _ComposePanel? _panel;
   String? _insertKind;
+  List<FriendItem> _mentionFriends = const <FriendItem>[];
+  bool _mentionFriendsLoading = false;
+  String? _mentionFriendsError;
 
   bool _replyOnly = false;
   bool _orderDesc = false;
@@ -252,10 +255,38 @@ class _ComposePageState extends State<ComposePage> {
 
   void _togglePanel(_ComposePanel panel) {
     FocusScope.of(context).unfocus();
+    final openingMention = panel == _ComposePanel.mention && _panel != panel;
     setState(() {
       _panel = _panel == panel ? null : panel;
       if (_panel != _ComposePanel.insert) _insertKind = null;
     });
+    if (openingMention) _loadMentionFriends();
+  }
+
+  Future<void> _loadMentionFriends({bool force = false}) async {
+    if (_mentionFriendsLoading) return;
+    if (!AppState.instance.isLoggedIn) {
+      if (mounted) setState(() => _mentionFriendsError = '登录后可读取论坛好友列表');
+      return;
+    }
+    if (!force && _mentionFriends.isNotEmpty) return;
+    setState(() {
+      _mentionFriendsLoading = true;
+      _mentionFriendsError = null;
+    });
+    try {
+      final friends = await AppState.instance.repo.fetchFriends();
+      if (!mounted) return;
+      setState(() {
+        _mentionFriends = friends;
+        _mentionFriendsError = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _mentionFriendsError = _messageOf(e));
+    } finally {
+      if (mounted) setState(() => _mentionFriendsLoading = false);
+    }
   }
 
   Future<void> _pickImages() async {
@@ -345,8 +376,8 @@ class _ComposePageState extends State<ComposePage> {
     setState(() => _attachments.remove(attachment));
   }
 
-  void _insertMention() {
-    final name = _mention.text.trim();
+  void _insertMention([String? selectedUsername]) {
+    final name = (selectedUsername ?? _mention.text).trim();
     if (name.isEmpty) {
       _toast('请输入要 @ 的用户名');
       return;
@@ -932,6 +963,11 @@ class _ComposePageState extends State<ComposePage> {
 
   Widget _mentionPanel() {
     final scheme = Theme.of(context).colorScheme;
+    final keyword = _mention.text.trim().toLowerCase();
+    final visibleFriends = _mentionFriends
+        .where((friend) => keyword.isEmpty || friend.username.toLowerCase().contains(keyword))
+        .take(12)
+        .toList();
     return _panelShell(
       scheme,
       Column(
@@ -943,26 +979,114 @@ class _ComposePageState extends State<ComposePage> {
                 child: TextField(
                   controller: _mention,
                   textInputAction: TextInputAction.done,
+                  onChanged: (_) => setState(() {}),
                   onSubmitted: (_) => _insertMention(),
                   decoration: const InputDecoration(
-                    hintText: '请输入用户名',
+                    hintText: '搜索好友或输入用户名',
+                    prefixIcon: Icon(Icons.search, size: 20),
                     isDense: true,
                     border: OutlineInputBorder(),
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               FilledButton(
                 onPressed: _insertMention,
                 child: const Text('@添加'),
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          Text(
-            '@朋友账号，就能提醒他来看帖子；也可以在正文中直接输入 @用户名。',
-            style: TextStyle(fontSize: 11.5, height: 1.5, color: scheme.onSurfaceVariant),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '选择好友可快速插入 @用户名；也可以手动输入。',
+                  style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant),
+                ),
+              ),
+              if (AppState.instance.isLoggedIn)
+                IconButton(
+                  tooltip: '刷新好友',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: _mentionFriendsLoading ? null : () => _loadMentionFriends(force: true),
+                  icon: const Icon(Icons.refresh, size: 18),
+                )
+              else
+                TextButton(
+                  onPressed: () async {
+                    final ok = await _ensureLogin();
+                    if (ok && mounted) _loadMentionFriends(force: true);
+                  },
+                  child: const Text('登录'),
+                ),
+            ],
           ),
+          if (_mentionFriendsLoading)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 12),
+              child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
+            )
+          else if (_mentionFriendsError != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      _mentionFriendsError!,
+                      style: TextStyle(fontSize: 12, color: scheme.error),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () => _loadMentionFriends(force: true),
+                    child: const Text('重试'),
+                  ),
+                ],
+              ),
+            )
+          else if (visibleFriends.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              child: Text(
+                _mentionFriends.isEmpty
+                    ? '暂未读取到好友；可直接输入用户名后点击「@添加」。'
+                    : '没有匹配的好友；仍可直接 @ 添加。',
+                style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+              ),
+            )
+          else
+            ...visibleFriends.map((friend) {
+              final avatar = friend.avatar.trim();
+              return ListTile(
+                dense: true,
+                visualDensity: VisualDensity.compact,
+                contentPadding: EdgeInsets.zero,
+                leading: CircleAvatar(
+                  radius: 17,
+                  backgroundColor: scheme.surfaceContainerHighest,
+                  child: avatar.isEmpty
+                      ? Icon(Icons.person_outline, size: 18, color: scheme.onSurfaceVariant)
+                      : ClipOval(
+                          child: Image.network(
+                            avatar.startsWith('//') ? 'https:$avatar' : avatar,
+                            width: 34,
+                            height: 34,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Icon(
+                              Icons.person_outline,
+                              size: 18,
+                              color: scheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                ),
+                title: Text(friend.username, maxLines: 1, overflow: TextOverflow.ellipsis),
+                subtitle: friend.note.isEmpty ? null : Text(friend.note, maxLines: 1, overflow: TextOverflow.ellipsis),
+                trailing: const Icon(Icons.alternate_email, size: 18),
+                onTap: () => _insertMention(friend.username),
+              );
+            }),
         ],
       ),
     );
