@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../core/app_config.dart';
-import 'internal_browser_page.dart';
+import 'native_notice_category_page.dart';
 import 'pm_list_page.dart';
 
 /// 消息通知：回复提醒、@提醒与系统通知。
@@ -18,7 +17,11 @@ class _NotificationsPageState extends State<NotificationsPage> {
       return;
     }
     await Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => InternalBrowserPage(url: AppConfig.uri(url).toString(), title: title),
+      builder: (_) => NativeNoticeCategoryPage(
+        title: title,
+        path: url,
+        kind: title == '我的粉丝' ? NoticeKind.followers : NoticeKind.notifications,
+      ),
     ));
   }
 
