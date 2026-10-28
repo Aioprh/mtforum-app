@@ -276,7 +276,11 @@ class _ComposePageState extends State<ComposePage> {
   Future<void> _pickFiles() async {
     final info = await _ensureInfo();
     if (info == null) return;
-    final files = await FilePicker.pickFiles();
+    final files = await FilePicker.pickFiles(
+      type: FileType.any,
+      allowMultiple: true,
+      withData: true,
+    );
     if (files.isEmpty) return;
     if (!mounted) return;
     for (final file in files) {
@@ -288,10 +292,6 @@ class _ComposePageState extends State<ComposePage> {
         continue;
       }
       if (!mounted) return;
-      if (bytes.length > 1024 * 1024) {
-        _toast('${file.name} 超过 1MB，无法上传');
-        continue;
-      }
       final attachment = _DraftAttachment(name: file.name, bytes: bytes, image: false);
       setState(() => _attachments.add(attachment));
       await _upload(attachment, image: false);
@@ -1071,22 +1071,62 @@ class _ComposePageState extends State<ComposePage> {
       Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              FilledButton.tonalIcon(
-                onPressed: _uploading ? null : _pickFiles,
-                icon: const Icon(Icons.upload_file_rounded, size: 18),
-                label: Text(_uploading ? '上传中…' : '上传文件'),
-              ),
-              const Spacer(),
-              Text('大小限制：1MB', style: TextStyle(fontSize: 11.5, color: scheme.outline)),
-            ],
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: _uploading ? null : _pickFiles,
+              icon: const Icon(Icons.add_to_drive_rounded),
+              label: Text(_uploading ? '正在上传附件…' : '添加文件 / 选择附件'),
+            ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           Text(
-            '附件会以 [attach]…[/attach] 的形式插入正文；图片请点击正文下方的「+」从相册选择。',
-            style: TextStyle(fontSize: 11.5, height: 1.5, color: scheme.outline),
+            '可多选文件。具体格式和大小限制由 MT 论坛服务器的附件规则决定；'
+            '如果格式不受支持或超过限制，会显示服务器返回的错误原因。',
+            style: TextStyle(
+              fontSize: 12,
+              height: 1.5,
+              color: scheme.onSurfaceVariant,
+            ),
           ),
+          if (_attachments.where((item) => !item.image).isNotEmpty) ...[
+            const SizedBox(height: 10),
+            for (final attachment in _attachments.where((item) => !item.image))
+              ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(
+                  attachment.error != null
+                      ? Icons.error_outline_rounded
+                      : attachment.uploading
+                          ? Icons.cloud_upload_outlined
+                          : Icons.insert_drive_file_outlined,
+                  color: attachment.error != null
+                      ? scheme.error
+                      : scheme.onSurfaceVariant,
+                ),
+                title: Text(
+                  attachment.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                subtitle: attachment.error == null
+                    ? Text(attachment.uploading ? '上传中…' : attachment.aid != null ? '上传完成' : '等待上传')
+                    : Text(
+                        attachment.error!,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: scheme.error),
+                      ),
+                trailing: IconButton(
+                  tooltip: '移除附件',
+                  onPressed: attachment.uploading
+                      ? null
+                      : () => _removeAttachment(attachment),
+                  icon: const Icon(Icons.close_rounded),
+                ),
+              ),
+          ],
         ],
       ),
     );
