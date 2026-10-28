@@ -1898,7 +1898,7 @@ class ForumRepository {
         if (fid > 0) 'srchfid[]': '$fid',
       },
     );
-    final sid = RegExp(r'searchid=(\\d+)').firstMatch(response.body)?.group(1);
+    final sid = RegExp(r'searchid=(\d+)').firstMatch(response.body)?.group(1);
     if (sid == null) {
       final items = _parseThreadList(response.body);
       if (items.isNotEmpty) return items;
