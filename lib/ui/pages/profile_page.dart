@@ -102,6 +102,79 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
     if (mode != null) await AppState.instance.setThemeMode(mode);
   }
 
+  Future<void> _pickThemeColor() async {
+    const colors = <(String, Color)>[
+      ('薄荷绿', Color(0xFF12B76A)),
+      ('海洋蓝', Color(0xFF2878D0)),
+      ('天空蓝', Color(0xFF039BE5)),
+      ('薰衣草紫', Color(0xFF8B5CF6)),
+      ('玫瑰粉', Color(0xFFE84A8A)),
+      ('珊瑚红', Color(0xFFE45454)),
+      ('琥珀橙', Color(0xFFEF8B2C)),
+      ('日落金', Color(0xFFC49A18)),
+      ('青碧色', Color(0xFF009688)),
+      ('石墨灰', Color(0xFF607080)),
+    ];
+    final current = AppState.instance.themeSeedColor;
+    final selected = await showModalBottomSheet<Color>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('选择主题色', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 6),
+              Text('更改后会立即应用，并自动保存', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+              const SizedBox(height: 18),
+              Wrap(
+                spacing: 12,
+                runSpacing: 14,
+                children: [
+                  for (final option in colors)
+                    SizedBox(
+                      width: 88,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(14),
+                        onTap: () => Navigator.pop(context, option.$2),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          child: Column(
+                            children: [
+                              Container(
+                                width: 44,
+                                height: 44,
+                                decoration: BoxDecoration(
+                                  color: option.$2,
+                                  shape: BoxShape.circle,
+                                  border: current.toARGB32() == option.$2.toARGB32()
+                                      ? Border.all(color: Theme.of(context).colorScheme.onSurface, width: 3)
+                                      : null,
+                                ),
+                                child: current.toARGB32() == option.$2.toARGB32()
+                                    ? const Icon(Icons.check_rounded, color: Colors.white)
+                                    : null,
+                              ),
+                              const SizedBox(height: 6),
+                              Text(option.$1, style: const TextStyle(fontSize: 12)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (selected != null) await AppState.instance.setThemeSeedColor(selected);
+  }
+
   void _openPersonal(String title, String path, Map<String, String> query, String emptyText,
       {bool replies = false}) {
     Navigator.of(context).push(MaterialPageRoute(
@@ -236,6 +309,7 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
                 const SizedBox(height: 14),
                 _menuGroup(scheme, [
                   _MenuItem(Icons.palette_outlined, '主题外观', _pickTheme),
+                  _MenuItem(Icons.color_lens_outlined, '主题颜色', _pickThemeColor),
                   _MenuItem(Icons.info_outline_rounded, '关于本应用', () {
                     Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AboutPage()));
                   }),
