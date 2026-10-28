@@ -2057,86 +2057,205 @@ class _EditPostPageState extends State<_EditPostPage> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final isBusy = _saving || _uploading;
     return Scaffold(
+      backgroundColor: scheme.surface,
       appBar: AppBar(
         title: Text(widget.isOp ? '编辑主题' : '编辑回复'),
+        centerTitle: false,
         actions: [
-          TextButton(
-            onPressed: _saving ? null : _save,
-            child: _saving
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Text('保存', style: TextStyle(fontWeight: FontWeight.w700)),
+          TextButton.icon(
+            onPressed: isBusy ? null : _save,
+            icon: _saving
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.check_rounded, size: 18),
+            label: Text(_saving ? '保存中' : '保存'),
           ),
+          const SizedBox(width: 8),
         ],
       ),
       body: SafeArea(
+        bottom: false,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          padding: const EdgeInsets.fromLTRB(18, 10, 18, 20),
           children: [
             if (widget.isOp) ...[
+              Text('主题标题', style: TextStyle(
+                color: scheme.onSurfaceVariant,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              )),
+              const SizedBox(height: 8),
               TextField(
                 controller: _subject,
                 maxLength: 80,
-                decoration: const InputDecoration(
-                  labelText: '标题',
+                textCapitalization: TextCapitalization.sentences,
+                decoration: InputDecoration(
+                  hintText: '请输入主题标题',
                   counterText: '',
-                  prefixIcon: Icon(Icons.title_rounded),
+                  prefixIcon: const Icon(Icons.title_rounded),
+                  filled: true,
+                  fillColor: scheme.surfaceContainerLow,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(18),
+                    borderSide: BorderSide.none,
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(18),
+                    borderSide: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.55)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(18),
+                    borderSide: BorderSide(color: scheme.primary, width: 1.4),
+                  ),
                 ),
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 24),
             ],
+            Row(
+              children: [
+                Expanded(
+                  child: Text('正文内容', style: TextStyle(
+                    color: scheme.onSurfaceVariant,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  )),
+                ),
+                Text(
+                  '支持图片、链接与 BBCode',
+                  style: TextStyle(fontSize: 11, color: scheme.outline),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
               decoration: BoxDecoration(
                 color: scheme.surfaceContainerLow,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                border: Border.all(color: scheme.outlineVariant),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.7)),
               ),
-              child: Wrap(
-                spacing: 4,
-                runSpacing: 2,
+              clipBehavior: Clip.antiAlias,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  IconButton(
-                    tooltip: '上传图片',
-                    onPressed: _uploading || _saving ? null : _uploadImages,
-                    icon: _uploading
-                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Icon(Icons.add_photo_alternate_outlined),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: scheme.surfaceContainerHighest.withValues(alpha: 0.55),
+                      border: Border(bottom: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.65))),
+                    ),
+                    child: Wrap(
+                      alignment: WrapAlignment.start,
+                      spacing: 4,
+                      runSpacing: 4,
+                      children: [
+                        _editorTool(Icons.add_photo_alternate_outlined, '上传图片', _uploading ? null : _uploadImages),
+                        _editorTool(Icons.image_outlined, '网络图片', () => _insertMediaTag('img')),
+                        _editorTool(Icons.link_rounded, '链接', _insertLink),
+                        _editorTool(Icons.audio_file_outlined, '音频', () => _insertMediaTag('audio')),
+                        _editorTool(Icons.video_library_outlined, '视频', () => _insertMediaTag('video')),
+                        _editorTool(Icons.format_bold_rounded, '加粗', () => _wrapTag('b')),
+                        _editorTool(Icons.format_italic_rounded, '斜体', () => _wrapTag('i')),
+                        _editorTool(Icons.format_quote_rounded, '引用', () => _wrapTag('quote')),
+                        _editorTool(Icons.code_rounded, '代码', () => _wrapTag('code')),
+                      ],
+                    ),
                   ),
-                  IconButton(tooltip: '插入网络图片', onPressed: _saving ? null : () => _insertMediaTag('img'), icon: const Icon(Icons.image_outlined)),
-                  IconButton(tooltip: '插入链接', onPressed: _saving ? null : _insertLink, icon: const Icon(Icons.link_rounded)),
-                  IconButton(tooltip: '插入音频', onPressed: _saving ? null : () => _insertMediaTag('audio'), icon: const Icon(Icons.audio_file_outlined)),
-                  IconButton(tooltip: '插入视频', onPressed: _saving ? null : () => _insertMediaTag('video'), icon: const Icon(Icons.video_library_outlined)),
-                  IconButton(tooltip: '加粗', onPressed: _saving ? null : () => _wrapTag('b'), icon: const Icon(Icons.format_bold_rounded)),
-                  IconButton(tooltip: '斜体', onPressed: _saving ? null : () => _wrapTag('i'), icon: const Icon(Icons.format_italic_rounded)),
-                  IconButton(tooltip: '引用', onPressed: _saving ? null : () => _wrapTag('quote'), icon: const Icon(Icons.format_quote_rounded)),
-                  IconButton(tooltip: '代码', onPressed: _saving ? null : () => _wrapTag('code'), icon: const Icon(Icons.code_rounded)),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                    child: TextField(
+                      controller: _message,
+                      minLines: 12,
+                      maxLines: null,
+                      keyboardType: TextInputType.multiline,
+                      textCapitalization: TextCapitalization.sentences,
+                      style: const TextStyle(fontSize: 15.5, height: 1.65),
+                      decoration: InputDecoration(
+                        hintText: '在这里编辑正文…',
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        isCollapsed: true,
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
-            TextField(
-              controller: _message,
-              minLines: 10,
-              maxLines: null,
-              keyboardType: TextInputType.multiline,
-              decoration: const InputDecoration(
-                labelText: '内容',
-                alignLabelWithHint: true,
-                hintText: '支持 Discuz BBCode；选中文字后可套用格式',
-                border: OutlineInputBorder(borderRadius: BorderRadius.vertical(bottom: Radius.circular(12))),
-              ),
-            ),
+            if (_uploading) ...[
+              const SizedBox(height: 10),
+              const LinearProgressIndicator(minHeight: 2),
+              const SizedBox(height: 4),
+              Text('正在上传图片…', style: TextStyle(fontSize: 12, color: scheme.primary)),
+            ],
             if (_error != null) ...[
               const SizedBox(height: 12),
-              Text(_error!, style: TextStyle(fontSize: 12.5, color: scheme.error)),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: scheme.errorContainer.withValues(alpha: 0.55),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.error_outline_rounded, size: 18, color: scheme.error),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(_error!, style: TextStyle(fontSize: 12.5, color: scheme.error))),
+                  ],
+                ),
+              ),
             ],
-            const SizedBox(height: 18),
-            FilledButton.icon(
-              onPressed: _saving ? null : _save,
-              icon: const Icon(Icons.done_rounded, size: 18),
-              label: Text(_saving ? '正在保存…' : '保存修改'),
-            ),
           ],
+        ),
+      ),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(18, 10, 18, 12),
+          decoration: BoxDecoration(
+            color: scheme.surface,
+            border: Border(top: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.55))),
+          ),
+          child: SizedBox(
+            height: 52,
+            child: FilledButton.icon(
+              onPressed: isBusy ? null : _save,
+              icon: _saving
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.check_rounded, size: 20),
+              label: Text(_saving ? '正在保存修改…' : '保存修改', style: const TextStyle(fontWeight: FontWeight.w700)),
+              style: FilledButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _editorTool(IconData icon, String label, VoidCallback? onPressed) {
+    final scheme = Theme.of(context).colorScheme;
+    return Tooltip(
+      message: label,
+      child: InkWell(
+        onTap: (_saving || _uploading) ? null : onPressed,
+        borderRadius: BorderRadius.circular(10),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 19, color: (_saving || _uploading) ? scheme.outline : scheme.onSurfaceVariant),
+              const SizedBox(width: 5),
+              Text(label, style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+                color: (_saving || _uploading) ? scheme.outline : scheme.onSurfaceVariant,
+              )),
+            ],
+          ),
         ),
       ),
     );
