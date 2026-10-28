@@ -91,6 +91,8 @@ class _AppShellState extends State<AppShell> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
+    final glassOpacity = AppState.instance.floatingGlassNavOpacity;
+    final glassBlur = AppState.instance.floatingGlassNavBlur;
     const items = [
       (Icons.home_outlined, Icons.home_rounded, '首页'),
       (Icons.grid_view_outlined, Icons.grid_view_rounded, '版块'),
@@ -104,7 +106,7 @@ class _AppShellState extends State<AppShell> {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(30),
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+          filter: ImageFilter.blur(sigmaX: glassBlur, sigmaY: glassBlur),
           child: Container(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(30),
@@ -113,12 +115,12 @@ class _AppShellState extends State<AppShell> {
                 end: Alignment.bottomRight,
                 colors: isDark
                     ? [
-                        const Color(0xFF303945).withValues(alpha: 0.25),
-                        const Color(0xFF171D26).withValues(alpha: 0.16),
+                        const Color(0xFF303945).withValues(alpha: glassOpacity),
+                        const Color(0xFF171D26).withValues(alpha: glassOpacity * 0.64),
                       ]
                     : [
-                        Colors.white.withValues(alpha: 0.25),
-                        const Color(0xFFF1F5FA).withValues(alpha: 0.16),
+                        Colors.white.withValues(alpha: glassOpacity),
+                        const Color(0xFFF1F5FA).withValues(alpha: glassOpacity * 0.64),
                       ],
               ),
               border: Border.all(
