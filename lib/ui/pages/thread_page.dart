@@ -200,6 +200,18 @@ class _ThreadPageState extends State<ThreadPage> {
     _replyFocus.requestFocus();
   }
 
+  /// 回复某楼：只把回复挂到这一楼，不把对方原文引用进正文，
+  /// 发出来就是一条独立的评论。需要带原文时用 [quote] 那条路径。
+  void _startReply(ForumPost post) {
+    setState(() {
+      _replyTarget = post;
+      _quoteTarget = false;
+      _hiddenQuotePayload = '';
+      _showEmoji = false;
+    });
+    _replyFocus.requestFocus();
+  }
+
   void _startQuote(ForumPost post) {
     final plain = _plainText(post.html);
     // 引用内容保留在提交正文中，但不放进可见输入框，避免占满输入区域。
@@ -1319,7 +1331,9 @@ class _ThreadPageState extends State<ThreadPage> {
             const SizedBox(height: 4),
             Row(
               children: [
-                _floorAction(Icons.reply_rounded, '回复', () => _startQuote(post), highlight: targeted && _quoteTarget),
+                _floorAction(Icons.reply_rounded, '回复', () => _startReply(post), highlight: targeted && !_quoteTarget),
+                const SizedBox(width: 4),
+                _floorAction(Icons.format_quote_rounded, '引用', () => _startQuote(post), highlight: targeted && _quoteTarget),
                 const Spacer(),
                 PopupMenuButton<String>(
                   tooltip: '更多操作',
@@ -1562,12 +1576,14 @@ class _ThreadPageState extends State<ThreadPage> {
     final timeLabel = comment.time.isEmpty ? '' : ' 发表于 ${comment.time}';
     insertAtCursor(
       _replyController,
-      '[quote][size=2][color=#999999]回复 $author$timeLabel[/color][/size]\\n'
-      '$quotedText\\n[/quote]\\n',
+      '[quote][size=2][color=#999999]回复 $author$timeLabel[/color][/size]\n'
+      '$quotedText\n[/quote]\n',
     );
     setState(() {
       _replyTarget = post;
       _quoteTarget = true;
+      // 点评引用是直接写进输入框的，不能再叠加隐藏的楼层引用。
+      _hiddenQuotePayload = '';
       _showEmoji = false;
     });
     _replyFocus.requestFocus();
@@ -1733,7 +1749,7 @@ class _ThreadPageState extends State<ThreadPage> {
                   const SizedBox(width: 4),
                   Expanded(
                     child: Text(
-                      '回复 ${_replyTarget!.author} · ${_replyTarget!.floorLabel}',
+                      '${_quoteTarget ? '引用' : '回复'} ${_replyTarget!.author} · ${_replyTarget!.floorLabel}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(fontSize: 11.5, color: scheme.primary),
@@ -1768,7 +1784,9 @@ class _ThreadPageState extends State<ThreadPage> {
                     maxLines: 4,
                     textInputAction: TextInputAction.newline,
                     decoration: InputDecoration(
-                      hintText: _replyTarget == null ? '写下你的回复…' : '回复 ${_replyTarget!.author}…',
+                      hintText: _replyTarget == null
+                          ? '写下你的回复…'
+                          : '${_quoteTarget ? '引用' : '回复'} ${_replyTarget!.author}…',
                       isDense: true,
                       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
                     ),
