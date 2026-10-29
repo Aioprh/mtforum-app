@@ -733,7 +733,7 @@ class ForumRepository {
     );
     _ensureOk(response);
     final reply = reportReplyText(response.body);
-    if (_reportAccepted.hasMatch(reply)) return '举报已提交，版主和管理员会收到提醒';
+    if (_reportAccepted.hasMatch(reply)) return '举报已提交';
     throw SiteException(reply.isNotEmpty ? reply : '站点没有返回受理结果，请稍后重试或到网页端举报');
   }
 
