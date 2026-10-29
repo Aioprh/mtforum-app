@@ -734,7 +734,9 @@ class _ThreadPageState extends State<ThreadPage> {
           tid: widget.tid,
           pid: post.pid,
           formhash: detail.formhash,
-          subject: post.isOp ? detail.title : 'Re: ${detail.title}',
+          // 回复没有标题，编辑页也不显示标题框；传空串让服务端留空，
+          // 早先这里塞了 `Re: 主题`，结果楼层正文顶上多出一行重复标题。
+          subject: post.isOp ? detail.title : '',
           message: _stripEditNotice(_plainText(post.html)),
           isOp: post.isOp,
         ),
@@ -2239,7 +2241,8 @@ class _EditPostPageState extends State<_EditPostPage> {
   }
 
   Future<void> _save() async {
-    final subject = widget.isOp ? _subject.text.trim() : widget.subject;
+    // 只有主题正文有标题；回帖保持空标题，别把 `Re: 主题` 写进楼层。
+    final subject = widget.isOp ? _subject.text.trim() : '';
     final message = _message.text.trim();
     if (widget.isOp && subject.isEmpty) {
       setState(() => _error = '标题不能为空');

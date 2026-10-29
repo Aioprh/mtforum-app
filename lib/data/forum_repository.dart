@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:html/dom.dart';
 import 'package:html/parser.dart' as parser;
 
@@ -347,12 +348,16 @@ class ForumRepository {
       if (src.isNotEmpty && !images.contains(src)) images.add(src);
     }
 
+    // 楼层标题（`Re: 主题名`）不是正文，丢掉再渲染。
+    final body = contentEl.clone(true);
+    removeFloorSubject(body);
+
     return ForumPost(
       pid: pid,
       author: author,
       avatar: avatar,
       time: time,
-      html: _sanitize(contentEl.innerHtml),
+      html: _sanitize(body.innerHtml),
       floor: originalFloor,
       isPinned: isPinned,
       uid: uid,
@@ -2776,6 +2781,31 @@ class ForumRepository {
     }
     final src = valueOf('src');
     return usable(src) ? _absolute(src) : '';
+  }
+
+  /// 删掉楼层正文顶上那行 `Re: 主题名`。
+  ///
+  /// Discuz 给每条回复都存了 subject：编辑过的回复会被写成 `Re: 主题`，
+  /// 网页端在正文上方渲染成一行标题。App 里这行只是噪声——正文就在下面，
+  /// 而早先编辑回复时还把 `Re: 标题` 当 subject 提交，等于自己把数据写脏了。
+  @visibleForTesting
+  static void removeFloorSubject(Element content) {
+    final head = content.children.isEmpty ? null : content.children.first;
+    if (head != null && _isFloorSubject(head)) {
+      head.remove();
+      return;
+    }
+    for (final node in content.querySelectorAll('.comiis_subject, .comiis_postli_subject')) {
+      node.remove();
+    }
+  }
+
+  static bool _isFloorSubject(Element node) {
+    const headings = <String>{'h1', 'h2', 'h3', 'h4', 'h5', 'h6'};
+    final cls = (node.attributes['class'] ?? '').toLowerCase();
+    if (!headings.contains(node.localName) && !cls.contains('subject')) return false;
+    // 只认「Re: 主题」这种回复标题；正文里自己写的小标题不动。
+    return RegExp(r'^re\s*[:：]\s*\S', caseSensitive: false).hasMatch(_clean(node.text));
   }
 
   String _sanitize(String html) {
