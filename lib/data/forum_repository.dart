@@ -1448,16 +1448,30 @@ class ForumRepository {
       'page': '$page',
     });
     _ensureOk(result);
-    final doc = parser.parse(result.body);
+    return _parsePmConversations(result.body);
+  }
+
+  /// 解析私信会话列表 HTML，仅供测试与离线比对。
+  List<PmConversation> parsePmListHtml(String html) => _parsePmConversations(html);
+
+  List<PmConversation> _parsePmConversations(String html) {
+    final doc = parser.parse(html);
     final items = <PmConversation>[];
     final seen = <int>{};
     for (final node in doc.querySelectorAll('dl[id^="pmlist_"]')) {
-      final link = node.querySelector('a[href*="subop=view"][href*="touid="]');
-      final uid = _firstInt(
-        RegExp(r'[?&](?:amp;)?touid=(\d+)').firstMatch(link?.attributes['href'] ?? '')?.group(1),
-      );
-      if (uid == null || uid <= 0 || !seen.add(uid)) continue;
-      final name = _clean(node.querySelector('dd.ptm a[href*="mod=space&uid="]')?.text ?? '');
+      var uid = _pmPeerUid(node);
+      if (uid <= 0) {
+        // 少数模板的会话链接不带 touid，改用行内指向个人空间的链接。
+        for (final link in node.querySelectorAll('a[href]')) {
+          final candidate = _uidFromHref(link.attributes['href'] ?? '');
+          if (candidate > 0) {
+            uid = candidate;
+            break;
+          }
+        }
+      }
+      if (uid <= 0 || !seen.add(uid)) continue;
+      final name = _pmPeerName(node, uid);
       final avatarEl = node.querySelector('dd.avt img');
       final preview = _pmNodeText(node);
       if (name.isEmpty && preview.isEmpty) continue;
@@ -1491,7 +1505,7 @@ class ForumRepository {
     for (final node in doc.querySelectorAll('dl[id^="pmlist_"]')) {
       final text = _pmNodeText(node);
       if (text.isEmpty) continue;
-      final authorLink = node.querySelector('dd.ptm a[href*="mod=space&uid="]');
+      final authorLink = _pmAuthorLink(node);
       final author = _clean(authorLink?.text ?? '');
       final authorUid = _uidFromHref(authorLink?.attributes['href'] ?? '');
       // 自己的消息在模板里只显示「您」，没有作者链接。
@@ -1543,6 +1557,63 @@ class ForumRepository {
     return _clean(buffer.toString());
   }
 
+  /// 会话对应的对方 uid：优先取会话链接里的 touid。
+  int _pmPeerUid(Element node) {
+    for (final link in node.querySelectorAll('a[href]')) {
+      final uid = _touidFromHref(link.attributes['href'] ?? '');
+      if (uid > 0) return uid;
+    }
+    return 0;
+  }
+
+  /// 取 `touid=` 参数，用于定位私信会话的对方。
+  int _touidFromHref(String href) {
+    final match = RegExp(r'[?&](?:amp;)?touid=(\d+)').firstMatch(href);
+    return _firstInt(match?.group(1)) ?? 0;
+  }
+
+  /// 私信正文里的作者链接：跳过会话跳转链接，兼容两种个人空间地址。
+  Element? _pmAuthorLink(Element node) {
+    for (final link in node.querySelectorAll('dd.ptm a[href], a[href]')) {
+      final href = (link.attributes['href'] ?? '').replaceAll('&amp;', '&');
+      if (href.contains('do=pm') || href.contains('ac=pm')) continue;
+      if (_uidFromHref(href) <= 0) continue;
+      if (_clean(link.text).isEmpty) continue;
+      return link;
+    }
+    return null;
+  }
+
+  /// 私信会话里对方的昵称。
+  ///
+  /// 站点的私信列表同时存在 `home.php?mod=space&uid=1` 与
+  /// `space-uid-1.html` 两种个人空间写法，模板也可能把昵称放在 `dt` / `cite`
+  /// 里而不是链接文字中，所以这里按 uid 匹配后逐级回退，避免整列显示成「UID 数字」。
+  String _pmPeerName(Element node, int uid) {
+    String? firstCandidate;
+    for (final link in node.querySelectorAll('a[href]')) {
+      final text = _clean(link.text);
+      if (text.isEmpty || _looksLikeTime(text)) continue;
+      final href = (link.attributes['href'] ?? '').replaceAll('&amp;', '&');
+      if (href.contains('do=pm') || href.contains('ac=pm')) continue;
+      final linkUid = _uidFromHref(href);
+      if (linkUid <= 0) continue;
+      if (linkUid == uid) return text;
+      firstCandidate ??= text;
+    }
+    for (final selector in <String>['dt', 'cite', 'strong.name', '.name', 'h3']) {
+      final text = _clean(node.querySelector(selector)?.text ?? '');
+      if (text.isNotEmpty && !_looksLikeTime(text)) return text;
+    }
+    return firstCandidate ?? '';
+  }
+
+  /// 形如「2026-7-25 18:33」「昨天 12:00」的时间串，不能当作昵称。
+  bool _looksLikeTime(String text) =>
+      RegExp(r'^\d{4}-\d{1,2}-\d{1,2}').hasMatch(text) ||
+      RegExp(r'^\d{1,2}:\d{2}$').hasMatch(text) ||
+      RegExp(r'^(昨天|今天|前天)').hasMatch(text);
+
   /// 消息提醒（我的帖子 / 坛友互动 / 系统提醒 / 应用提醒）。
   ///
   /// 手机模板与桌面模板结构差异很大，这里不绑定单一选择器：先按「提醒行」收集，
@@ -1586,6 +1657,12 @@ class ForumRepository {
   static const Set<String> _noticeNoiseLabels = <String>{
     '查看', '查看详情', '详情', '查看更多', '更多', '查看全部', '全部',
     '标记已读', '忽略', '删除', '全部已读', '设置为已读',
+  };
+
+  /// 提醒页顶部 / 底部的频道导航文字，容易被误判成一条提醒。
+  static const Set<String> _noticeNavLabels = <String>{
+    '消息', '我的消息', '私信', '短消息', '提醒', '我的提醒', '全部提醒',
+    '我的帖子', '坛友互动', '系统提醒', '应用提醒', '设为已读',
   };
 
   List<NoticeItem> _parseNoticeRows(String html, {required String view}) {
@@ -1652,8 +1729,14 @@ class ForumRepository {
       if (tag == 'header' || tag == 'footer' || tag == 'nav') return true;
       final id = current.id;
       if (id == 'hd' || id == 'ft' || id == 'nv' || id == 'scrolltop' || id == 'append_parent') return true;
-      if (current.classes.any((name) =>
-          name.contains('footer') || name.contains('comiis_nv') || name.contains('comiis_footer'))) {
+      final classes = current.classes;
+      if (classes.any((name) =>
+          name.contains('footer') ||
+          name.contains('comiis_nv') ||
+          name.contains('comiis_nav') ||
+          name.contains('comiis_tab') ||
+          name == 'dhnv' ||
+          name.contains('tabnav'))) {
         return true;
       }
       current = current.parent;
@@ -1713,10 +1796,15 @@ class ForumRepository {
         continue;
       }
       if (_isPmLink(href)) {
-        isPm = true;
-        if (pmUrl.isEmpty) {
-          pmUrl = href;
-          pmUid = _uidFromHref(href);
+        // 只有指向具体会话（touid / pmid）的链接才是私信提醒；提醒页顶部
+        // 的「消息 / 私信」入口只是站内导航，不能当成一条提醒。
+        final peerUid = _touidFromHref(href);
+        if (peerUid > 0 || href.contains('pmid=')) {
+          isPm = true;
+          if (pmUrl.isEmpty) {
+            pmUrl = href;
+            pmUid = peerUid;
+          }
         }
         continue;
       }
@@ -1731,6 +1819,12 @@ class ForumRepository {
     if (time.isNotEmpty) title = _clean(title.replaceAll(time, ''));
     title = _stripNoticeNoise(title);
     if (title.isEmpty) title = raw;
+
+    // 频道导航（消息 / 我的帖子 / 系统提醒…）既没有正文也没有具体目标，
+    // 出现在列表里会让整页只剩一个「消息」入口，点击还会跳去私信列表。
+    if (_noticeNavLabels.contains(title) && tid <= 0 && uid <= 0 && pmUid <= 0) {
+      return null;
+    }
 
     final NoticeTarget target;
     var url = '';

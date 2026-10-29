@@ -183,4 +183,68 @@ void main() {
     expect(items.single.followers, 4);
     expect(items.single.following, 6);
   });
+
+  test('提醒页顶部的「消息」导航不会被当成一条私信提醒', () {
+    // Discuz 触屏提醒页顶部有一条 .dhnv 导航：消息（do=pm）+ 我的提醒。
+    const html = '''
+<div class="dhnv flex-box cl">
+  <a href="home.php?mod=space&amp;do=pm" class="flex">消息</a>
+  <a href="home.php?mod=space&amp;do=notice" class="flex mon">我的提醒</a>
+</div>
+<div class="empty-box"><h4>暂无新提醒</h4></div>
+''';
+    expect(repo.parseNoticeHtml(html, view: 'mypost'), isEmpty);
+
+    // 部分主题把导航渲染成列表项，同样不能变成提醒。
+    const listNav = '''
+<ul class="notice">
+  <li><a href="home.php?mod=space&amp;do=pm">消息</a></li>
+</ul>
+''';
+    expect(repo.parseNoticeHtml(listNav, view: 'interactive'), isEmpty);
+  });
+
+  test('指向具体会话的私信提醒仍然保留', () {
+    const html = '''
+<dl class="cl">
+  <dd class="ntc_body">
+    <a href="home.php?mod=space&amp;do=pm&amp;touid=2002">李四</a> 给您发送了短消息
+    <a href="home.php?mod=space&amp;do=pm&amp;touid=2002">查看</a>
+  </dd>
+  <dd class="ntc_time xg1">2026-10-29 08:30</dd>
+</dl>
+''';
+    final items = repo.parseNoticeHtml(html, view: 'interactive');
+    expect(items.length, 1);
+    expect(items.single.target, NoticeTarget.pm);
+    expect(items.single.uid, 2002);
+  });
+
+  test('私信列表用 space-uid 链接时也能取到昵称', () {
+    const html = '''
+<dl id="pmlist_0" class="cl">
+  <dd class="avt"><a href="space-uid-119603.html"><img src="uc_server/avatar.php?uid=119603"></a></dd>
+  <dd class="ptm">
+    <a href="space-uid-119603.html" class="xg1">大佬</a>
+    <span class="xg1">2026-7-25 18:33</span><br>
+    <a href="home.php?mod=space&amp;do=pm&amp;subop=view&amp;touid=119603">大佬ai弄好了么</a>
+  </dd>
+</dl>
+<dl id="pmlist_1" class="cl">
+  <dd class="avt"><a href="home.php?mod=space&amp;uid=109717"><img src="uc_server/avatar.php?uid=109717"></a></dd>
+  <dd class="ptm">
+    <a href="home.php?mod=space&amp;uid=109717" class="xg1">老王</a>
+    <span class="xg1">2025-5-24 22:33</span><br>
+    <a href="home.php?mod=space&amp;do=pm&amp;subop=view&amp;touid=109717">轻云听书最新版</a>
+  </dd>
+</dl>
+''';
+    final items = repo.parsePmListHtml(html);
+    expect(items.length, 2);
+    expect(items[0].uid, 119603);
+    expect(items[0].name, '大佬');
+    expect(items[0].time, '2026-7-25 18:33');
+    expect(items[0].preview, '大佬ai弄好了么');
+    expect(items[1].name, '老王');
+  });
 }

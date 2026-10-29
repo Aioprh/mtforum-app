@@ -25,8 +25,8 @@ class _NotificationsPageState extends State<NotificationsPage> {
     const categories = <({String title, String subtitle, IconData icon, Color color, String view})>[
       (title: '我的消息', subtitle: '私信与会话', icon: Icons.chat_bubble_rounded, color: Color(0xFF55B8E8), view: ''),
       (title: '我的粉丝', subtitle: '关注我的坛友', icon: Icons.groups_rounded, color: Color(0xFFE97D8A), view: ''),
-      (title: '我的帖子', subtitle: '回复、评论与 @ 提醒', icon: Icons.forum_rounded, color: Color(0xFF9BC20D), view: 'interactive'),
-      (title: '坛友互动', subtitle: '好友与关注互动', icon: Icons.send_rounded, color: Color(0xFFF5B400), view: 'friend'),
+      (title: '我的帖子', subtitle: '帖子被回复、评论提醒', icon: Icons.forum_rounded, color: Color(0xFF9BC20D), view: 'mypost'),
+      (title: '坛友互动', subtitle: '关注、点赞与 @ 提醒', icon: Icons.send_rounded, color: Color(0xFFF5B400), view: 'interactive'),
       (title: '系统提醒', subtitle: '系统通知与管理提醒', icon: Icons.notifications_active_rounded, color: Color(0xFFE97D8A), view: 'system'),
       (title: '应用提醒', subtitle: '应用相关通知', icon: Icons.sensors_rounded, color: Color(0xFF8BB5E4), view: 'app'),
     ];
