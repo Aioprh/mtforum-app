@@ -42,6 +42,26 @@ void main() {
     expect(request.form['message'], '重复发帖｜同一段话刷了五遍');
   });
 
+  test('删帖走编辑页的 delete=1（Discuz 没有 action=postdelete）', () {
+    final request = ForumRepository.deleteRequest(
+      fid: 3,
+      tid: 100,
+      pid: 200,
+      formhash: 'abc123',
+      page: 2,
+    );
+
+    expect(request.query['mod'], 'post');
+    expect(request.query['action'], 'edit');
+    expect(request.query['pid'], '200');
+    expect(request.query['page'], '2');
+    expect(request.query['delete'], '1');
+    expect(request.query['action'], isNot('postdelete'));
+    // submitcheck('editsubmit') 要求 POST + formhash + 同域 referer。
+    expect(request.form['editsubmit'], 'yes');
+    expect(request.form['formhash'], 'abc123');
+  });
+
   test('识别站点返回的受理结果', () {
     expect(ForumRepository.reportReplyText('{"message":"举报成功 "}'), '举报成功');
     expect(ForumRepository.reportReplyText('<root><![CDATA[举报成功 ]]></root>'), '举报成功');

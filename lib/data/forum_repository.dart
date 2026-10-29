@@ -662,41 +662,59 @@ class ForumRepository {
   /// 删除自己的帖子 / 回复。
   /// Discuz 的删除是两步：先打开确认页拿新的 formhash，再带 deletesubmit
   /// 提交；只发一次 `action=edit&delete=1` 服务端不会真的删掉。
+  /// 删除自己的回复或主题。
+  ///
+  /// Discuz 没有独立删帖接口：网页端「删除本帖」就是编辑页带上 `delete=1`
+  /// 提交（`forum.php?mod=post&action=edit&...&delete=1`，POST + `formhash` +
+  /// `editsubmit=yes`）。早先打的 `mod=misc&action=postdelete` 在 X3.5 里
+  /// 根本不存在，服务端只会把页面再渲染一遍，主题原样留着。
+  /// 站点若关闭「编辑帖子时允许删除帖子」，服务端会回「不允许删除帖子」。
   Future<String> deletePost({
     required int fid,
     required int tid,
     required int pid,
     required String formhash,
+    int page = 1,
   }) async {
-    final referer = _threadReferer(tid);
-    final baseQuery = <String, String>{
-      'mod': 'misc',
-      'action': 'postdelete',
-      'fid': '$fid',
-      'tid': '$tid',
-      'pid': '$pid',
-      'mobile': '2',
-    };
-    final confirm = await _http.get('forum.php', query: baseQuery, referer: referer);
-    final confirmMessage = _pageMessage(parser.parse(confirm.body));
-    if (confirmMessage != null && _looksLikeError(confirmMessage)) {
-      throw SiteException(confirmMessage);
-    }
-    final hash = _findFormhash(confirm.body);
+    final request = deleteRequest(fid: fid, tid: tid, pid: pid, formhash: formhash, page: page);
     final response = await _http.post(
       'forum.php',
-      query: {...baseQuery, 'deletesubmit': 'yes', 'handlekey': 'postdelete'},
-      form: {
-        'formhash': hash.isNotEmpty ? hash : formhash,
-        'reason': '',
-        'delete': '1',
-      },
-      referer: referer,
+      query: request.query,
+      form: request.form,
+      referer: _threadReferer(tid),
     );
-    final msg = _pageMessage(parser.parse(response.body));
-    if (msg != null && _looksLikeError(msg)) throw SiteException(msg);
+    final message = _pageMessage(parser.parse(response.body)) ?? '';
+    if (message.contains('删除成功')) return '已删除';
+    if (message.isNotEmpty) throw SiteException(message);
     return '已删除';
   }
+
+  /// 组装删帖请求。单独抽出来是为了让测试盯住契约：
+  /// Discuz 的删帖是「编辑页 + delete=1」，不是不存在的 `action=postdelete`。
+  static ({Map<String, String> query, Map<String, String> form}) deleteRequest({
+    required int fid,
+    required int tid,
+    required int pid,
+    required String formhash,
+    int page = 1,
+  }) =>
+      (
+        query: {
+          'mod': 'post',
+          'action': 'edit',
+          'fid': '$fid',
+          'tid': '$tid',
+          'pid': '$pid',
+          'page': '$page',
+          'delete': '1',
+          'mobile': '2',
+        },
+        form: {
+          'formhash': formhash,
+          'editsubmit': 'yes',
+          'delete': '1',
+        },
+      );
 
   /// 网页端举报面板给出的理由，顺序与站点一致。
   static const List<String> reportReasons = ['广告垃圾', '违规内容', '重复发帖', '恶意灌水', '其他'];

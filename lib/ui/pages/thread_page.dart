@@ -758,6 +758,7 @@ class _ThreadPageState extends State<ThreadPage> {
         tid: widget.tid,
         pid: post.pid,
         formhash: detail.formhash,
+        page: _page,
       );
       if (post.isOp && mounted) {
         Navigator.of(context).maybePop();
