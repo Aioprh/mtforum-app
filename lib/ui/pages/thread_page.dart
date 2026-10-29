@@ -693,11 +693,11 @@ class _ThreadPageState extends State<ThreadPage> {
     final detail = _detail;
     if (detail == null) return;
     if (!mounted) return;
-    final result = await showModalBottomSheet<(int, String)>(
+    final result = await showModalBottomSheet<(String, String)>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      builder: (_) => _ReportSheet(floor: post.floorLabel),
+      builder: (_) => ReportSheet(floor: post.floorLabel),
     );
     if (result == null || !mounted) return;
     try {
@@ -2459,7 +2459,14 @@ class _EditPostPageState extends State<_EditPostPage> {
             Expanded(child: TextField(controller: _mentionController, onChanged: (_) => setState(() {}),
               decoration: const InputDecoration(hintText: '搜索好友或输入用户名', isDense: true, prefixIcon: Icon(Icons.search), border: OutlineInputBorder()))),
             const SizedBox(width: 8),
-            FilledButton(onPressed: _insertEditMention, child: const Text('@添加')),
+            FilledButton(
+              onPressed: _insertEditMention,
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(0, 40),
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+              ),
+              child: const Text('@添加', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+            ),
           ]),
           Row(children: [
             Expanded(child: Text(_friendsError ?? (_friendsLoading ? '正在加载好友…' : '选择好友可插入 @用户名，也可手动输入。'),
@@ -2579,20 +2586,20 @@ class _EditPostPageState extends State<_EditPostPage> {
 }
 
 /// 举报面板。
-class _ReportSheet extends StatefulWidget {
-  const _ReportSheet({required this.floor});
+class ReportSheet extends StatefulWidget {
+  const ReportSheet({super.key, required this.floor});
 
   final String floor;
 
   @override
-  State<_ReportSheet> createState() => _ReportSheetState();
+  State<ReportSheet> createState() => _ReportSheetState();
 }
 
-class _ReportSheetState extends State<_ReportSheet> {
-  static const List<String> _reasons = ['广告垃圾', '违规内容', '重复发帖', '恶意灌水', '其他'];
+class _ReportSheetState extends State<ReportSheet> {
+  static const List<String> _reasons = ForumRepository.reportReasons;
 
   final TextEditingController _controller = TextEditingController();
-  int _reason = 1;
+  int _reason = 0;
 
   @override
   void dispose() {
@@ -2631,16 +2638,16 @@ class _ReportSheetState extends State<_ReportSheet> {
           ),
           for (var i = 0; i < _reasons.length; i++)
             InkWell(
-              onTap: () => setState(() => _reason = i + 1),
+              onTap: () => setState(() => _reason = i),
               borderRadius: BorderRadius.circular(8),
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 2),
                 child: Row(
                   children: [
                     Icon(
-                      _reason == i + 1 ? Icons.radio_button_checked_rounded : Icons.radio_button_unchecked_rounded,
+                      _reason == i ? Icons.radio_button_checked_rounded : Icons.radio_button_unchecked_rounded,
                       size: 17,
-                      color: _reason == i + 1 ? scheme.primary : scheme.outline,
+                      color: _reason == i ? scheme.primary : scheme.outline,
                     ),
                     const SizedBox(width: 8),
                     Text(_reasons[i], style: const TextStyle(fontSize: 13)),
@@ -2660,16 +2667,20 @@ class _ReportSheetState extends State<_ReportSheet> {
               border: OutlineInputBorder(),
             ),
           ),
-          Row(
-            children: [
-              Expanded(
-                child: Text('举报将由版主处理', style: TextStyle(fontSize: 11, color: scheme.outline)),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.of(context).pop((_reason, _controller.text.trim())),
-                child: const Text('提交举报'),
-              ),
-            ],
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: () => Navigator.of(context).pop((_reasons[_reason], _controller.text.trim())),
+              style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(44)),
+              child: const Text('提交举报', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Center(
+            child: Text(
+              '举报会提交给版主和管理员处理',
+              style: TextStyle(fontSize: 11, color: scheme.outline),
+            ),
           ),
         ],
       ),

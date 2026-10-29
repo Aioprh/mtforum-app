@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:html/dom.dart';
@@ -697,37 +698,120 @@ class ForumRepository {
     return '已删除';
   }
 
+  /// 网页端举报面板给出的理由，顺序与站点一致。
+  static const List<String> reportReasons = ['广告垃圾', '违规内容', '重复发帖', '恶意灌水', '其他'];
+
   /// 举报主题或回复。
+  ///
+  /// 网页端的举报入口是 `misc.php?mod=report`（不是 `forum.php?mod=misc&action=report`）：
+  /// 必须用 `rtype=post&rid=pid` 指明举报对象、带 `inajax=1`，否则模块开头就直接
+  /// `showmessage('report_parameters_invalid')`；`reportsubmit` 也只能放在 POST 体里，
+  /// 因为 `submitcheck()` 见到 GET 提交会直接返回 false，服务端只会把空表单再渲染一遍，
+  /// 举报永远不会写进 `common_report` 表。
+  /// Discuz 没有“理由编号”，只有一段 `message` 文本，所以选中的理由要拼进去。
   Future<String> report({
     required int fid,
     required int tid,
     required int pid,
     required String formhash,
-    required int reason,
+    required String reason,
     String message = '',
   }) async {
+    final request = reportRequest(
+      fid: fid,
+      tid: tid,
+      pid: pid,
+      formhash: formhash,
+      reason: reason,
+      message: message,
+    );
     final response = await _http.post(
-      'forum.php',
-      query: {
-        'mod': 'misc',
-        'action': 'report',
-        'fid': '$fid',
-        'tid': '$tid',
-        'pid': '$pid',
-        'reportsubmit': 'yes',
-        'handlekey': 'report',
-        'mobile': '2',
-      },
+      'misc.php',
+      query: request.query,
+      form: request.form,
       referer: _threadReferer(tid),
+    );
+    _ensureOk(response);
+    final reply = reportReplyText(response.body);
+    if (_reportAccepted.hasMatch(reply)) return '举报已提交，版主和管理员会收到提醒';
+    throw SiteException(reply.isNotEmpty ? reply : '站点没有返回受理结果，请稍后重试或到网页端举报');
+  }
+
+  /// 组装举报请求（地址参数与表单字段）。
+  ///
+  /// 单独抽出来是为了让测试盯住契约：`reportsubmit` 一旦被挪到 query 上，
+  /// 服务端的 `submitcheck()` 会直接判为未提交，举报不会入库。
+  static ({Map<String, String> query, Map<String, String> form}) reportRequest({
+    required int fid,
+    required int tid,
+    required int pid,
+    required String formhash,
+    required String reason,
+    String message = '',
+  }) {
+    final note = message.trim();
+    final text = note.isEmpty ? reason : '$reason｜$note';
+    final target = AppConfig.uri('forum.php', {
+      'mod': 'redirect',
+      'goto': 'findpost',
+      'ptid': '$tid',
+      'pid': '$pid',
+    }).toString();
+    return (
+      query: {
+        'mod': 'report',
+        'rtype': 'post',
+        'rid': '$pid',
+        'tid': '$tid',
+        'fid': '$fid',
+        'inajax': '1',
+        'handlekey': 'report',
+        'ajaxdata': 'json',
+      },
       form: {
         'formhash': formhash,
-        'reason': '$reason',
-        'message': message,
+        'reportsubmit': 'true',
+        'rtype': 'post',
+        'rid': '$pid',
+        'tid': '$tid',
+        'fid': '$fid',
+        'url': base64Encode(utf8.encode(target)),
+        'inajax': '1',
+        'handlekey': 'report',
+        'message': text,
       },
     );
-    final msg = _pageMessage(parser.parse(response.body));
-    if (msg != null && _looksLikeError(msg)) throw SiteException(msg);
-    return '举报已提交';
+  }
+
+  static final RegExp _reportAccepted = RegExp(r'(举报成功|举报已经成功|感谢.{0,6}举报|report_succeed)');
+
+  /// 从 `misc.php?mod=report` 的返回体里取出站点提示。
+  ///
+  /// 带 `ajaxdata=json` 时是 `{"message":"举报成功"}`；不带时是
+  /// `<root><![CDATA[举报成功]]></root>`；再退一步按普通页面解析。
+  static String reportReplyText(String body) {
+    final raw = body.trim();
+    if (raw.startsWith('{')) {
+      try {
+        final data = jsonDecode(raw);
+        if (data is Map) {
+          final message = '${data['message'] ?? ''}'.trim();
+          if (message.isNotEmpty) return _clean(parser.parseFragment(message).text ?? '');
+        }
+      } catch (_) {
+        // 不是合法 JSON，落到下面的 XML / 页面解析。
+      }
+    }
+    final cdata = RegExp(r'<!\[CDATA\[([\s\S]*?)\]\]>').firstMatch(body);
+    if (cdata != null) {
+      final message = _clean(parser.parseFragment(cdata.group(1)!).text ?? '');
+      if (message.isNotEmpty) return message;
+    }
+    final doc = parser.parse(body);
+    final message = _pageMessage(doc);
+    if (message != null) return message;
+    final text = _clean(doc.body?.text ?? '');
+    return text.length > 200 ? text.substring(0, 200) : text;
   }
 
   /// 读取当前用户组可用的打赏项（好评 / 金币等）、单次范围与今日剩余额度。
@@ -2770,7 +2854,7 @@ class ForumRepository {
         _ => '上传失败，请稍后重试',
       };
 
-  String? _pageMessage(Document doc) {
+  static String? _pageMessage(Document doc) {
     for (final selector in [
       '.comiis_message_table',
       '.alert_info',
@@ -2798,7 +2882,7 @@ class ForumRepository {
 
   int? _firstInt(String? value) => value == null ? null : int.tryParse(value);
 
-  String _clean(String text) => text
+  static String _clean(String text) => text
       .replaceAll('\u00a0', ' ')
       .replaceAll(RegExp(r'[\uE000-\uF8FF\uFFFD]'), '')
       .replaceAll(RegExp(r'\s+'), ' ')
