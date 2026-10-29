@@ -234,8 +234,8 @@ class ForumRepository {
       '.pg a[href], .comiis_page a[href], a[href*="mod=viewthread"][href*="page="], a[href*="viewthread-"]',
     )) {
       final href = (link.attributes['href'] ?? '').replaceAll('&amp;', '&');
-      final queryPage = RegExp(r'(?:[?&])page=(\\d+)').firstMatch(href)?.group(1);
-      final prettyPage = RegExp(r'viewthread-\\d+-(\\d+)-\\d+\\.html').firstMatch(href)?.group(1);
+      final queryPage = RegExp(r'(?:[?&])page=(\d+)').firstMatch(href)?.group(1);
+      final prettyPage = RegExp(r'viewthread-\d+-(\d+)-\d+\.html').firstMatch(href)?.group(1);
       final targetPage = int.tryParse(queryPage ?? prettyPage ?? '');
       if (targetPage != null && targetPage > currentPage) return true;
       final label = _clean(link.text);
