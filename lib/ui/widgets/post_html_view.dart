@@ -178,6 +178,14 @@ class _PostHtmlViewState extends State<PostHtmlView> {
         continue;
       }
 
+      // 引用块要优先于普通容器处理：站点皮肤常把 [quote] 渲染成
+      // div.quote（没有 blockquote），不拦截就会退化成一整段正文。
+      if (_isQuoteContainer(tag, node.classes)) {
+        flush();
+        widgets.add(_quoteCard(context, node));
+        continue;
+      }
+
       if (_isBlockTag(tag)) {
         flush();
         widgets.addAll(_blockElement(context, node));
@@ -199,21 +207,7 @@ class _PostHtmlViewState extends State<PostHtmlView> {
     final classes = element.classes;
 
     if (tag == 'blockquote') {
-      return [
-        Container(
-          margin: const EdgeInsets.only(bottom: 10),
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.55),
-            borderRadius: BorderRadius.circular(12),
-            border: Border(left: BorderSide(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.6), width: 3)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: _blocks(context, element.nodes),
-          ),
-        ),
-      ];
+      return [_quoteCard(context, element)];
     }
 
     if (tag == 'pre' || classes.contains('blockcode')) {
@@ -334,6 +328,101 @@ class _PostHtmlViewState extends State<PostHtmlView> {
 
     // 普通容器：递归渲染内部块。
     return _blocks(context, element.nodes);
+  }
+
+  /// 引用容器：标准的 blockquote，以及皮肤改写后的 div.quote 等。
+  bool _isQuoteContainer(String tag, Set<String> classes) {
+    if (tag == 'blockquote') return true;
+    if (!const {'div', 'section', 'article', 'fieldset'}.contains(tag)) return false;
+    return classes.any((name) =>
+        name == 'quote' ||
+        name == 'blockquote' ||
+        name == 'quotecontent' ||
+        name == 'comiis_quote' ||
+        name.endsWith('_quote'));
+  }
+
+  /// 引用统一渲染成灰色摘要块：头部是被引用者与时间，正文最多三行，
+  /// 点击可展开，避免引用的图片和长文把本楼内容挤到屏幕外。
+  Widget _quoteCard(BuildContext context, dom.Element element) {
+    final parts = _quoteParts(element);
+    if (parts.head.isEmpty && parts.body.isEmpty) {
+      // 引用里只有图片等情况，退回普通渲染，至少让图片可见。
+      final blocks = _blocks(context, element.nodes);
+      if (blocks.isEmpty) return const SizedBox.shrink();
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: blocks);
+    }
+    return _QuoteCard(head: parts.head, body: parts.body);
+  }
+
+  /// 拆出引用头（“某某 发表于 …”）和引用正文。
+  ({String head, String body}) _quoteParts(dom.Element element) {
+    dom.Element? headNode;
+    var head = '';
+    for (final link in element.querySelectorAll('a')) {
+      final text = _cleanInline(link.text);
+      if (text.contains('发表于')) {
+        headNode = link;
+        head = text;
+        break;
+      }
+    }
+    if (headNode == null) {
+      for (final font in element.querySelectorAll('font')) {
+        final text = _cleanInline(font.text);
+        if (text.contains('发表于')) {
+          headNode = font;
+          head = text;
+          break;
+        }
+      }
+    }
+
+    final raw = _quoteText(element, skip: headNode);
+    final lines = raw
+        .split('\n')
+        .map(_cleanInline)
+        .where((line) => line.trim().isNotEmpty)
+        .toList();
+    // 没有链接包裹的引用头就是正文第一行。
+    if (head.isEmpty && lines.isNotEmpty && lines.first.contains('发表于')) {
+      head = lines.removeAt(0);
+    }
+    final body = lines.join('\n').trim();
+    return (head: head, body: body);
+  }
+
+  /// 引用正文的纯文本：保留换行，丢掉图片（引用里的原图会重复占屏）。
+  String _quoteText(dom.Element element, {dom.Element? skip}) {
+    final buffer = StringBuffer();
+    void walk(dom.Node node) {
+      if (node is dom.Text) {
+        buffer.write(node.text);
+        return;
+      }
+      if (node is! dom.Element) return;
+      if (identical(node, skip)) {
+        buffer.write('\n');
+        return;
+      }
+      final tag = node.localName ?? '';
+      if (tag == 'br') {
+        buffer.write('\n');
+        return;
+      }
+      if (tag == 'img' || tag == 'script' || tag == 'style') return;
+      for (final child in node.nodes) {
+        walk(child);
+      }
+      if (const {'div', 'p', 'blockquote', 'li', 'tr', 'fieldset', 'table'}.contains(tag)) {
+        buffer.write('\n');
+      }
+    }
+
+    for (final node in element.nodes) {
+      walk(node);
+    }
+    return buffer.toString();
   }
 
   Widget _codeBlock(BuildContext context, String text) {
@@ -639,5 +728,68 @@ class _PostHtmlViewState extends State<PostHtmlView> {
       return Text('该楼层暂无内容', style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant));
     }
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: cache);
+  }
+}
+
+/// 楼层里的引用摘要卡片，默认三行，点击展开全文。
+class _QuoteCard extends StatefulWidget {
+  const _QuoteCard({required this.head, required this.body});
+
+  final String head;
+  final String body;
+
+  @override
+  State<_QuoteCard> createState() => _QuoteCardState();
+}
+
+class _QuoteCardState extends State<_QuoteCard> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final collapsed = !_expanded;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: GestureDetector(
+        onTap: widget.body.isEmpty ? null : () => setState(() => _expanded = !_expanded),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(12, 9, 12, 10),
+          decoration: BoxDecoration(
+            color: scheme.surfaceContainerHighest.withValues(alpha: 0.55),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (widget.head.isNotEmpty)
+                Text(
+                  widget.head,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    height: 1.4,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              if (widget.head.isNotEmpty && widget.body.isNotEmpty) const SizedBox(height: 5),
+              if (widget.body.isNotEmpty)
+                Text(
+                  widget.body,
+                  maxLines: collapsed ? 3 : null,
+                  overflow: collapsed ? TextOverflow.ellipsis : TextOverflow.clip,
+                  style: TextStyle(
+                    fontSize: 14,
+                    height: 1.6,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

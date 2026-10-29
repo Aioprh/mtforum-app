@@ -331,7 +331,9 @@ class ForumRepository {
     var time = _clean(timeNode?.text ?? '');
     final location = _clean(el.querySelector('.comiis_iplocality')?.text ?? '').replaceAll(RegExp(r'^来自\s*'), '');
     if (location.isNotEmpty) time = time.replaceAll(location, '').trim();
-    time = time.replaceAll(RegExp(r'来自\s*\S+$'), '').trim();
+    // 「9 分钟前 来自」这种没有地区名时，尾部会残留一个「来自」，
+    // 引用到回复里就会变成「某某 发表于 9 分钟前 来自」。
+    time = time.replaceAll(RegExp(r'\s*来自\s*\S*$'), '').trim();
 
     final contentEl = el.querySelector('.comiis_messages') ??
         el.querySelector('.comiis_message_table') ??
