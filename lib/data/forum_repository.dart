@@ -660,8 +660,6 @@ class ForumRepository {
   }
 
   /// 删除自己的帖子 / 回复。
-  /// Discuz 的删除是两步：先打开确认页拿新的 formhash，再带 deletesubmit
-  /// 提交；只发一次 `action=edit&delete=1` 服务端不会真的删掉。
   /// 删除自己的回复或主题。
   ///
   /// Discuz 没有独立删帖接口：网页端「删除本帖」就是编辑页带上 `delete=1`
@@ -683,11 +681,15 @@ class ForumRepository {
       form: request.form,
       referer: _threadReferer(tid),
     );
+    // 删成功后服务端 302 回帖子页，页面里随手一条「感谢分享」之类的站点提示
+    // 并不是结果；只有明确的拒绝语才算失败，删没删由调用方重载核对。
     final message = _pageMessage(parser.parse(response.body)) ?? '';
-    if (message.contains('删除成功')) return '已删除';
-    if (message.isNotEmpty) throw SiteException(message);
-    return '已删除';
+    if (_deleteRejected.hasMatch(message)) throw SiteException(message);
+    return '删除成功';
   }
+
+  static final RegExp _deleteRejected =
+      RegExp(r'(不允许|没有权限|无权|抱歉|失败|无效|来路不正确|审核|不存在|已关闭|不能删除)');
 
   /// 组装删帖请求。单独抽出来是为了让测试盯住契约：
   /// Discuz 的删帖是「编辑页 + delete=1」，不是不存在的 `action=postdelete`。

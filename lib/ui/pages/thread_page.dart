@@ -143,15 +143,12 @@ class _ThreadPageState extends State<ThreadPage> {
 
   Future<void> _loadPrevious() => _loadPage(_page - 1);
 
-  /// 刷新当前页但不把用户甩回第一页顶部；回复、编辑、删除后都用它。
+  /// 刷新当前页但不把用户甩回第一页顶部；回复、编辑、删除和下拉刷新都用它。
   Future<void> _refreshKeepPosition() async {
     final page = _page;
     final offset = _scroll.hasClients ? _scroll.offset : 0.0;
-    if (page > 1) {
-      await _loadPage(page, jumpToTop: false);
-    } else {
-      await _load();
-    }
+    // 统一走分页加载：page 1 也用它，避免 _load() 把整页切换成骨架屏而丢掉位置。
+    await _loadPage(page, jumpToTop: false);
     await WidgetsBinding.instance.endOfFrame;
     if (!mounted || !_scroll.hasClients) return;
     _scroll.jumpTo(offset.clamp(0.0, _scroll.position.maxScrollExtent));
@@ -779,6 +776,10 @@ class _ThreadPageState extends State<ThreadPage> {
           _detail = current.copyWith(replies: current.replies - 1);
         }
       });
+      // 删掉的是本页最后一条时，当前页已经空了，退回上一页。
+      if (_posts.isEmpty && _page > 1) {
+        await _loadPage(_page - 1);
+      }
       _toast(message);
     } catch (e) {
       _toast(_message(e));
@@ -955,7 +956,7 @@ class _ThreadPageState extends State<ThreadPage> {
     }
     if (_posts.isEmpty) {
       return RefreshIndicator(
-        onRefresh: _load,
+        onRefresh: _refreshKeepPosition,
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
           children: [
@@ -967,7 +968,7 @@ class _ThreadPageState extends State<ThreadPage> {
     }
 
     return RefreshIndicator(
-      onRefresh: _load,
+      onRefresh: _refreshKeepPosition,
       child: ListView.builder(
         controller: _scroll,
         physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
