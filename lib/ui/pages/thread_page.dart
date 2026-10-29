@@ -26,6 +26,18 @@ class ThreadPage extends StatefulWidget {
   final int tid;
   final String title;
 
+  /// 评论区标题该不该出现：只在第一页、主题正文之后插一次。
+  ///
+  /// 第二页起整页都是回复，再插标题会把它塞到本页第 1、2 楼之间。
+  @visibleForTesting
+  static bool needsSectionHeader({
+    required int page,
+    required bool onlyOp,
+    required int postCount,
+    required bool firstPostIsOp,
+  }) =>
+      !onlyOp && page == 1 && postCount >= 2 && firstPostIsOp;
+
   @override
   State<ThreadPage> createState() => _ThreadPageState();
 }
@@ -947,6 +959,17 @@ class _ThreadPageState extends State<ThreadPage> {
     );
   }
 
+  /// 评论区标题只属于第一页：它标记的是「主题正文结束、回复开始」。
+  ///
+  /// 早先只判断「列表第 2 项」，翻到第 2 页时本页第一楼恰好也是第 2 项，
+  /// 于是标题被塞进 11 楼和 12 楼之间，看起来像两块不相干的内容。
+  bool get _showsSectionHeader => ThreadPage.needsSectionHeader(
+        page: _page,
+        onlyOp: _onlyOp,
+        postCount: _posts.length,
+        firstPostIsOp: _posts.isNotEmpty && _posts.first.isOp,
+      );
+
   Widget _buildBody() {
     if (_loading && _posts.isEmpty) {
       return const FeedSkeleton(count: 3);
@@ -979,7 +1002,7 @@ class _ThreadPageState extends State<ThreadPage> {
           final postIndex = index - 1;
           if (postIndex < _posts.length) {
             final post = _posts[postIndex];
-            if (postIndex == 1 && !_onlyOp) {
+            if (postIndex == 1 && _showsSectionHeader) {
               final scheme = Theme.of(context).colorScheme;
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
