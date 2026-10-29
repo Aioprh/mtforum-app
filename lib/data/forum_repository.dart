@@ -152,7 +152,15 @@ class ForumRepository {
     // 每页解析时 floor 都从 1 重新计数，不能据此把后续页面第一条回复误标为正文。
     final hasThreadOpener = page == 1 && !orderDesc && authorId == null;
     for (var i = 0; i < posts.length; i++) {
-      posts[i] = posts[i].copyWith(isOp: hasThreadOpener && i == 0);
+      final isOpener = hasThreadOpener && i == 0;
+      // 主题正文不参与置顶：主题被版内置顶时首楼也会带「置顶」字样，
+      // 那是主题的置顶，不是「置顶回复」。
+      posts[i] = posts[i].copyWith(
+        isOp: isOpener,
+        isPinned: isOpener ? false : null,
+        hasSiteFloor: isOpener ? false : null,
+        floor: isOpener ? 1 : null,
+      );
     }
     // 置顶回复会被提到主题正文后面，但站点给它的楼层号仍是原楼号
     // （forum_viewthread 里 `$post['position'] = $poststick[...]['position']`）。
@@ -317,12 +325,16 @@ class ForumRepository {
   /// 网页端把置顶回复标成「置顶 来自2#」：前面是标记，后面是它原来的楼层。
   /// 老版本只认 `来自N#` 且只在少数 class 里找，所以置顶回复在 App 里既没有
   /// 标记也丢了原楼号，看上去和普通沙发一样。
+  ///
+  /// 只认「来自N#」这一条：主题被版内置顶时首楼也会出现「置顶」二字，只看
+  /// 这两个字会把主题正文本身标成置顶回复。没有「来自N#」的置顶回复，仍可
+  /// 由 [fixFloorsForPinnedReplies] 按楼号是否被前移认出来。
   @visibleForTesting
   static ({int? floor, bool pinned}) parseFloorMeta(String text) {
     final siteFloor = int.tryParse(
       RegExp(r'来自\s*(\d+)\s*#').firstMatch(text)?.group(1) ?? '',
     );
-    return (floor: siteFloor, pinned: siteFloor != null || text.contains('置顶'));
+    return (floor: siteFloor, pinned: siteFloor != null);
   }
 
   /// 按 pid 还原楼层，并标出被置顶前移的回复。

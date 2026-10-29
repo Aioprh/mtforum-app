@@ -23,10 +23,10 @@ void main() {
       expect(meta.floor, isNull);
     });
 
-    test('只有置顶标记、没给原楼号时也算置顶', () {
+    test('只有「置顶」二字不算置顶回复（那是主题被版内置顶）', () {
       final meta = ForumRepository.parseFloorMeta('置顶 3 分钟前');
 
-      expect(meta.pinned, isTrue);
+      expect(meta.pinned, isFalse);
       expect(meta.floor, isNull);
     });
 

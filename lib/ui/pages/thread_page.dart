@@ -1395,7 +1395,7 @@ class _ThreadPageState extends State<ThreadPage> {
                 ),
                 // 网页端在作者行右侧标「置顶 来自2#」，这里同样给一枚置顶标记，
                 // 楼层标签仍然按真实楼号显示。
-                if (post.isPinned) ...[
+                if (post.isPinned && !post.isOp) ...[
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                     decoration: BoxDecoration(
