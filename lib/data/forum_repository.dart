@@ -1195,75 +1195,88 @@ class ForumRepository {
   }
 
   /// 我的关注列表（Discuz 用户关注页）。使用当前登录账号的 UID，不固定用户编号。
-  Future<List<FriendItem>> fetchFollowing(int uid, {int page = 1}) async {
+  Future<List<FriendItem>> fetchFollowing(int uid, {int page = 1}) =>
+      _fetchFollowList('following', uid, page: page);
+
+  /// 我的粉丝列表。与关注列表共用一套模板（`#follow_ul` / `.comiis_userlist01`），
+  /// 只是 `do=follower`，因此复用同一套行解析。
+  Future<List<FriendItem>> fetchFollowers(int uid, {int page = 1}) =>
+      _fetchFollowList('follower', uid, page: page);
+
+  Future<List<FriendItem>> _fetchFollowList(String action, int uid, {int page = 1}) async {
     if (uid <= 0) throw SiteException('无法识别当前用户，请刷新个人资料后重试');
+    final label = action == 'follower' ? '粉丝' : '关注';
     final query = <String, String>{
       'mod': 'follow',
-      'do': 'following',
+      'do': action,
       'uid': '$uid',
       'page': '$page',
-      'mobile': '2',
     };
-    final mobile = await _http.get('home.php', query: query);
+    final mobile = await _http.get('home.php', query: {...query, 'mobile': '2'});
     _ensureOk(mobile);
-    var items = _parseFollowing(mobile.body);
+    var items = _parseFollowRows(mobile.body);
     if (items.isNotEmpty) return items;
 
-    // 站点桌面模板的关注列表结构更稳定，移动模板没有解析到时再回退。
-    final desktop = await _getDesktopPage('home.php', {
-      'mod': 'follow',
-      'do': 'following',
-      'uid': '$uid',
-      'page': '$page',
-    });
+    // 站点桌面模板的关注/粉丝列表结构更稳定，移动模板没有解析到时再回退。
+    final desktop = await _getDesktopPage('home.php', query);
     _ensureOk(desktop);
-    items = _parseFollowing(desktop.body);
-    final doc = parser.parse(desktop.body);
-    final message = _pageMessage(doc) ?? _clean(doc.body?.text ?? '');
-    if (items.isEmpty && (message.contains('登录') || message.contains('权限'))) {
-      throw SiteException(message.length > 120 ? '无法读取关注列表，请确认登录状态' : message);
+    items = _parseFollowRows(desktop.body);
+    if (items.isEmpty) {
+      final message = _pageMessage(parser.parse(desktop.body)) ?? _clean(parser.parse(desktop.body).body?.text ?? '');
+      if (message.contains('登录') || message.contains('权限')) {
+        throw SiteException(message.length > 120 ? '无法读取$label列表，请确认登录状态' : message);
+      }
     }
     return items;
   }
 
-  List<FriendItem> _parseFollowing(String html) {
+  /// 关注 / 粉丝列表的行解析。
+  ///
+  /// 每一行除了头像、昵称，还有「6 关注」「4 粉丝」这类计数链接，它们同样带 uid。
+  /// 如果直接取行内第一个带 uid 的链接，昵称就会变成「6 关注」（网页端显示的是昵称），
+  /// 所以这里按链接语义筛选：只认个人空间链接，排除 do=following / do=follower 计数链接，
+  /// 以及「取消关注」「备注」「星标」等操作链接。
+  List<FriendItem> _parseFollowRows(String html) {
     final doc = parser.parse(html);
     _followingFormhash = _findFormhash(html);
     final items = <FriendItem>[];
     final seen = <int>{};
-    // Discuz 关注列表里「取消 / 备注 / 星标」也可能带 uid 参数，
-    // 不能把这些操作链接当作用户昵称或用户主页。
-    const actionLabels = <String>{
-      '取消', '取消关注', '备注', '星标', '取消星标', '访问主页', '删除',
-    };
-    final selectors = <String>[
+    const selectors = <String>[
+      // Discuz 触屏版：div.xld > dl.b_b（关注 / 粉丝各一行）。
+      '.xld dl',
+      '.xlda dl',
+      'dl.b_b',
       '#follow_ul li',
       '.comiis_userlist01 li',
-      '.buddy li',
+      '.comiis_followlist li',
+      '.comiis_follow_list li',
+      '.followlist li',
       '.follow_list li',
-      'ul[id*="follow"] li',
+      '.space_list li',
+      '.comiis_uitem',
+      '.buddy li',
       '.mtli li',
+      'ul[id*="follow"] li',
     ];
     for (final selector in selectors) {
       for (final element in doc.querySelectorAll(selector)) {
         Element? profileLink;
         var uid = 0;
         for (final link in element.querySelectorAll('a[href]')) {
-          final href = link.attributes['href'] ?? '';
+          final href = (link.attributes['href'] ?? '').replaceAll('&amp;', '&');
           final text = _clean(link.text);
           final candidate = _uidFromHref(href);
-          final isAction = actionLabels.contains(text) ||
-              text.startsWith('取消') ||
-              text.startsWith('备注') ||
-              text.startsWith('星标');
+          if (candidate <= 0 || _isFollowCountLink(href) || _isFollowActionLabel(text)) continue;
+          // mod=spacecp 是「关注 / 备注 / 星标」等操作入口，不是个人主页。
+          if (href.contains('mod=spacecp') || href.contains('ac=follow')) continue;
           final isProfile = href.contains('mod=space') ||
               href.contains('space-uid-') ||
               href.contains('do=profile') ||
               href.contains('uid=');
-          if (!isAction && text.isNotEmpty && isProfile && candidate > 0) {
-            profileLink ??= link;
-            uid = candidate;
-          }
+          if (!isProfile) continue;
+          profileLink = link;
+          uid = candidate;
+          break;
         }
 
         // 有些模板把昵称放在标题节点里，链接不直接带 uid；此时只接受
@@ -1277,7 +1290,8 @@ class ForumRepository {
           final candidateUid = _uidFromHref(href);
           if (candidateLink != null &&
               candidateName.isNotEmpty &&
-              !actionLabels.contains(candidateName) &&
+              !_isFollowActionLabel(candidateName) &&
+              !_isFollowCountLink(href) &&
               candidateUid > 0) {
             profileLink = candidateLink;
             uid = candidateUid;
@@ -1286,35 +1300,74 @@ class ForumRepository {
         if (profileLink == null || uid <= 0 || !seen.add(uid)) continue;
 
         final name = _clean(profileLink.text);
-        if (name.isEmpty || actionLabels.contains(name)) continue;
+        if (name.isEmpty || _isFollowActionLabel(name)) continue;
 
         final avatar = element.querySelector('img');
-        final noteNode = element.querySelector('.note, .desc, .xg1');
-        final note = _clean(noteNode?.text ?? '');
-        final starLink = element.querySelector('a[id^="a_specialfollow_"][href*="special="]') ?? element.querySelector('a[href*="special="][href*="fuid="]');
+        // 备注只取昵称旁边的节点，别把下面「粉丝: 4 关注: 6」当备注。
+        final noteNode = element.querySelector('dt span.xg1, dt span.xs1, .note, .desc');
+        final noteText = _clean(noteNode?.text ?? '');
+        final note = _isFollowCountLabel(noteText) ||
+                RegExp(r'(?:粉丝|关注)\s*[:：]').hasMatch(noteText)
+            ? ''
+            : noteText;
+        final starLink = element.querySelector('a[id^="a_specialfollow_"][href*="special="]') ??
+            element.querySelector('a[href*="special="][href*="fuid="]');
         final starHref = starLink?.attributes['href'] ?? '';
         final starLabel = _clean(starLink?.text ?? '');
         final isStarred = RegExp(r'[?&]special=2(?:&|$)').hasMatch(starHref) && starLabel.contains('取消');
         final rowText = _clean(element.text);
-        final followers = int.tryParse(
-          RegExp(r'(\d[\d,]*)\s*粉丝').firstMatch(rowText)?.group(1)?.replaceAll(',', '') ?? '',
-        ) ?? 0;
-        final following = int.tryParse(
-          RegExp(r'(\d[\d,]*)\s*关注').firstMatch(rowText)?.group(1)?.replaceAll(',', '') ?? '',
-        ) ?? 0;
+        final counts = _followCounts(rowText);
         items.add(FriendItem(
           uid: uid,
           username: name,
           avatar: avatar == null ? '' : _pickImage(avatar),
           note: note,
-          followers: followers,
-          following: following,
+          followers: counts.$2,
+          following: counts.$1,
           isStarred: isStarred,
         ));
       }
       if (items.isNotEmpty) break;
     }
     return items;
+  }
+
+  /// 取出「关注 / 粉丝」数量，兼容两种排版：
+  /// - 「6 关注」「1,024 粉丝」（数字在前）
+  /// - 「粉丝: 4 人」「关注: 6 人」（Discuz 触屏版，标签在前）
+  (int, int) _followCounts(String text) {
+    final labelFirst = RegExp(r'(?:粉丝|关注)\s*[:：]').hasMatch(text);
+    int pick(String unit) {
+      final pattern = labelFirst
+          ? '$unit\\s*[:：]?\\s*([0-9][0-9,]*)'
+          : '([0-9][0-9,]*)\\s*$unit';
+      final match = RegExp(pattern).firstMatch(text);
+      return int.tryParse(match?.group(1)?.replaceAll(',', '') ?? '') ?? 0;
+    }
+
+    return (pick('关注'), pick('粉丝'));
+  }
+
+  /// 关注 / 粉丝页里的计数链接（`do=following`、`do=follower`），不能当昵称。
+  bool _isFollowCountLink(String href) =>
+      href.contains('do=following') || href.contains('do=follower');
+
+  bool _isFollowCountLabel(String text) =>
+      RegExp(r'^\d[\d,]*\s*(?:关注|粉丝|好友|主题|帖子)$').hasMatch(text) ||
+      text == '关注' ||
+      text == '粉丝';
+
+  bool _isFollowActionLabel(String text) {
+    if (text.isEmpty) return true;
+    if (_isFollowCountLabel(text)) return true;
+    const labels = <String>{
+      '取消', '取消关注', '关注', '已关注', '回关', '备注', '星标', '取消星标',
+      '访问主页', '删除', '查看', '私信', '发消息', '加好友', '打招呼',
+    };
+    return labels.contains(text) ||
+        text.startsWith('取消') ||
+        text.startsWith('备注') ||
+        text.startsWith('星标');
   }
 
 
@@ -1460,9 +1513,9 @@ class ForumRepository {
     return (messages, _findFormhash(html), peer);
   }
 
-  /// 从链接里取用户 uid：兼容 home.php?...&uid=1 与 space-uid-1.html 两种写法。
+  /// 从链接里取用户 uid：兼容 home.php?...&uid=1、&fuid=1 与 space-uid-1.html 两种写法。
   int _uidFromHref(String href) {
-    final match = RegExp(r'(?:[?&](?:amp;)?uid=|space-uid-)(\d+)').firstMatch(href);
+    final match = RegExp(r'(?:[?&](?:amp;)?(?:uid|fuid)=|space-uid-)(\d+)').firstMatch(href);
     return _firstInt(match?.group(1)) ?? 0;
   }
 
@@ -1490,47 +1543,260 @@ class ForumRepository {
     return _clean(buffer.toString());
   }
 
-  /// 消息通知：Discuz 标准提醒列表使用 .nts > dl > .ntc_body。
-  /// 同时兼容 Comiis 主题的自定义通知卡片结构。
-  Future<List<NoticeItem>> fetchNotices({int page = 1}) async {
-    final result = await _http.get(
-      'home.php',
-      query: {'mod': 'space', 'do': 'notice', 'mobile': '2', 'page': '$page'},
-    );
-    _ensureOk(result);
-    final doc = parser.parse(result.body);
-    final items = <NoticeItem>[];
-    final seen = <String>{};
-    final containers = doc.querySelectorAll(
-      '.nts > dl, .nts dl, .comiis_notice, .comiis_noticeli, '
-      '.notice, .comiis_notice_list li',
-    );
-    for (final el in containers) {
-      final body = el.querySelector('.ntc_body, .comiis_notice_content, .comiis_notice_text');
-      final content = _clean(body?.text ?? '');
-      final wholeText = _clean(el.text);
-      final text = content.isNotEmpty ? content : wholeText;
-      if (text.isEmpty || text.length > 1200) continue;
+  /// 消息提醒（我的帖子 / 坛友互动 / 系统提醒 / 应用提醒）。
+  ///
+  /// 手机模板与桌面模板结构差异很大，这里不绑定单一选择器：先按「提醒行」收集，
+  /// 再把行内每个链接归类成主题 / 用户 / 私信三种目标。
+  /// 这样「查看」这类只有文字、没有目标的链接不会单独变成一条提醒，
+  /// 每条提醒在解析阶段就确定了点击后要打开的页面。
+  Future<List<NoticeItem>> fetchNotices({String view = '', int page = 1}) async {
+    final query = <String, String>{
+      'mod': 'space',
+      'do': 'notice',
+      if (view.isNotEmpty) 'view': view,
+      'page': '$page',
+    };
+    final mobile = await _http.get('home.php', query: {...query, 'mobile': '2'});
+    _ensureOk(mobile);
+    var items = _parseNoticeRows(mobile.body, view: view);
+    if (items.isNotEmpty) return items;
 
-      // Discuz 的每条通知通常将日期放在 dl > dt，将正文放在 dd.ntc_body。
-      final dateNode = el.querySelector('dt .xg1, .time, .comiis_notice_time');
-      final link = (body ?? el).querySelector('a[href]');
-      final url = _absolute(link?.attributes['href']);
-      final key = '${text.toLowerCase()}|$url';
-      if (!seen.add(key)) continue;
-
-      final titleNode = el.querySelector('h3, .comiis_notice_title, .title');
-      final title = _clean(titleNode?.text ?? text);
-      items.add(NoticeItem(
-        title: title.isEmpty ? text : title,
-        text: text,
-        time: _clean(dateNode?.text ?? ''),
-        url: url,
-        kind: _clean(el.attributes['class'] ?? ''),
-      ));
+    // 移动模板在部分主题下不渲染提醒列表，回落到结构稳定的桌面模板。
+    final desktop = await _getDesktopPage('home.php', query);
+    _ensureOk(desktop);
+    items = _parseNoticeRows(desktop.body, view: view);
+    if (items.isEmpty) {
+      final message = _pageMessage(parser.parse(desktop.body)) ?? '';
+      if (message.contains('登录') || message.contains('权限')) {
+        throw SiteException(message.length > 120 ? '无法读取消息提醒，请确认登录状态' : message);
+      }
     }
     return items;
   }
+
+  /// 解析提醒页面 HTML。界面走 [fetchNotices]，这里公开只是为了便于单元测试
+  /// 和抓取到的页面离线比对。
+  List<NoticeItem> parseNoticeHtml(String html, {String view = ''}) =>
+      _parseNoticeRows(html, view: view);
+
+  /// 解析关注 / 粉丝列表 HTML，同样仅供测试与离线比对。
+  List<FriendItem> parseFollowHtml(String html) => _parseFollowRows(html);
+
+  /// 提醒里属于「操作 / 说明」而不是提醒正文的链接文字。
+  static const Set<String> _noticeNoiseLabels = <String>{
+    '查看', '查看详情', '详情', '查看更多', '更多', '查看全部', '全部',
+    '标记已读', '忽略', '删除', '全部已读', '设置为已读',
+  };
+
+  List<NoticeItem> _parseNoticeRows(String html, {required String view}) {
+    final doc = parser.parse(html);
+    final items = <NoticeItem>[];
+    final seen = <String>{};
+
+    void collect(Iterable<Element> rows) {
+      for (final row in rows) {
+        final item = _buildNotice(row, view: view);
+        if (item == null) continue;
+        final key = '${item.target.name}|${item.tid}|${item.uid}|${item.title}|${item.time}';
+        if (!seen.add(key)) continue;
+        items.add(item);
+        if (items.length >= 60) return;
+      }
+    }
+
+    const rowSelectors = <String>[
+      // Discuz 触屏版：div#notice_ul > div.notice-list-item > div.notice-list-body。
+      '.notice-list-item',
+      '.nts > dl',
+      '.nts dl',
+      '.nts > li',
+      'dl[id^="notice_"]',
+      'li[id^="notice_"]',
+      '.comiis_notice_item',
+      '.comiis_noticeli',
+      '.comiis_notice li',
+      '.comiis_notice dl',
+      '.comiis_notice_list li',
+      '.notice li',
+      '.notice_list li',
+      '.space_notice li',
+      '.noticeitem',
+      '.comiis_uitem',
+    ];
+    final rows = <Element>[];
+    for (final selector in rowSelectors) {
+      rows.addAll(doc.querySelectorAll(selector));
+    }
+    collect(rows);
+
+    // 兜底：模板把提醒铺在普通 li / dl 里时，用行内是否有可跳转链接反推。
+    if (items.isEmpty) {
+      final candidates = <Element>[];
+      for (final link in doc.querySelectorAll('a[href]')) {
+        final href = (link.attributes['href'] ?? '').replaceAll('&amp;', '&');
+        if (_tidFromHref(href) <= 0 && !_isPmLink(href) && _uidFromHref(href) <= 0) continue;
+        final row = _noticeRowOf(link);
+        if (row == null || _inPageChrome(row)) continue;
+        if (!candidates.contains(row)) candidates.add(row);
+      }
+      collect(candidates);
+    }
+    return items;
+  }
+
+  /// 站点头部导航、页脚里的链接不是提醒，兜底解析时必须排除。
+  bool _inPageChrome(Element node) {
+    Element? current = node;
+    for (var depth = 0; depth < 8 && current != null; depth++) {
+      final tag = current.localName?.toLowerCase() ?? '';
+      if (tag == 'header' || tag == 'footer' || tag == 'nav') return true;
+      final id = current.id;
+      if (id == 'hd' || id == 'ft' || id == 'nv' || id == 'scrolltop' || id == 'append_parent') return true;
+      if (current.classes.any((name) =>
+          name.contains('footer') || name.contains('comiis_nv') || name.contains('comiis_footer'))) {
+        return true;
+      }
+      current = current.parent;
+    }
+    return false;
+  }
+
+  /// 从链接向上找提醒行，最多走到 li / dl / tr 或带 notice 类名且确实含正文的 div。
+  Element? _noticeRowOf(Element link) {
+    Element? node = link.parent;
+    for (var depth = 0; depth < 6 && node != null; depth++) {
+      final tag = node.localName?.toLowerCase() ?? '';
+      if (tag == 'li' || tag == 'dl' || tag == 'tr') return node;
+      // .notice-list-avatar 这类容器同属「notice」命名空间，但只有图片没有正文。
+      if (tag == 'div' &&
+          node.classes.any((name) => name.contains('notice')) &&
+          node.text.trim().length >= 6) {
+        return node;
+      }
+      node = node.parent;
+    }
+    return null;
+  }
+
+  NoticeItem? _buildNotice(Element row, {required String view}) {
+    final body = row.querySelector(
+          '.notice-list-body, .ntc_body, .comiis_notice_content, .comiis_notice_text, '
+          '.comiis_notice_desc, dd',
+        ) ??
+        row;
+    final raw = _clean(body.text);
+    if (raw.isEmpty || raw.length > 1200) return null;
+
+    final time = _clean(row
+            .querySelector('time, .notice-list-time, .ntc_time, .comiis_notice_time, '
+                '.time, .dateline, .xg1, .grey')
+            ?.text ??
+        '');
+
+    var tid = 0;
+    var uid = 0;
+    var pmUid = 0;
+    var isPm = false;
+    var threadUrl = '';
+    var userUrl = '';
+    var pmUrl = '';
+    for (final link in body.querySelectorAll('a[href]')) {
+      final href = (link.attributes['href'] ?? '').replaceAll('&amp;', '&');
+      if (href.isEmpty || href.startsWith('javascript:') || href == '#') continue;
+      final label = _clean(link.text);
+      final linkTid = _tidFromHref(href);
+      if (linkTid > 0) {
+        if (tid == 0) {
+          tid = linkTid;
+          threadUrl = href;
+        }
+        continue;
+      }
+      if (_isPmLink(href)) {
+        isPm = true;
+        if (pmUrl.isEmpty) {
+          pmUrl = href;
+          pmUid = _uidFromHref(href);
+        }
+        continue;
+      }
+      final linkUid = _uidFromHref(href);
+      if (linkUid > 0 && uid == 0 && !_noticeNoiseLabels.contains(label)) {
+        uid = linkUid;
+        userUrl = href;
+      }
+    }
+
+    var title = raw;
+    if (time.isNotEmpty) title = _clean(title.replaceAll(time, ''));
+    title = _stripNoticeNoise(title);
+    if (title.isEmpty) title = raw;
+
+    final NoticeTarget target;
+    var url = '';
+    if (tid > 0) {
+      target = NoticeTarget.thread;
+      url = threadUrl;
+    } else if (isPm) {
+      target = NoticeTarget.pm;
+      uid = pmUid > 0 ? pmUid : uid;
+      url = pmUrl;
+    } else if (uid > 0) {
+      target = NoticeTarget.user;
+      url = userUrl;
+    } else if (title.length >= 3 && !_noticeNoiseLabels.contains(title)) {
+      // 没有落地页（系统提醒、插件提醒）：保留正文，界面直接用弹窗展示，
+      // 但「查看」这类空壳行仍然丢弃，避免出现整屏没有内容的条目。
+      target = NoticeTarget.none;
+    } else {
+      return null;
+    }
+
+    final avatarNode = row.querySelector('img');
+    final avatar = avatarNode == null ? '' : _pickImage(avatarNode);
+    final unread = row.classes.any((name) => name.contains('new') || name.contains('unread')) ||
+        row.querySelector('.new, em.new, .comiis_notice_new') != null;
+
+    return NoticeItem(
+      title: title,
+      text: '',
+      time: time,
+      url: _absolute(url),
+      kind: view,
+      tid: tid,
+      uid: uid,
+      avatar: target == NoticeTarget.user ? avatar : '',
+      unread: unread,
+      target: target,
+    );
+  }
+
+  /// 去掉行尾重复出现的「查看」等操作文字。
+  String _stripNoticeNoise(String text) {
+    var value = _clean(text);
+    var changed = true;
+    while (changed) {
+      changed = false;
+      for (final noise in _noticeNoiseLabels) {
+        if (value.length > noise.length && value.endsWith(noise)) {
+          value = _clean(value.substring(0, value.length - noise.length));
+          changed = true;
+        }
+      }
+    }
+    return _clean(value.replaceAll(RegExp(r'[|｜]\s*$'), ''));
+  }
+
+  /// 主题编号：兼容 tid=、ptid=（findpost 跳转）与 thread-1-1-1.html。
+  int _tidFromHref(String href) {
+    final direct = RegExp(r'[?&](?:amp;)?(?:ptid|tid)=(\d+)').firstMatch(href);
+    if (direct != null) return _firstInt(direct.group(1)) ?? 0;
+    final rewrite = RegExp(r'thread-(\d+)-').firstMatch(href);
+    return _firstInt(rewrite?.group(1)) ?? 0;
+  }
+
+  bool _isPmLink(String href) =>
+      href.contains('do=pm') || href.contains('touid=') || href.contains('ac=pm');
 
   /// 排行榜：type ∈ member / thread / forum。
   Future<List<(String, String)>> fetchRanking(String type) async {

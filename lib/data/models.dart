@@ -89,7 +89,13 @@ class Poll {
   final bool expired;
 }
 
+/// 提醒点击后要打开的原生页面。
+enum NoticeTarget { thread, user, pm, none }
+
 /// 消息通知（回复提醒、@提醒、系统通知）。
+///
+/// 解析时一次性把「点进去要打开的页面」确定好，界面层只负责按 [target] 跳转，
+/// 避免出现「暂时无法识别这条消息的目标页面」这种死路。
 class NoticeItem {
   const NoticeItem({
     required this.title,
@@ -97,6 +103,11 @@ class NoticeItem {
     this.time = '',
     this.url = '',
     this.kind = '',
+    this.tid = 0,
+    this.uid = 0,
+    this.avatar = '',
+    this.unread = false,
+    this.target = NoticeTarget.none,
   });
 
   final String title;
@@ -104,6 +115,21 @@ class NoticeItem {
   final String time;
   final String url;
   final String kind;
+
+  /// 目标主题编号（兼容 tid / ptid / thread-数字 三种写法）。
+  final int tid;
+
+  /// 目标用户编号（回复人、关注人等）。
+  final int uid;
+
+  /// 提醒发起人的头像，取不到时为空。
+  final String avatar;
+
+  final bool unread;
+
+  final NoticeTarget target;
+
+  bool get hasTarget => target != NoticeTarget.none;
 }
 
 /// 好友（空间好友列表）。

@@ -208,7 +208,7 @@ class _FollowingPageState extends State<FollowingPage> {
                                     ),
                                     subtitle: Text(
                                       user.followers > 0 || user.following > 0
-                                          ? '${user.followers} 粉丝  ${user.following} 关注'
+                                          ? '关注 ${user.following}  ·  粉丝 ${user.followers}'
                                           : 'UID ${user.uid}',
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
