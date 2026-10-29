@@ -10,6 +10,7 @@ import '../pages/board_threads_page.dart';
 import '../pages/image_viewer_page.dart';
 import '../pages/internal_browser_page.dart';
 import '../pages/thread_page.dart';
+import '../pages/user_page.dart';
 import 'smart_image.dart';
 
 /// 将论坛帖子的 HTML 内容解析为原生 Flutter 组件。
@@ -353,38 +354,57 @@ class _PostHtmlViewState extends State<PostHtmlView> {
     return RegExp(r'^[^。！？]{1,40}?发表于').hasMatch(head);
   }
 
-  /// 引用统一渲染成灰色摘要块：头部是被引用者与时间，正文最多三行，
-  /// 点击可展开，避免引用的图片和长文把本楼内容挤到屏幕外。
+  /// 引用按网页端 .quote 的样子渲染：左边一条灰竖线 + 浅灰底，
+  /// 头部是「作者 发表于 时间」（作者可点进主页），正文完整展示。
   Widget _quoteCard(BuildContext context, dom.Element element) {
     final parts = _quoteParts(element);
-    if (parts.head.isEmpty && parts.body.isEmpty) {
+    if (parts.author.isEmpty && parts.body.isEmpty) {
       // 引用里只有图片等情况，退回普通渲染，至少让图片可见。
       final blocks = _blocks(context, element.nodes);
       if (blocks.isEmpty) return const SizedBox.shrink();
       return Column(crossAxisAlignment: CrossAxisAlignment.start, children: blocks);
     }
-    return _QuoteCard(head: parts.head, body: parts.body);
+    return _QuoteCard(
+      author: parts.author,
+      time: parts.time,
+      body: parts.body,
+      onTapAuthor: parts.uid > 0 ? () => _openUser(context, parts.uid, parts.author) : null,
+    );
   }
 
-  /// 拆出引用头（“某某 发表于 …”）和引用正文。
-  ({String head, String body}) _quoteParts(dom.Element element) {
-    dom.Element? headNode;
-    var head = '';
-    for (final link in element.querySelectorAll('a')) {
-      final text = _cleanInline(link.text);
-      if (text.contains('发表于')) {
-        headNode = link;
-        head = text;
-        break;
+  /// 拆出引用头里的作者、时间和引用正文。
+  ({String author, int uid, String time, String body}) _quoteParts(dom.Element element) {
+    final headNode = _findQuoteHead(element);
+    var author = '';
+    var uid = 0;
+    var time = '';
+
+    if (headNode != null) {
+      // 网页端把作者包成链接，时间跟在后面：<font><a>作者</a> 发表于 …</font>
+      // 也有模板把整句都塞进链接，这时不能整段当昵称，交给下面的正则拆。
+      final link = headNode.querySelector('a[href]');
+      if (link != null) {
+        final linkText = _cleanInline(link.text);
+        uid = _uidFromHref(link.attributes['href'] ?? '');
+        if (linkText.isNotEmpty && !linkText.contains('发表于')) author = linkText;
       }
-    }
-    if (headNode == null) {
-      for (final font in element.querySelectorAll('font')) {
-        final text = _cleanInline(font.text);
-        if (text.contains('发表于')) {
-          headNode = font;
-          head = text;
-          break;
+      final raw = _cleanInline(headNode.text);
+      final match = RegExp(r'^(.*?)\s*发表于\s*(.*)$').firstMatch(raw);
+      if (match != null) {
+        if (author.isEmpty) author = _cleanInline(match.group(1) ?? '');
+        time = _cleanInline(match.group(2) ?? '');
+      } else {
+        time = raw;
+      }
+      // 引用头的链接是跳转地址（没有 uid）时，退一步找同名的空间链接。
+      if (uid <= 0 && author.isNotEmpty) {
+        for (final link in element.querySelectorAll('a[href]')) {
+          if (_cleanInline(link.text) != author) continue;
+          final id = _uidFromHref(link.attributes['href'] ?? '');
+          if (id > 0) {
+            uid = id;
+            break;
+          }
         }
       }
     }
@@ -395,12 +415,57 @@ class _PostHtmlViewState extends State<PostHtmlView> {
         .map(_cleanInline)
         .where((line) => line.trim().isNotEmpty)
         .toList();
-    // 没有链接包裹的引用头就是正文第一行。
-    if (head.isEmpty && lines.isNotEmpty && lines.first.contains('发表于')) {
-      head = lines.removeAt(0);
+    // 引用头没被单独包起来时，它就是正文第一行。
+    if (headNode == null && lines.isNotEmpty && lines.first.contains('发表于')) {
+      final head = lines.removeAt(0);
+      final match = RegExp(r'^(.*?)\s*发表于\s*(.*)$').firstMatch(head);
+      if (match != null) {
+        author = _cleanInline(match.group(1) ?? '');
+        time = _cleanInline(match.group(2) ?? '');
+      } else {
+        author = head;
+      }
     }
-    final body = lines.join('\n').trim();
-    return (head: head, body: body);
+    return (author: author, uid: uid, time: time, body: lines.join('\n').trim());  }
+
+  /// 找到承载「某某 发表于 …」的那层节点，尽量取最内层，避免把正文算进头部。
+  dom.Element? _findQuoteHead(dom.Element element) {
+    dom.Element? found;
+    void walk(dom.Element node) {
+      if (found != null) return;
+      if (_cleanInline(node.text).contains('发表于')) {
+        var inner = node;
+        while (true) {
+          final deeper = [
+            for (final child in inner.children)
+              if (_cleanInline(child.text).contains('发表于')) child,
+          ];
+          if (deeper.isEmpty) break;
+          inner = deeper.first;
+        }
+        found = inner;
+        return;
+      }
+      for (final child in node.children) {
+        walk(child);
+      }
+    }
+
+    for (final child in element.children) {
+      walk(child);
+      if (found != null) break;
+    }
+    return found;
+  }
+
+  int _uidFromHref(String href) {
+    final match = RegExp(r'(?:[?&](?:amp;)?uid=|space-uid-)(\d+)').firstMatch(href);
+    return int.tryParse(match?.group(1) ?? '') ?? 0;
+  }
+
+  void _openUser(BuildContext context, int uid, String name) {
+    if (uid <= 0) return;
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => UserPage(uid: uid, name: name)));
   }
 
   /// 引用正文的纯文本：保留换行，丢掉图片（引用里的原图会重复占屏）。
@@ -682,6 +747,12 @@ class _PostHtmlViewState extends State<PostHtmlView> {
     final uri = Uri.tryParse(url);
     if (uri != null && AppConfig.isForumHost(uri.host)) {
       final mod = uri.queryParameters['mod'];
+      // 楼层里的「@某人」、引用头的作者名都是空间链接，直接进原生主页。
+      final spaceUid = _uidFromHref(url);
+      if (spaceUid > 0 && (mod == 'space' || url.contains('space-uid-'))) {
+        _openUser(context, spaceUid, '');
+        return;
+      }
       if (mod == 'post' && uri.queryParameters['action'] == 'reply') {
         widget.onReply?.call();
         return;
@@ -742,64 +813,68 @@ class _PostHtmlViewState extends State<PostHtmlView> {
   }
 }
 
-/// 楼层里的引用摘要卡片，默认三行，点击展开全文。
-class _QuoteCard extends StatefulWidget {
-  const _QuoteCard({required this.head, required this.body});
+/// 楼层里的引用块，按网页端 .quote 的样子呈现：
+/// 左侧一条灰竖线、浅灰底，头部「作者 发表于 时间」，正文完整显示。
+class _QuoteCard extends StatelessWidget {
+  const _QuoteCard({
+    required this.author,
+    required this.time,
+    required this.body,
+    this.onTapAuthor,
+  });
 
-  final String head;
+  final String author;
+  final String time;
   final String body;
-
-  @override
-  State<_QuoteCard> createState() => _QuoteCardState();
-}
-
-class _QuoteCardState extends State<_QuoteCard> {
-  bool _expanded = false;
+  final VoidCallback? onTapAuthor;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final collapsed = !_expanded;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: GestureDetector(
-        onTap: widget.body.isEmpty ? null : () => setState(() => _expanded = !_expanded),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.fromLTRB(12, 9, 12, 10),
-          decoration: BoxDecoration(
-            color: scheme.surfaceContainerHighest.withValues(alpha: 0.55),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (widget.head.isNotEmpty)
-                Text(
-                  widget.head,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    height: 1.4,
-                    color: scheme.onSurfaceVariant,
-                  ),
-                ),
-              if (widget.head.isNotEmpty && widget.body.isNotEmpty) const SizedBox(height: 5),
-              if (widget.body.isNotEmpty)
-                Text(
-                  widget.body,
-                  maxLines: collapsed ? 3 : null,
-                  overflow: collapsed ? TextOverflow.ellipsis : TextOverflow.clip,
-                  style: TextStyle(
-                    fontSize: 14,
-                    height: 1.6,
-                    color: scheme.onSurfaceVariant,
-                  ),
-                ),
-            ],
-          ),
-        ),
+    final headStyle = TextStyle(fontSize: 12.5, height: 1.5, color: scheme.onSurfaceVariant);
+    final hasHead = author.isNotEmpty || time.isNotEmpty;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 2, bottom: 10),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.45),
+        border: Border(left: BorderSide(color: scheme.outlineVariant, width: 4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (hasHead)
+            Text.rich(
+              TextSpan(
+                children: [
+                  if (author.isNotEmpty)
+                    WidgetSpan(
+                      alignment: PlaceholderAlignment.baseline,
+                      baseline: TextBaseline.alphabetic,
+                      child: GestureDetector(
+                        onTap: onTapAuthor,
+                        child: Text(
+                          author,
+                          style: headStyle.copyWith(
+                            color: onTapAuthor == null ? null : scheme.primary,
+                          ),
+                        ),
+                      ),
+                    ),
+                  if (author.isNotEmpty && time.isNotEmpty)
+                    TextSpan(text: ' 发表于 ', style: headStyle),
+                  if (time.isNotEmpty) TextSpan(text: time, style: headStyle),
+                ],
+              ),
+            ),
+          if (hasHead && body.isNotEmpty) const SizedBox(height: 4),
+          if (body.isNotEmpty)
+            Text(
+              body,
+              style: TextStyle(fontSize: 14, height: 1.66, color: scheme.onSurfaceVariant),
+            ),
+        ],
       ),
     );
   }
