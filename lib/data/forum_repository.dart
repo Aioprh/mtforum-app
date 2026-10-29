@@ -658,26 +658,39 @@ class ForumRepository {
     return '编辑成功';
   }
 
-  /// 删除自己的帖子 / 回复（Discuz 用 `action=edit&delete=1`）。
+  /// 删除自己的帖子 / 回复。
+  /// Discuz 的删除是两步：先打开确认页拿新的 formhash，再带 deletesubmit
+  /// 提交；只发一次 `action=edit&delete=1` 服务端不会真的删掉。
   Future<String> deletePost({
     required int fid,
     required int tid,
     required int pid,
     required String formhash,
   }) async {
-    final response = await _http.get(
+    final referer = _threadReferer(tid);
+    final baseQuery = <String, String>{
+      'mod': 'misc',
+      'action': 'postdelete',
+      'fid': '$fid',
+      'tid': '$tid',
+      'pid': '$pid',
+      'mobile': '2',
+    };
+    final confirm = await _http.get('forum.php', query: baseQuery, referer: referer);
+    final confirmMessage = _pageMessage(parser.parse(confirm.body));
+    if (confirmMessage != null && _looksLikeError(confirmMessage)) {
+      throw SiteException(confirmMessage);
+    }
+    final hash = _findFormhash(confirm.body);
+    final response = await _http.post(
       'forum.php',
-      query: {
-        'mod': 'post',
-        'action': 'edit',
-        'fid': '$fid',
-        'tid': '$tid',
-        'pid': '$pid',
+      query: {...baseQuery, 'deletesubmit': 'yes', 'handlekey': 'postdelete'},
+      form: {
+        'formhash': hash.isNotEmpty ? hash : formhash,
+        'reason': '',
         'delete': '1',
-        'formhash': formhash,
-        'mobile': '2',
       },
-      referer: _threadReferer(tid),
+      referer: referer,
     );
     final msg = _pageMessage(parser.parse(response.body));
     if (msg != null && _looksLikeError(msg)) throw SiteException(msg);

@@ -379,7 +379,14 @@ class ThreadDetail {
   final int kickVotes;
   final int kickLimit;
 
-  ThreadDetail copyWith({List<ForumPost>? posts, bool? hasMore, int? likes, int? dislikes}) => ThreadDetail(
+  ThreadDetail copyWith({
+    List<ForumPost>? posts,
+    bool? hasMore,
+    int? likes,
+    int? dislikes,
+    int? replies,
+  }) =>
+      ThreadDetail(
         tid: tid,
         title: title,
         fid: fid,
@@ -387,7 +394,7 @@ class ThreadDetail {
         author: author,
         time: time,
         views: views,
-        replies: replies,
+        replies: replies ?? this.replies,
         posts: posts ?? this.posts,
         formhash: formhash,
         hasMore: hasMore ?? this.hasMore,

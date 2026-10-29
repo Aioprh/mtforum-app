@@ -60,6 +60,9 @@ class _ThreadPageState extends State<ThreadPage> {
   int _page = 1;
   bool _hasMore = false;
 
+  /// 楼层定位用的 key：回复成功后滚到自己那条。
+  final Map<int, GlobalKey> _floorKeys = <int, GlobalKey>{};
+
   ForumRepository get _repo => AppState.instance.repo;
 
   @override
@@ -140,9 +143,44 @@ class _ThreadPageState extends State<ThreadPage> {
 
   Future<void> _loadPrevious() => _loadPage(_page - 1);
 
+  /// 刷新当前页但不把用户甩回第一页顶部；回复、编辑、删除后都用它。
+  Future<void> _refreshKeepPosition() async {
+    final page = _page;
+    final offset = _scroll.hasClients ? _scroll.offset : 0.0;
+    if (page > 1) {
+      await _loadPage(page, jumpToTop: false);
+    } else {
+      await _load();
+    }
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted || !_scroll.hasClients) return;
+    _scroll.jumpTo(offset.clamp(0.0, _scroll.position.maxScrollExtent));
+  }
+
+  /// 滚动到指定楼层；楼层还没构建时退化为滚到底部。
+  Future<void> _scrollToPost(int pid) async {
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted || !_scroll.hasClients) return;
+    final target = _floorKeys[pid]?.currentContext;
+    if (target != null && target.mounted) {
+      await Scrollable.ensureVisible(
+        target,
+        alignment: 0.12,
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOut,
+      );
+      return;
+    }
+    await _scroll.animateTo(
+      _scroll.position.maxScrollExtent,
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOut,
+    );
+  }
+
   /// 显式分页：每页显示站点返回的 10 条楼层，切页时替换当前列表，
   /// 不再滚动到底自动追加，避免不同页的楼层和评论混在一起。
-  Future<void> _loadPage(int page) async {
+  Future<void> _loadPage(int page, {bool jumpToTop = true}) async {
     if (_loadingMore || page < 1 || (page > _page && !_hasMore)) return;
     setState(() => _loadingMore = true);
     try {
@@ -164,7 +202,7 @@ class _ThreadPageState extends State<ThreadPage> {
         _hasMore = detail.hasMore;
         _loadingMore = false;
       });
-      if (_scroll.hasClients) {
+      if (jumpToTop && _scroll.hasClients) {
         await _scroll.animateTo(0, duration: const Duration(milliseconds: 220), curve: Curves.easeOut);
       }
     } catch (e) {
@@ -275,8 +313,15 @@ class _ThreadPageState extends State<ThreadPage> {
         _hiddenQuotePayload = '';
         _showEmoji = false;
       });
+      final beforePids = _posts.map((post) => post.pid).toSet();
       _toast(message);
-      await _load();
+      // 刷新当前页而不是整篇重载：回复后要留在原处，并尽量滚到自己那条。
+      await _refreshKeepPosition();
+      if (!mounted) return;
+      final added = _posts.where((post) => !beforePids.contains(post.pid)).toList();
+      if (added.isNotEmpty) {
+        await _scrollToPost(added.last.pid);
+      }
     } catch (e) {
       _toast(_message(e));
     } finally {
@@ -688,9 +733,7 @@ class _ThreadPageState extends State<ThreadPage> {
     );
     if (result == true && mounted) {
       _toast('已保存修改');
-      await _load();
-    } else if (result == 'deleted' && mounted) {
-      await _load();
+      await _refreshKeepPosition();
     }
   }
 
@@ -716,12 +759,26 @@ class _ThreadPageState extends State<ThreadPage> {
         pid: post.pid,
         formhash: detail.formhash,
       );
-      _toast(message);
       if (post.isOp && mounted) {
         Navigator.of(context).maybePop();
         return;
       }
-      await _load();
+      await _refreshKeepPosition();
+      if (!mounted) return;
+      // 提示语不能当结果：楼层还在就说明没删掉。
+      if (_posts.any((item) => item.pid == post.pid)) {
+        _toast('删除未生效，请稍后重试或到网页端删除');
+        return;
+      }
+      _floorKeys.remove(post.pid);
+      setState(() {
+        _posts.removeWhere((item) => item.pid == post.pid);
+        final current = _detail;
+        if (current != null && current.replies > 0) {
+          _detail = current.copyWith(replies: current.replies - 1);
+        }
+      });
+      _toast(message);
     } catch (e) {
       _toast(_message(e));
     }
@@ -955,6 +1012,7 @@ class _ThreadPageState extends State<ThreadPage> {
               );
             }
             return Padding(
+              key: _floorKeys.putIfAbsent(post.pid, GlobalKey.new),
               padding: const EdgeInsets.only(bottom: 11),
               child: _postCard(post),
             );
@@ -2155,44 +2213,6 @@ class _EditPostPageState extends State<_EditPostPage> {
     );
   }
 
-  Future<void> _delete() async {
-    if (_saving || _uploading) return;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('删除确认'),
-        content: Text(widget.isOp ? '确定删除整篇主题吗？删除后不可恢复。' : '确定删除自己的这条回复吗？删除后不可恢复。'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('取消')),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            style: FilledButton.styleFrom(backgroundColor: Theme.of(dialogContext).colorScheme.error),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-    setState(() { _saving = true; _error = null; });
-    try {
-      final message = await AppState.instance.repo.deletePost(
-        fid: widget.fid,
-        tid: widget.tid,
-        pid: widget.pid,
-        formhash: widget.formhash,
-      );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
-      Navigator.of(context).pop('deleted');
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _saving = false;
-        _error = e is SiteException ? e.message : '删除失败，请稍后重试';
-      });
-    }
-  }
-
   Future<void> _save() async {
     final subject = widget.isOp ? _subject.text.trim() : widget.subject;
     final message = _message.text.trim();
@@ -2397,27 +2417,8 @@ class _EditPostPageState extends State<_EditPostPage> {
           ),
           child: Row(
             children: [
-              if (!widget.isOp) ...[
-                Expanded(
-                  flex: 2,
-                  child: SizedBox(
-                    height: 52,
-                    child: FilledButton.icon(
-                      onPressed: isBusy ? null : _delete,
-                      icon: const Icon(Icons.delete_outline_rounded, size: 20),
-                      label: const Text('删除'),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: scheme.error,
-                        foregroundColor: scheme.onError,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-              ],
               Expanded(
-                flex: widget.isOp ? 1 : 2,
+                flex: 1,
                 child: SizedBox(
                   height: 52,
                   child: FilledButton.icon(
