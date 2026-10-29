@@ -1104,8 +1104,8 @@ class ForumRepository {
     required String action,
     int? pid,
   }) async {
-    if (action == 'stickreply' && (pid == null || pid <= 0)) {
-      throw SiteException('缺少需要置顶的回复信息');
+    if (action == 'stickreply') {
+      return setStickReply(tid: tid, fid: fid, pid: pid ?? 0, formhash: formhash);
     }
     final response = await _http.post(
       'forum.php',
@@ -1114,7 +1114,6 @@ class ForumRepository {
         'action': action,
         'fid': '$fid',
         'tid': '$tid',
-        if (action == 'stickreply') 'pid': '$pid',
         'handlekey': 'topicadmin',
         'inajax': '1',
         'mobile': '2',
@@ -1122,7 +1121,7 @@ class ForumRepository {
       referer: _threadReferer(tid),
       form: {
         'formhash': formhash,
-        'moderate[]': '${action == 'stickreply' ? pid : tid}',
+        'moderate[]': '$tid',
         if (action == 'digest') 'digest': '1',
       },
     );
@@ -1136,13 +1135,85 @@ class ForumRepository {
     }
     final labels = {
       'close': '主题已关闭',
-      'stickreply': '已置顶该回复',
       'digest': '已设为精华',
       'warn': '已警告',
       'delete': '已删除',
     };
     return msg.isEmpty ? (labels[action] ?? '操作成功') : msg;
   }
+
+  /// 置顶 / 取消置顶某条回复（Discuz 的 `topicadmin&action=stickreply`）。
+  ///
+  /// 这是主题作者自己也能用的操作（`forum_topicadmin.php` 里
+  /// `$specialperm = action=='stickreply' && thread.authorid == uid`），
+  /// 不需要版主权限。走的是确认框那张表单：`modsubmit=yes` + `topiclist[]`
+  /// + `stickreply=1|0`，不是版主面板的 `moderate[]`。
+  Future<String> setStickReply({
+    required int fid,
+    required int tid,
+    required int pid,
+    required String formhash,
+    bool stick = true,
+  }) async {
+    if (pid <= 0) throw SiteException('缺少需要置顶的回复信息');
+    final request = stickReplyRequest(
+      fid: fid,
+      tid: tid,
+      pid: pid,
+      formhash: formhash,
+      stick: stick,
+    );
+    final response = await _http.post(
+      'forum.php',
+      query: request.$1,
+      referer: _threadReferer(tid),
+      form: request.$2,
+    );
+    final msg = response.body.contains('<![CDATA[')
+        ? _inajaxMessage(response.body)
+        : (_pageMessage(parser.parse(response.body)) ?? '');
+    if (msg.isNotEmpty && _looksLikeError(msg)) throw SiteException(msg);
+    if (msg.isNotEmpty &&
+        (msg.contains('无权') || msg.contains('权限') || msg.contains('不允许') || msg.contains('失败'))) {
+      throw SiteException(msg);
+    }
+    return msg.isEmpty ? (stick ? '已置顶该回复' : '已取消置顶') : msg;
+  }
+
+  /// 置顶 / 取消置顶回复的表单。
+  ///
+  /// `forum_topicadmin.php` 走 `submitcheck('modsubmit')`：query 里必须有
+  /// `modsubmit=yes`，body 里是确认框那张表单的 `topiclist[]` + `stickreply`，
+  /// 不是版主面板的 `moderate[]`。
+  @visibleForTesting
+  static (Map<String, String>, Map<String, String>) stickReplyRequest({
+    required int fid,
+    required int tid,
+    required int pid,
+    required String formhash,
+    required bool stick,
+  }) =>
+      (
+        {
+          'mod': 'topicadmin',
+          'action': 'stickreply',
+          'modsubmit': 'yes',
+          'infloat': 'yes',
+          'modclick': 'yes',
+          'fid': '$fid',
+          'tid': '$tid',
+          'mobile': '2',
+        },
+        {
+          'formhash': formhash,
+          'fid': '$fid',
+          'tid': '$tid',
+          'handlekey': 'mods',
+          'topiclist[]': '$pid',
+          'stickreply': stick ? '1' : '0',
+          'reason': '',
+        },
+      );
 
   /// 站内私信。
   Future<String> sendPm({
