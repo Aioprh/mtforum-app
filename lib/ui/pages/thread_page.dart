@@ -1783,13 +1783,17 @@ class _ThreadPageState extends State<ThreadPage> {
     );
   }
 
-  /// Discuz 会在帖子 HTML 末尾附加编辑记录；这是系统元信息，不属于正文。
+  /// 仅移除 Discuz 自动插入的编辑记录，保留帖子正文。
+/// 不按标记位置截断整段文本：部分模板会把编辑记录放在正文开头，
+/// 截断会导致编辑器里的正文被清空。
 String _stripEditNotice(String text) {
-  final marker = text.lastIndexOf('本帖最后由');
-  if (marker < 0) return text;
-  final suffix = text.substring(marker);
-  if (!suffix.contains('编辑')) return text;
-  return text.substring(0, marker).replaceFirst(RegExp(r'帖子编辑\s*$'), '').trimRight();
+  var result = text;
+  result = result.replaceAll(
+    RegExp(r'本帖最后由\s*.+?\s+于\s+\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}\s+编辑', dotAll: true),
+    '',
+  );
+  result = result.replaceAll(RegExp(r'帖子编辑\s*'), '');
+  return result.trim();
 }
 
 String _plainText(String html) => html
