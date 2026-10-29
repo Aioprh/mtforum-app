@@ -1498,7 +1498,22 @@ class ForumRepository {
       'touid': '$uid',
     });
     _ensureOk(result);
-    final html = result.body;
+    return _parsePmMessages(result.body, uid: uid, myUid: myUid);
+  }
+
+  /// 解析私信会话 HTML，仅供测试与离线比对。
+  (List<PmMessage>, String, String) parsePmMessagesHtml(
+    String html, {
+    required int peerUid,
+    int myUid = 0,
+  }) =>
+      _parsePmMessages(html, uid: peerUid, myUid: myUid);
+
+  (List<PmMessage>, String, String) _parsePmMessages(
+    String html, {
+    required int uid,
+    int myUid = 0,
+  }) {
     final doc = parser.parse(html);
     final messages = <PmMessage>[];
     var peer = '';
@@ -1506,16 +1521,20 @@ class ForumRepository {
       final text = _pmNodeText(node);
       if (text.isEmpty) continue;
       final authorLink = _pmAuthorLink(node);
+      final authorUid = _pmAuthorUid(node);
+      // 作者 uid 才是判断归属的依据：对方的消息带头像/昵称链接，
+      // 自己的消息在默认模板里只有「您」标记。只看链接文字会把昵称
+      // 不是链接的模板全判成「自己」，于是整屏消息都挤在右侧。
+      final mine = authorUid > 0
+          ? (myUid > 0 ? authorUid == myUid : uid > 0 && authorUid != uid)
+          : _pmHasSelfMarker(node);
       final author = _clean(authorLink?.text ?? '');
-      final authorUid = _uidFromHref(authorLink?.attributes['href'] ?? '');
-      // 自己的消息在模板里只显示「您」，没有作者链接。
-      final mine = authorLink == null || (myUid > 0 && authorUid == myUid);
       if (!mine && author.isNotEmpty && peer.isEmpty) peer = author;
       messages.add(PmMessage(
         text: text,
         author: author,
         uid: authorUid,
-        time: _clean(node.querySelector('dd.ptm span.xg1')?.text ?? ''),
+        time: _clean(node.querySelector('dd.ptm span.xg1, dd.ptm .xg1')?.text ?? ''),
         mine: mine,
       ));
     }
@@ -1546,9 +1565,13 @@ class ForumRepository {
         }
         if (!afterBreak) continue;
         final classes = child.classes;
-        if (classes.contains('xg1') || classes.contains('pm_o') || child.localName == 'script') {
+        if (classes.contains('xg1') || classes.contains('p_pop') || child.localName == 'script') {
           continue;
         }
+        // pm_o 在默认模板里是「菜单」容器，但个别主题用它装正文，
+        // 只有短文本才按菜单忽略，避免把对方的消息整条吞掉。
+        if (classes.contains('pm_o') && _clean(child.text).length <= 6) continue;
+        if (child.id.contains('menu')) continue;
         buffer.write(child.text);
       } else if (afterBreak) {
         buffer.write(child.text);
@@ -1584,6 +1607,29 @@ class ForumRepository {
     return null;
   }
 
+  /// 消息作者 uid：头像链接、昵称链接都指向作者本人，优先取头像那一层，
+  /// 这样即使模板把昵称写成纯文本，也能判断是「我」还是「对方」。
+  int _pmAuthorUid(Element node) {
+    for (final selector in <String>['dd.avt a[href]', 'dt a[href]', 'dd.ptm a[href]']) {
+      for (final link in node.querySelectorAll(selector)) {
+        final href = (link.attributes['href'] ?? '').replaceAll('&amp;', '&');
+        if (href.contains('do=pm') || href.contains('ac=pm')) continue;
+        final uid = _uidFromHref(href);
+        if (uid > 0) return uid;
+      }
+    }
+    return 0;
+  }
+
+  /// 模板给「自己」的消息只输出「您 / 我」，没有任何作者链接。
+  bool _pmHasSelfMarker(Element node) {
+    for (final element in node.querySelectorAll('span, strong, em, a, cite')) {
+      final text = _clean(element.text);
+      if (text == '您' || text == '我' || text == '自己') return true;
+    }
+    return false;
+  }
+
   /// 私信会话里对方的昵称。
   ///
   /// 站点的私信列表同时存在 `home.php?mod=space&uid=1` 与
@@ -1593,7 +1639,7 @@ class ForumRepository {
     String? firstCandidate;
     for (final link in node.querySelectorAll('a[href]')) {
       final text = _clean(link.text);
-      if (text.isEmpty || _looksLikeTime(text)) continue;
+      if (!_usablePmName(text)) continue;
       final href = (link.attributes['href'] ?? '').replaceAll('&amp;', '&');
       if (href.contains('do=pm') || href.contains('ac=pm')) continue;
       final linkUid = _uidFromHref(href);
@@ -1601,12 +1647,40 @@ class ForumRepository {
       if (linkUid == uid) return text;
       firstCandidate ??= text;
     }
-    for (final selector in <String>['dt', 'cite', 'strong.name', '.name', 'h3']) {
-      final text = _clean(node.querySelector(selector)?.text ?? '');
-      if (text.isNotEmpty && !_looksLikeTime(text)) return text;
+    for (final selector in <String>['dt', 'cite', 'strong.name', '.name', 'h3', '.xw1', '.xi2']) {
+      for (final element in node.querySelectorAll(selector)) {
+        final text = _clean(element.text);
+        if (_usablePmName(text)) return text;
+      }
     }
-    return firstCandidate ?? '';
+    if (firstCandidate != null) return firstCandidate;
+    // 有些主题只给头像，昵称藏在 img[alt] 里。
+    for (final image in node.querySelectorAll('img[alt]')) {
+      final alt = _clean(image.attributes['alt'] ?? '');
+      if (_usablePmName(alt) && alt != 'systempm' && !alt.contains('avatar')) return alt;
+    }
+
+    // 兜底：昵称既不是链接也不在常见容器里时，取行内第一个短文本，
+    // 但要排除时间、正文预览和「您」这类标记，避免把预览当昵称。
+    final preview = _pmNodeText(node);
+    for (final element in node.querySelectorAll('span, a, strong, em, h3, h4, cite, p')) {
+      if (element.children.isNotEmpty) continue;
+      final text = _clean(element.text);
+      if (!_usablePmName(text)) continue;
+      if (text == preview || (preview.length > 1 && preview.startsWith(text))) continue;
+      return text;
+    }
+    return '';
   }
+
+  bool _usablePmName(String text) =>
+      text.isNotEmpty &&
+      text.length <= 24 &&
+      !_looksLikeTime(text) &&
+      text != '您' &&
+      text != '我' &&
+      !RegExp(r'^UID\s*\d+$').hasMatch(text) &&
+      !RegExp(r'^\d+$').hasMatch(text);
 
   /// 形如「2026-7-25 18:33」「昨天 12:00」的时间串，不能当作昵称。
   bool _looksLikeTime(String text) =>

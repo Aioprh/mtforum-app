@@ -247,4 +247,69 @@ void main() {
     expect(items[0].preview, '大佬ai弄好了么');
     expect(items[1].name, '老王');
   });
+
+  test('私信会话按作者 uid 区分「我」和「对方」，不只依赖昵称链接', () {
+    const html = '''
+<dl id="pmlist_101" class="bbda cl">
+  <dd class="y mtm pm_o"><a href="javascript:;" id="pm_o_101" class="o">菜单</a></dd>
+  <dd class="m avt"><a href="home.php?mod=space&amp;uid=2002"><img src="uc_server/avatar.php?uid=2002"></a></dd>
+  <dd class="ptm">
+    <a href="home.php?mod=space&amp;uid=2002" class="xw1">李四</a> &nbsp;
+    <br />
+    你好，在吗<br />
+    <span class="xg1">2026-10-29 09:00</span>
+  </dd>
+</dl>
+<dl id="pmlist_102" class="bbda cl">
+  <dd class="m avt"><a href="home.php?mod=space&amp;uid=1"><img src="uc_server/avatar.php?uid=1"></a></dd>
+  <dd class="ptm">
+    <span class="xi2 xw1">您</span> &nbsp;
+    <br />
+    在的<br />
+    <span class="xg1">2026-10-29 09:01</span>
+  </dd>
+</dl>
+''';
+    final (messages, _, peer) = repo.parsePmMessagesHtml(html, peerUid: 2002, myUid: 1);
+    expect(messages.length, 2);
+    expect(messages[0].mine, isFalse);
+    expect(messages[0].author, '李四');
+    expect(messages[0].uid, 2002);
+    expect(messages[0].text, '你好，在吗');
+    expect(messages[1].mine, isTrue);
+    expect(messages[1].text, '在的');
+    expect(peer, '李四');
+  });
+
+  test('不知道自己的 uid 时，用会话对方 uid 反推消息归属', () {
+    const html = '''
+<dl id="pmlist_1" class="bbda cl">
+  <dd class="m avt"><a href="home.php?mod=space&amp;uid=2002"><img src="a.png"></a></dd>
+  <dd class="ptm"><br />对方的话<br /><span class="xg1">2026-10-29 09:00</span></dd>
+</dl>
+<dl id="pmlist_2" class="bbda cl">
+  <dd class="m avt"><a href="home.php?mod=space&amp;uid=1"><img src="b.png"></a></dd>
+  <dd class="ptm"><br />我的话<br /><span class="xg1">2026-10-29 09:01</span></dd>
+</dl>
+''';
+    final (messages, _, _) = repo.parsePmMessagesHtml(html, peerUid: 2002);
+    expect(messages.map((m) => m.mine).toList(), [false, true]);
+  });
+
+  test('私信列表昵称是纯文本时不再回落成 UID', () {
+    const html = '''
+<dl id="pmlist_0" class="bbda cl">
+  <dd class="m avt"><a href="home.php?mod=space&amp;uid=119603"><img src="a.png"></a></dd>
+  <dd class="ptm pm_c">
+    <div class="o"><input type="checkbox" class="pc" /></div>
+    <span class="xi2 xw1">您</span> 对 <span class="xw1">大佬</span> 说：<br />
+    大佬ai弄好了么 &nbsp; <br />
+    <span class="xg1">2026-7-25 18:33</span>
+  </dd>
+</dl>
+''';
+    final items = repo.parsePmListHtml(html);
+    expect(items.length, 1);
+    expect(items.single.name, '大佬');
+  });
 }
