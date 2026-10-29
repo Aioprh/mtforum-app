@@ -588,6 +588,10 @@ class _PostHtmlViewState extends State<PostHtmlView> {
     final url = _imageUrl(img);
     if (url.isEmpty) return null;
     final index = widget.images.indexOf(url);
+    // 正文里常有十几张长截图：加载时先占一屏灰会让人以为正文没出来，
+    // 统一给 160 的矮占位；同时按屏幕宽度解码，避免 3768px 原图直接进内存。
+    final scale = MediaQuery.devicePixelRatioOf(context);
+    final cacheWidth = (MediaQuery.sizeOf(context).width * scale).round().clamp(320, 1440);
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: GestureDetector(
@@ -604,6 +608,8 @@ class _PostHtmlViewState extends State<PostHtmlView> {
             width: double.infinity,
             fit: BoxFit.fitWidth,
             radius: BorderRadius.circular(12),
+            cacheWidth: cacheWidth,
+            placeholderHeight: 160,
           ),
         ),
       ),
@@ -779,20 +785,35 @@ class _PostHtmlViewState extends State<PostHtmlView> {
     };
   }
 
+  static final RegExp _hex6 = RegExp(r'^[0-9a-fA-F]{6}$');
+  static final RegExp _hex3 = RegExp(r'^[0-9a-fA-F]{3}$');
+
+  /// `<font color>` 的值可能是 `#ff0000`、`Red`、`blue` 这类具名色。
+  /// 早先把「长度 3」直接当三位十六进制扩展，`Red` 会被拼成 `RReedd`，
+  /// 再进 `int.parse(radix: 16)` 抛异常，整楼正文随之中断渲染（长帖变空白）。
+  /// 这里先按十六进制严格校验，不匹配才走具名色，最后兜底为 null。
   Color? _parseColor(String? value) {
-    if (value == null) return null;
-    final hex = value.trim().replaceAll('#', '');
-    if (hex.length == 6) return Color(int.parse('FF$hex', radix: 16));
-    if (hex.length == 3) {
+    final raw = (value ?? '').trim();
+    if (raw.isEmpty) return null;
+    final hex = raw.replaceFirst('#', '');
+    if (_hex6.hasMatch(hex)) {
+      return Color(int.parse('FF$hex', radix: 16));
+    }
+    if (_hex3.hasMatch(hex)) {
       final expanded = hex.split('').map((e) => '$e$e').join();
       return Color(int.parse('FF$expanded', radix: 16));
     }
-    return switch (value.toLowerCase()) {
+    return switch (raw.toLowerCase()) {
       'red' => Colors.red,
       'blue' => Colors.blue,
       'green' => Colors.green,
       'gray' || 'grey' => Colors.grey,
       'orange' => Colors.orange,
+      'yellow' => Colors.yellow,
+      'purple' => Colors.purple,
+      'pink' => Colors.pink,
+      'white' => Colors.white,
+      'black' => Colors.black,
       _ => null,
     };
   }
@@ -804,7 +825,29 @@ class _PostHtmlViewState extends State<PostHtmlView> {
 
   @override
   Widget build(BuildContext context) {
-    final cache = _cache ??= _blocks(context, parser.parseFragment(widget.html).nodes);
+    var cache = _cache;
+    if (cache == null) {
+      try {
+        cache = _blocks(context, parser.parseFragment(widget.html).nodes);
+      } catch (error) {
+        // 楼层 HTML 千奇百怪，渲染偶尔会踩到没预料到的标签组合。
+        // 不能让一处异常把整楼吞成空白：退回纯文本，至少内容读得到。
+        debugPrint('PostHtmlView 渲染失败，降级为纯文本：$error');
+        final text = parser.parseFragment(widget.html).text?.trim() ?? '';
+        cache = <Widget>[
+          if (text.isNotEmpty)
+            SelectableText(
+              text,
+              style: TextStyle(
+                fontSize: 15.5,
+                height: 1.62,
+                color: Theme.of(context).colorScheme.onSurface,
+              ),
+            ),
+        ];
+      }
+      _cache = cache;
+    }
     if (cache.isEmpty) {
       final scheme = Theme.of(context).colorScheme;
       return Text('该楼层暂无内容', style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant));

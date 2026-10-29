@@ -15,6 +15,7 @@ class SmartImage extends StatelessWidget {
     this.fit = BoxFit.cover,
     this.radius = BorderRadius.zero,
     this.cacheWidth,
+    this.placeholderHeight,
   });
 
   final String url;
@@ -24,12 +25,16 @@ class SmartImage extends StatelessWidget {
   final BorderRadius radius;
   final int? cacheWidth;
 
+  /// 加载中/加载失败时占位块的高度。为空时沿用父级约束（列表封面等场景）。
+  /// 正文里的长图不需要在加载时先占满一屏，给个矮的占位即可。
+  final double? placeholderHeight;
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final placeholder = Container(
       width: width,
-      height: height,
+      height: height ?? placeholderHeight,
       color: scheme.surfaceContainerHighest,
       alignment: Alignment.center,
       child: Icon(Icons.image_outlined, color: scheme.onSurfaceVariant.withValues(alpha: 0.5), size: 22),
@@ -74,7 +79,7 @@ class SmartImage extends StatelessWidget {
           if (progress == null) return child;
           final total = progress.expectedTotalBytes;
           final value = total == null ? null : progress.cumulativeBytesLoaded / total;
-          return Stack(
+          final box = Stack(
             fit: StackFit.expand,
             children: [
               placeholder,
@@ -88,6 +93,10 @@ class SmartImage extends StatelessWidget {
                 ),
             ],
           );
+          // 有明确占位高度时用它，否则沿用约束（旧行为）。
+          final limit = placeholderHeight;
+          if (limit == null) return box;
+          return SizedBox(width: width, height: limit, child: box);
         },
       ),
     );
