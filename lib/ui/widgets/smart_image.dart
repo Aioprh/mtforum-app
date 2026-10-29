@@ -16,6 +16,7 @@ class SmartImage extends StatelessWidget {
     this.radius = BorderRadius.zero,
     this.cacheWidth,
     this.placeholderHeight,
+    this.filterQuality = FilterQuality.low,
   });
 
   final String url;
@@ -28,6 +29,10 @@ class SmartImage extends StatelessWidget {
   /// 加载中/加载失败时占位块的高度。为空时沿用父级约束（列表封面等场景）。
   /// 正文里的长图不需要在加载时先占满一屏，给个矮的占位即可。
   final double? placeholderHeight;
+
+  /// 缩放采样质量。默认 low：正文动辄几十张上千像素的截图，
+  /// medium（默认值）每帧插值更贵，滚动时掉帧明显，肉眼几乎看不出差别。
+  final FilterQuality filterQuality;
 
   @override
   Widget build(BuildContext context) {
@@ -53,6 +58,7 @@ class SmartImage extends StatelessWidget {
           width: width,
           height: height,
           fit: fit,
+          filterQuality: filterQuality,
           cacheWidth: cacheWidth,
           errorBuilder: (_, __, ___) => placeholder,
         ),
@@ -67,6 +73,7 @@ class SmartImage extends StatelessWidget {
         width: width,
         height: height,
         fit: fit,
+        filterQuality: filterQuality,
         cacheWidth: cacheWidth,
         gaplessPlayback: true,
         headers: {

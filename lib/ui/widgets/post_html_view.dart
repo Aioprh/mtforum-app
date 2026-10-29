@@ -15,11 +15,23 @@ import 'smart_image.dart';
 
 /// 将论坛帖子的 HTML 内容解析为原生 Flutter 组件。
 class PostHtmlView extends StatefulWidget {
-  const PostHtmlView({super.key, required this.html, this.images = const <String>[], this.onReply});
+  const PostHtmlView({
+    super.key,
+    required this.html,
+    this.images = const <String>[],
+    this.onReply,
+    this.selectable = true,
+  });
 
   final String html;
   final List<String> images;
   final VoidCallback? onReply;
+
+  /// 正文是否可长按选择/复制。
+  ///
+  /// 开启时整楼共用**一个** [SelectionArea]，而不是每段挂一个 SelectableText：
+  /// 长图文帖动辄三四百段文字，逐段挂选择器会让滚动时的命中测试与重绘逐段走一遍。
+  final bool selectable;
 
   @override
   State<PostHtmlView> createState() => _PostHtmlViewState();
@@ -111,7 +123,7 @@ class _PostHtmlViewState extends State<PostHtmlView> {
       inline.clear();
       widgets.add(Padding(
         padding: const EdgeInsets.only(bottom: 8),
-        child: SelectableText.rich(
+        child: Text.rich(
           TextSpan(children: spans),
           style: TextStyle(
             fontSize: 15.5,
@@ -236,7 +248,7 @@ class _PostHtmlViewState extends State<PostHtmlView> {
                       ),
                       const SizedBox(width: 7),
                       Expanded(
-                        child: SelectableText.rich(
+                        child: Text.rich(
                           TextSpan(children: _inlineNode(context, li, TextStyle(
                             fontSize: 15,
                             height: 1.58,
@@ -277,7 +289,7 @@ class _PostHtmlViewState extends State<PostHtmlView> {
       return [
         Padding(
           padding: const EdgeInsets.only(top: 4, bottom: 8),
-          child: SelectableText.rich(TextSpan(children: spans), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, height: 1.45)),
+          child: Text.rich(TextSpan(children: spans), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, height: 1.45)),
         ),
       ];
     }
@@ -312,7 +324,7 @@ class _PostHtmlViewState extends State<PostHtmlView> {
               Icon(Icons.lock_outline_rounded, size: 18, color: Theme.of(context).colorScheme.primary),
               const SizedBox(width: 8),
               Expanded(
-                child: SelectableText.rich(
+                child: Text.rich(
                   TextSpan(children: _inlineNode(context, element, TextStyle(
                     fontSize: 13.5,
                     height: 1.55,
@@ -538,7 +550,7 @@ class _PostHtmlViewState extends State<PostHtmlView> {
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.fromLTRB(12, 2, 12, 12),
-            child: SelectableText(
+            child: Text(
               text,
               style: const TextStyle(color: Color(0xFFE6EDF3), fontSize: 12.5, height: 1.55, fontFamily: 'monospace'),
             ),
@@ -594,22 +606,26 @@ class _PostHtmlViewState extends State<PostHtmlView> {
     final cacheWidth = (MediaQuery.sizeOf(context).width * scale).round().clamp(320, 1440);
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
-      child: GestureDetector(
-        onTap: () {
-          final images = widget.images.isEmpty ? <String>[url] : widget.images;
-          Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => ImageViewerPage(images: images, initialIndex: index < 0 ? 0 : index),
-          ));
-        },
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxHeight: 520),
-          child: SmartImage(
-            url: url,
-            width: double.infinity,
-            fit: BoxFit.fitWidth,
-            radius: BorderRadius.circular(12),
-            cacheWidth: cacheWidth,
-            placeholderHeight: 160,
+      // 图片解码完成、进度刷新都只脏这一块；否则整楼（几百段文字）会跟着重绘一次。
+      child: RepaintBoundary(
+        child: GestureDetector(
+          onTap: () {
+            final images = widget.images.isEmpty ? <String>[url] : widget.images;
+            Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => ImageViewerPage(images: images, initialIndex: index < 0 ? 0 : index),
+            ));
+          },
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 520),
+            child: SmartImage(
+              url: url,
+              width: double.infinity,
+              fit: BoxFit.fitWidth,
+              filterQuality: FilterQuality.low,
+              radius: BorderRadius.circular(12),
+              cacheWidth: cacheWidth,
+              placeholderHeight: 160,
+            ),
           ),
         ),
       ),
@@ -836,7 +852,7 @@ class _PostHtmlViewState extends State<PostHtmlView> {
         final text = parser.parseFragment(widget.html).text?.trim() ?? '';
         cache = <Widget>[
           if (text.isNotEmpty)
-            SelectableText(
+            Text(
               text,
               style: TextStyle(
                 fontSize: 15.5,
@@ -852,7 +868,8 @@ class _PostHtmlViewState extends State<PostHtmlView> {
       final scheme = Theme.of(context).colorScheme;
       return Text('该楼层暂无内容', style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant));
     }
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: cache);
+    final content = Column(crossAxisAlignment: CrossAxisAlignment.start, children: cache);
+    return widget.selectable ? SelectionArea(child: content) : content;
   }
 }
 

@@ -14,11 +14,13 @@ void main() {
   }
 
   /// 收集所有富文本里实际渲染出来的颜色。
+  /// 正文已从「每段一个 SelectableText」改成「整楼一个 SelectionArea + Text」，
+  /// 这里改为遍历底层 RichText 的 span 树。
   List<Color?> renderedColors(WidgetTester tester) {
     final colors = <Color?>[];
-    for (final element in find.byType(SelectableText).evaluate()) {
-      final widget = element.widget as SelectableText;
-      widget.textSpan?.visitChildren((span) {
+    for (final element in find.byType(RichText).evaluate()) {
+      final widget = element.widget as RichText;
+      widget.text.visitChildren((span) {
         if (span is TextSpan && span.style?.color != null) colors.add(span.style!.color);
         return true;
       });
