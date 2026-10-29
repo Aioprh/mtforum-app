@@ -164,12 +164,12 @@ class ForumRepository {
     }
     // 站点没给出楼号时，按显示顺序补一个，跳过置顶占用的楼号。
     if (hasThreadOpener) {
-      final pinnedFloors = posts.where((p) => p.isPinned).map((p) => p.floor).toSet();
+      final usedFloors = posts.where((p) => p.hasSiteFloor || p.isPinned).map((p) => p.floor).toSet();
       var nextFloor = 2;
       for (var i = 0; i < posts.length; i++) {
         final post = posts[i];
         if (post.isOp || post.isPinned) continue;
-        while (pinnedFloors.contains(nextFloor)) {
+        while (usedFloors.contains(nextFloor)) {
           nextFloor++;
         }
         posts[i] = post.copyWith(floor: nextFloor);
@@ -312,24 +312,49 @@ class ForumRepository {
     );
   }
 
+  /// 从楼层头部（作者、时间、楼层那些文字）里读出置顶标记与原楼号。
+  ///
+  /// 网页端把置顶回复标成「置顶 来自2#」：前面是标记，后面是它原来的楼层。
+  /// 老版本只认 `来自N#` 且只在少数 class 里找，所以置顶回复在 App 里既没有
+  /// 标记也丢了原楼号，看上去和普通沙发一样。
+  @visibleForTesting
+  static ({int? floor, bool pinned}) parseFloorMeta(String text) {
+    final siteFloor = int.tryParse(
+      RegExp(r'来自\s*(\d+)\s*#').firstMatch(text)?.group(1) ?? '',
+    );
+    return (floor: siteFloor, pinned: siteFloor != null || text.contains('置顶'));
+  }
+
   /// 按 pid 还原楼层，并标出被置顶前移的回复。
   ///
   /// `posts[0]` 是主题正文，其余按 pid 升序编号（2、3、4…），再按原来的
   /// 显示顺序写回。谁的排序位置比它在页面里的位置靠后，谁就是被置顶提到
   /// 前面来的那一条。
+  ///
+  /// 站点已经给出原楼号的（「来自2#」）先占住那个号，其余回复按 pid 顺序
+  /// 补空号——否则置顶回复本来就在 2 楼时，pid 最小的是它，会被别人抢走 2。
   @visibleForTesting
   static void fixFloorsForPinnedReplies(List<ForumPost> posts) {
     if (posts.length < 2) return;
     final replies = posts.sublist(1);
     final order = List<int>.generate(replies.length, (i) => i)
       ..sort((a, b) => replies[a].pid.compareTo(replies[b].pid));
-    for (var rank = 0; rank < order.length; rank++) {
-      final domIndex = order[rank];
+    final taken = replies.where((p) => p.hasSiteFloor).map((p) => p.floor).toSet();
+    var next = 2;
+    for (final domIndex in order) {
       final post = replies[domIndex];
+      if (post.hasSiteFloor) continue;
+      while (taken.contains(next)) {
+        next++;
+      }
       posts[domIndex + 1] = post.copyWith(
-        floor: rank + 2,
-        isPinned: rank > domIndex,
+        floor: next,
+        // 楼号比它显示的位置靠后 = 被前面插入的置顶回复挤下去了，不是置顶者；
+        // 楼号比显示位置靠前 = 它自己被提到了前面。
+        isPinned: post.isPinned || next > domIndex + 2,
       );
+      taken.add(next);
+      next++;
     }
   }
 
@@ -338,19 +363,30 @@ class ForumRepository {
     if (pidMatch == null) return null;
     final pid = int.tryParse(pidMatch.group(1)!) ?? 0;
 
-    // Discuz 置顶回复会被移动到回复列表顶部，但楼层号仍应保留原始位置。
-    // 手机模板通常在来源标记中显示「来自5#」，不能用当前 DOM 顺序重算。
-    var originalFloor = floor;
-    // 只从楼层/来源元数据中读取原楼号，不能扫描整条帖子正文，
-    // 否则正文引用“来自5#”也会污染其他评论的楼层标签。
-    final floorMeta = [
-      ...el.querySelectorAll('[class*="floor"], .comiis_postli_time, .comiis_postli_times'),
-    ].map((node) => _clean(node.text)).join(' ');
-    final originalFloorMatch = RegExp(r'来自\s*(\d+)\s*#').firstMatch(floorMeta);
-    final isPinned = originalFloorMatch != null;
-    if (originalFloorMatch != null) {
-      originalFloor = int.tryParse(originalFloorMatch.group(1)!) ?? floor;
+    // 楼层头部（作者、等级、时间、楼层号、置顶标记）单独取一份文本。
+    // 先把正文、点评、评分整块摘掉，正文里出现「置顶」二字才不会把普通回复
+    // 误判成置顶；手机模板把置顶标记放在作者行右侧，class 各家不同，只能按
+    // 「整层减去正文」来读。
+    final metaEl = el.clone(true);
+    for (final selector in [
+      '.comiis_messages',
+      '.comiis_message_table',
+      '.message',
+      '.cm',
+      '.comiis_comment',
+      '.comment',
+      '.comiis_view_lcrate',
+      'script',
+      'style',
+    ]) {
+      for (final node in metaEl.querySelectorAll(selector)) {
+        node.remove();
+      }
     }
+    final metaText = _clean(metaEl.text);
+    final meta = parseFloorMeta(metaText);
+    final isPinned = meta.pinned;
+    final originalFloor = meta.floor ?? floor;
 
     final author = _clean(el.querySelector('.top_user')?.text ?? '');
     final uid = _postUid(el);
@@ -388,6 +424,7 @@ class ForumRepository {
       html: _sanitize(body.innerHtml),
       floor: originalFloor,
       isPinned: isPinned,
+      hasSiteFloor: meta.floor != null,
       uid: uid,
       level: level,
       location: location,
@@ -616,10 +653,38 @@ class ForumRepository {
     throw SiteException(up ? '点赞失败，请稍后重试' : '操作失败，请稍后重试');
   }
 
-  /// 读取 inajax 响应里的 CDATA 文本。
-  String _inajaxMessage(String body) {
-    final cdata = RegExp(r'<!\[CDATA\[(.*?)\]\]>', dotAll: true).firstMatch(body)?.group(1);
-    return _clean((cdata ?? body).replaceAll(RegExp(r'<[^>]+>'), ' '));
+  /// 供测试直接验证 inajax 回执的取文案逻辑。
+  @visibleForTesting
+  static String inajaxMessage(String body) => _inajaxMessage(body);
+
+  /// 读取 inajax 响应里的提示文案。
+  ///
+  /// Discuz 的成功响应是一段脚本，而不是一段文字：
+  ///
+  /// ```html
+  /// <root><![CDATA[<script type="text/javascript" reload="1">if(typeof
+  /// succeedhandle_mods=='function') {succeedhandle_mods('forum.php?...',
+  /// '管理操作成功','');} setTimeout(...);</script>]]></root>
+  /// ```
+  ///
+  /// 早先只是把标签去掉，于是整段 JS 被当成提示弹了出来。这里先从脚本参数
+  /// 里取那句中文提示，取不到再把脚本/样式剔掉读正文。
+  static String _inajaxMessage(String body) {
+    final cdata = RegExp(r'<!\[CDATA\[(.*?)\]\]>', dotAll: true).firstMatch(body)?.group(1) ?? body;
+    final call = RegExp(r'succeedhandle_\w+\s*\((.{0,600}?)\)\s*;', dotAll: true).firstMatch(cdata);
+    if (call != null) {
+      final quoted = RegExp(r'''['"]([^'"]*)['"]''')
+          .allMatches(call.group(1)!)
+          .map((match) => match.group(1) ?? '')
+          .where((text) => RegExp(r'[\u4e00-\u9fa5]').hasMatch(text))
+          .toList();
+      if (quoted.isNotEmpty) return _clean(quoted.first);
+    }
+    final text = cdata
+        .replaceAll(RegExp(r'<script[\s\S]*?</script>', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'<style[\s\S]*?</style>', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'<[^>]+>'), ' ');
+    return _clean(text);
   }
 
   /// 参与投票。`ids` 为选项 id，多选时逐个提交。
@@ -1205,7 +1270,11 @@ class ForumRepository {
         (msg.contains('无权') || msg.contains('权限') || msg.contains('不允许') || msg.contains('失败'))) {
       throw SiteException(msg);
     }
-    return msg.isEmpty ? (stick ? '已置顶该回复' : '已取消置顶') : msg;
+    // 站点的通用回执就写「管理操作成功」，对用户没有信息量，换成具体动作。
+    if (msg.isEmpty || msg == '管理操作成功' || msg == '操作成功') {
+      return stick ? '置顶成功' : '已取消置顶';
+    }
+    return msg;
   }
 
   /// 置顶 / 取消置顶回复的表单。

@@ -265,6 +265,7 @@ class ForumPost {
     this.location = '',
     this.isOp = false,
     this.isPinned = false,
+    this.hasSiteFloor = false,
     this.likes = 0,
     this.images = const <String>[],
     this.comments = const <ForumComment>[],
@@ -283,6 +284,9 @@ class ForumPost {
   final String location;
   final bool isOp;
   final bool isPinned;
+
+  /// 楼层号是否来自站点（置顶回复的「来自2#」），来自站点时不能再按顺序重编。
+  final bool hasSiteFloor;
   final int likes;
   final List<String> images;
   final List<ForumComment> comments;
@@ -302,7 +306,15 @@ class ForumPost {
     return index >= 0 && index < seats.length ? seats[index] : '$floor楼';
   }
 
-  ForumPost copyWith({int? floor, int? uid, String? avatar, bool? isOp, bool? isPinned}) => ForumPost(
+  ForumPost copyWith({
+    int? floor,
+    int? uid,
+    String? avatar,
+    bool? isOp,
+    bool? isPinned,
+    bool? hasSiteFloor,
+  }) =>
+      ForumPost(
         pid: pid,
         author: author,
         avatar: avatar ?? this.avatar,
@@ -314,6 +326,7 @@ class ForumPost {
         location: location,
         isOp: isOp ?? this.isOp,
         isPinned: isPinned ?? this.isPinned,
+        hasSiteFloor: hasSiteFloor ?? this.hasSiteFloor,
         likes: likes,
         images: images,
         comments: comments,

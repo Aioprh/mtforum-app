@@ -1393,6 +1393,33 @@ class _ThreadPageState extends State<ThreadPage> {
                     ],
                   ),
                 ),
+                // 网页端在作者行右侧标「置顶 来自2#」，这里同样给一枚置顶标记，
+                // 楼层标签仍然按真实楼号显示。
+                if (post.isPinned) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE5484D).withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(7),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.push_pin, size: 11, color: Color(0xFFE5484D)),
+                        SizedBox(width: 3),
+                        Text(
+                          '置顶',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFFE5484D),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 5),
+                ],
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
@@ -1402,7 +1429,7 @@ class _ThreadPageState extends State<ThreadPage> {
                     borderRadius: BorderRadius.circular(7),
                   ),
                   child: Text(
-                    post.isOp ? '主题正文' : post.floorLabel,
+                    post.isOp ? '主题正文' : post.seatLabel,
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w700,
