@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/models.dart';
 import '../../state/app_state.dart';
+import '../widgets/glass_compose_button.dart';
 import '../widgets/thread_feed.dart';
 import '../widgets/user_avatar.dart';
 import 'about_page.dart';
@@ -189,6 +190,150 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
         opacity: result.opacity,
         blur: result.blur,
       );
+    }
+  }
+
+  Future<void> _pickComposeGlass() async {
+    final appState = AppState.instance;
+    var opacity = appState.composeGlassOpacity;
+    var blur = appState.composeGlassBlur;
+    final scheme = Theme.of(context).colorScheme;
+
+    final result = await showModalBottomSheet<({double opacity, double blur})>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setSheetState) => SafeArea(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(20, 4, 20, 22 + MediaQuery.viewInsetsOf(context).bottom),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Center(
+                  child: Text('发帖按钮', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '右下角发帖按钮使用液态玻璃材质，可调整透明度和背景模糊度，改动即时生效。',
+                  style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant, height: 1.5),
+                ),
+                const SizedBox(height: 14),
+                // 实时预览：玻璃按钮压在色块上，能直观看出模糊强度。
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: Container(
+                    height: 116,
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          scheme.primaryContainer,
+                          scheme.tertiaryContainer,
+                          scheme.secondaryContainer,
+                        ],
+                      ),
+                    ),
+                    child: Stack(
+                      children: [
+                        Positioned(
+                          left: 18,
+                          top: 20,
+                          child: Container(
+                            width: 96,
+                            height: 12,
+                            decoration: BoxDecoration(
+                              color: scheme.onPrimaryContainer.withValues(alpha: 0.28),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                          ),
+                        ),
+                        Positioned(
+                          left: 18,
+                          top: 42,
+                          child: Container(
+                            width: 148,
+                            height: 12,
+                            decoration: BoxDecoration(
+                              color: scheme.onPrimaryContainer.withValues(alpha: 0.18),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                          ),
+                        ),
+                        Positioned(
+                          right: 20,
+                          bottom: 22,
+                          child: GlassComposeButton(
+                            opacity: opacity,
+                            blur: blur,
+                            onPressed: () {},
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    const Expanded(child: Text('玻璃透明度', style: TextStyle(fontWeight: FontWeight.w600))),
+                    Text('${(opacity * 100).round()}%'),
+                  ],
+                ),
+                Slider(
+                  value: opacity,
+                  min: 0.05,
+                  max: 0.75,
+                  divisions: 14,
+                  label: '${(opacity * 100).round()}%',
+                  onChanged: (value) => setSheetState(() => opacity = value),
+                ),
+                Row(
+                  children: [
+                    const Expanded(child: Text('背景模糊度', style: TextStyle(fontWeight: FontWeight.w600))),
+                    Text('${blur.round()}'),
+                  ],
+                ),
+                Slider(
+                  value: blur,
+                  min: 0,
+                  max: 40,
+                  divisions: 16,
+                  label: blur.round().toString(),
+                  onChanged: (value) => setSheetState(() => blur = value),
+                ),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () => setSheetState(() {
+                      opacity = 0.28;
+                      blur = 26;
+                    }),
+                    child: const Text('恢复默认'),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: () => Navigator.pop(
+                      sheetContext,
+                      (opacity: opacity, blur: blur),
+                    ),
+                    child: const Text('保存设置'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    if (result != null) {
+      await appState.setComposeGlassAppearance(opacity: result.opacity, blur: result.blur);
     }
   }
 
@@ -404,6 +549,7 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
                   _MenuItem(Icons.palette_outlined, '主题外观', _pickTheme),
                   _MenuItem(Icons.color_lens_outlined, '主题颜色', _pickThemeColor),
                   _MenuItem(Icons.blur_on_rounded, '底栏液态玻璃悬浮', _pickFloatingGlassNav),
+                  _MenuItem(Icons.auto_awesome_rounded, '发帖按钮液态玻璃', _pickComposeGlass),
                   _MenuItem(Icons.info_outline_rounded, '关于本应用', () {
                     Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AboutPage()));
                   }),

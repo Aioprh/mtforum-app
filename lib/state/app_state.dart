@@ -15,6 +15,8 @@ class AppState extends ChangeNotifier {
   static const String _floatingGlassNavKey = 'mt_forum_floating_glass_nav';
   static const String _floatingGlassNavOpacityKey = 'mt_forum_floating_glass_nav_opacity';
   static const String _floatingGlassNavBlurKey = 'mt_forum_floating_glass_nav_blur';
+  static const String _composeGlassOpacityKey = 'mt_forum_compose_glass_opacity';
+  static const String _composeGlassBlurKey = 'mt_forum_compose_glass_blur';
   static const String _autoSignInDateKey = 'mt_forum_auto_signin_date';
   bool _autoSignInRunning = false;
   String? _autoSignInAttemptDate;
@@ -27,6 +29,10 @@ class AppState extends ChangeNotifier {
   bool floatingGlassNav = false;
   double floatingGlassNavOpacity = 0.25;
   double floatingGlassNavBlur = 30.0;
+
+  /// 发帖悬浮按钮的液态玻璃外观：透明度与背景模糊度。
+  double composeGlassOpacity = 0.28;
+  double composeGlassBlur = 26.0;
   UserProfile? profile;
   bool localReady = false;
   bool profileLoading = false;
@@ -45,6 +51,8 @@ class AppState extends ChangeNotifier {
     floatingGlassNav = prefs.getBool(_floatingGlassNavKey) ?? false;
     floatingGlassNavOpacity = (prefs.getDouble(_floatingGlassNavOpacityKey) ?? 0.25).clamp(0.05, 0.65).toDouble();
     floatingGlassNavBlur = (prefs.getDouble(_floatingGlassNavBlurKey) ?? 30.0).clamp(0.0, 40.0).toDouble();
+    composeGlassOpacity = (prefs.getDouble(_composeGlassOpacityKey) ?? 0.28).clamp(0.05, 0.75).toDouble();
+    composeGlassBlur = (prefs.getDouble(_composeGlassBlurKey) ?? 26.0).clamp(0.0, 40.0).toDouble();
     themeMode = switch (theme) {
       'light' => ThemeMode.light,
       'dark' => ThemeMode.dark,
@@ -149,6 +157,16 @@ class AppState extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(_floatingGlassNavOpacityKey, floatingGlassNavOpacity);
     await prefs.setDouble(_floatingGlassNavBlurKey, floatingGlassNavBlur);
+  }
+
+  /// 调整发帖悬浮按钮的玻璃透明度与模糊度并持久化。
+  Future<void> setComposeGlassAppearance({required double opacity, required double blur}) async {
+    composeGlassOpacity = opacity.clamp(0.05, 0.75).toDouble();
+    composeGlassBlur = blur.clamp(0.0, 40.0).toDouble();
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_composeGlassOpacityKey, composeGlassOpacity);
+    await prefs.setDouble(_composeGlassBlurKey, composeGlassBlur);
   }
 
   Future<void> setThemeSeedColor(Color color) async {

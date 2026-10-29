@@ -11,6 +11,7 @@ import 'pages/compose_page.dart';
 import 'pages/home_page.dart';
 import 'pages/profile_page.dart';
 import 'pages/search_page.dart';
+import 'widgets/glass_compose_button.dart';
 
 /// 主框架：底部四栏 + 发帖入口。
 class AppShell extends StatefulWidget {
@@ -64,11 +65,7 @@ class _AppShellState extends State<AppShell> {
       extendBody: AppState.instance.floatingGlassNav,
       body: IndexedStack(index: _index, children: _pages),
       floatingActionButton: _index <= 1
-          ? FloatingActionButton.extended(
-              onPressed: _openCompose,
-              icon: const Icon(Icons.edit_rounded, size: 20),
-              label: const Text('发帖'),
-            )
+          ? GlassComposeButton(onPressed: _openCompose)
           : null,
       bottomNavigationBar: AppState.instance.floatingGlassNav
           ? _buildFloatingGlassNav(context)
