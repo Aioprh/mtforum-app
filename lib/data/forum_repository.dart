@@ -154,9 +154,16 @@ class ForumRepository {
     for (var i = 0; i < posts.length; i++) {
       posts[i] = posts[i].copyWith(isOp: hasThreadOpener && i == 0);
     }
-    // 置顶回复会移动到主题正文后面的第一条回复位置；保留它的原楼号，
-    // 并让其他未标注楼号的回复按原顺序连续编号、跳过被占用的楼号。
-    if (page == 1 && !orderDesc && authorId == null) {
+    // 置顶回复会被提到主题正文后面，但站点给它的楼层号仍是原楼号
+    // （forum_viewthread 里 `$post['position'] = $poststick[...]['position']`）。
+    // 同一主题内 pid 按发帖顺序递增，所以按 pid 排序就能还原真实楼层，
+    // 也能认出「排在前面的那条其实是个高楼层」——那正是被置顶的回复。
+    // 早先按 DOM 顺序从 2 编号，置顶帖就被叫成「沙发」，后面全部错位。
+    if (hasThreadOpener && posts.length > 1) {
+      fixFloorsForPinnedReplies(posts);
+    }
+    // 站点没给出楼号时，按显示顺序补一个，跳过置顶占用的楼号。
+    if (hasThreadOpener) {
       final pinnedFloors = posts.where((p) => p.isPinned).map((p) => p.floor).toSet();
       var nextFloor = 2;
       for (var i = 0; i < posts.length; i++) {
@@ -303,6 +310,27 @@ class ForumRepository {
       voted: !hasForm && options.any((option) => option.votes > 0),
       expired: text.contains('投票已结束') || text.contains('已结束'),
     );
+  }
+
+  /// 按 pid 还原楼层，并标出被置顶前移的回复。
+  ///
+  /// `posts[0]` 是主题正文，其余按 pid 升序编号（2、3、4…），再按原来的
+  /// 显示顺序写回。谁的排序位置比它在页面里的位置靠后，谁就是被置顶提到
+  /// 前面来的那一条。
+  @visibleForTesting
+  static void fixFloorsForPinnedReplies(List<ForumPost> posts) {
+    if (posts.length < 2) return;
+    final replies = posts.sublist(1);
+    final order = List<int>.generate(replies.length, (i) => i)
+      ..sort((a, b) => replies[a].pid.compareTo(replies[b].pid));
+    for (var rank = 0; rank < order.length; rank++) {
+      final domIndex = order[rank];
+      final post = replies[domIndex];
+      posts[domIndex + 1] = post.copyWith(
+        floor: rank + 2,
+        isPinned: rank > domIndex,
+      );
+    }
   }
 
   ForumPost? _parsePost(Element el, int floor) {
