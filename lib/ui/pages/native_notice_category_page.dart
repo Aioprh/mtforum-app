@@ -103,8 +103,6 @@ class _NativeNoticeCategoryPageState extends State<NativeNoticeCategoryPage> {
         if (anchors.isEmpty) continue;
         String url = '';
         String label = '';
-        // 只接受真实用户空间或主题目标链接；绝不把“首页/社区/导读/签到”等导航项
-        // 当成粉丝或通知记录。
         for (final a in anchors) {
           final href = (a.attributes['href'] ?? '').replaceAll('&amp;', '&');
           final t = _clean(a.text);
@@ -112,7 +110,25 @@ class _NativeNoticeCategoryPageState extends State<NativeNoticeCategoryPage> {
           final hasUid = RegExp(r'(?:[?&]uid=\d+|space-uid-\d+\.html|space-\d+-)').hasMatch(href);
           final hasTid = RegExp(r'(?:[?&]tid=\d+|mod=viewthread|thread-\d+-\d+-\d+\.html|mod=findpost)').hasMatch(href);
           if (widget.kind == NoticeKind.followers) {
-            if (!hasUid || t.isEmpty || RegExp(r'^(首页|社区|导读|签到|排行|标签|搜索|访问推广|装扮空间)
+            final isNavigation = RegExp(r'^(首页|社区|导读|签到|排行|标签|搜索|访问推广|装扮空间)$').hasMatch(t);
+            if (!hasUid || t.isEmpty || isNavigation) continue;
+          } else {
+            if (!hasUid && !hasTid) continue;
+          }
+          url = href;
+          label = t;
+          if (hasTid) break;
+        }
+        if (url.isEmpty) continue;
+        final absolute = AppConfig.uri(url).toString();
+        if (!seen.add(absolute)) continue;
+        final tid = int.tryParse(RegExp(r'[?&]tid=(\d+)').firstMatch(url)?.group(1) ??
+            RegExp(r'thread-(\d+)-').firstMatch(url)?.group(1) ?? '') ?? 0;
+        final uid = int.tryParse(RegExp(r'[?&]uid=(\d+)').firstMatch(url)?.group(1) ??
+            RegExp(r'space-uid-(\d+)\.html').firstMatch(url)?.group(1) ??
+            RegExp(r'space-(\d+)-').firstMatch(url)?.group(1) ?? '') ?? 0;
+        if (widget.kind == NoticeKind.followers && uid <= 0) continue;
+        if (widget.kind != NoticeKind.followers && tid <= 0 && uid <= 0) continue;
         final avatarNode = node.querySelector('img');
         final timeNode = node.querySelector('time, .xg1, .time, .dateline, .grey');
         final body = text.replaceFirst(label, '').trim();
@@ -123,7 +139,7 @@ class _NativeNoticeCategoryPageState extends State<NativeNoticeCategoryPage> {
           url: absolute,
           tid: tid,
           uid: uid,
-          avatar: AppConfig.uri(avatarNode?.attributes['src'] ?? '').toString(),
+          avatar: avatarNode == null ? '' : AppConfig.uri(avatarNode.attributes['src'] ?? '').toString(),
           unread: node.classes.any((c) => c.contains('new') || c.contains('unread')) ||
               node.querySelector('.new, .unread, em.new') != null,
         ));
