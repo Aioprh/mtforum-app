@@ -1620,29 +1620,90 @@ class _ThreadPageState extends State<ThreadPage> {
 
   Widget _footer() {
     final scheme = Theme.of(context).colorScheme;
-    if (_loadingMore) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 20),
-        child: Center(child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))),
-      );
-    }
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 18),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
+    final canGoPrevious = _page > 1 && !_loadingMore;
+    final canGoNext = _hasMore && !_loadingMore;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(2, 8, 2, 10),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.55)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          OutlinedButton.icon(
-            onPressed: _page > 1 ? _loadPrevious : null,
-            icon: const Icon(Icons.chevron_left_rounded, size: 18),
-            label: const Text('上一页'),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: canGoPrevious ? _loadPrevious : null,
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(0, 42),
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(11)),
+                  ),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.chevron_left_rounded, size: 19),
+                      SizedBox(width: 3),
+                      Text('上一页'),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: FilledButton(
+                  onPressed: canGoNext ? _loadMore : null,
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size(0, 42),
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(11)),
+                    disabledBackgroundColor: scheme.surfaceContainerHighest,
+                    disabledForegroundColor: scheme.onSurfaceVariant,
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (_loadingMore)
+                        const SizedBox(
+                          width: 15,
+                          height: 15,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      else
+                        const Icon(Icons.chevron_right_rounded, size: 19),
+                      const SizedBox(width: 3),
+                      Text(_loadingMore ? '加载中' : (_hasMore ? '下一页' : '没有下一页')),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 16),
-          Text('第 $_page 页', style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
-          const SizedBox(width: 16),
-          FilledButton.icon(
-            onPressed: _hasMore ? _loadMore : null,
-            icon: const Icon(Icons.chevron_right_rounded, size: 18),
-            label: const Text('下一页'),
+          const SizedBox(height: 7),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.article_outlined, size: 14, color: scheme.outline),
+              const SizedBox(width: 5),
+              Text(
+                '第 $_page 页',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: scheme.onSurfaceVariant),
+              ),
+              if (!_hasMore && !_loadingMore) ...[
+                const SizedBox(width: 7),
+                Container(
+                  width: 4,
+                  height: 4,
+                  decoration: BoxDecoration(color: scheme.outlineVariant, shape: BoxShape.circle),
+                ),
+                const SizedBox(width: 7),
+                Text('已显示全部内容', style: TextStyle(fontSize: 11, color: scheme.outline)),
+              ],
+            ],
           ),
         ],
       ),
