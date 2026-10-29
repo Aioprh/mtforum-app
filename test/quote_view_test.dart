@@ -57,4 +57,29 @@ void main() {
     expect(find.text('纯正文，没有任何引用'), findsOneWidget);
     expect(find.byType(GestureDetector), findsNothing);
   });
+
+  testWidgets('皮肤不给 quote 类名时，靠「某某 发表于」识别引用', (tester) async {
+    await pump(tester, '''
+<div><font size="2"><a href="forum.php?mod=redirect&amp;goto=findpost&amp;pid=1&amp;ptid=2">老王 发表于 2026-10-29 08:00</a></font><br />
+昨天那个版本我还没试过</div>
+<p>我试了，没问题</p>
+''');
+
+    expect(tester.widget<Text>(find.text('老王 发表于 2026-10-29 08:00')).maxLines, 1);
+    expect(tester.widget<Text>(find.text('昨天那个版本我还没试过')).maxLines, 3);
+    // 本楼正文不能被吞进引用卡片：它仍是可选中的普通段落，而不是卡片里的 Text。
+    expect(find.text('我试了，没问题'), findsOneWidget);
+    expect(find.widgetWithText(Text, '我试了，没问题'), findsNothing);
+  });
+
+  testWidgets('包住引用和正文的外层容器不会被误判成引用', (tester) async {
+    await pump(tester, '''
+<div class="comiis_message_table"><div>某某 发表于 2026-10-29 08:00<br />被引用的内容</div>
+<p>我的回复</p></div>
+''');
+
+    expect(find.text('我的回复'), findsOneWidget);
+    expect(find.widgetWithText(Text, '我的回复'), findsNothing);
+    expect(tester.widget<Text>(find.text('被引用的内容')).maxLines, 3);
+  });
 }

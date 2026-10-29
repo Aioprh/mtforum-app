@@ -180,7 +180,7 @@ class _PostHtmlViewState extends State<PostHtmlView> {
 
       // 引用块要优先于普通容器处理：站点皮肤常把 [quote] 渲染成
       // div.quote（没有 blockquote），不拦截就会退化成一整段正文。
-      if (_isQuoteContainer(tag, node.classes)) {
+      if (_isQuoteContainer(tag, node.classes) || _looksLikeQuotedBlock(node, tag)) {
         flush();
         widgets.add(_quoteCard(context, node));
         continue;
@@ -340,6 +340,17 @@ class _PostHtmlViewState extends State<PostHtmlView> {
         name == 'quotecontent' ||
         name == 'comiis_quote' ||
         name.endsWith('_quote'));
+  }
+
+  /// 有些皮肤连 quote 类名都不给：叶子里只有一行「某某 发表于 …」再跟正文，
+  /// 这类容器同样按引用处理。约束得足够紧，避免把本楼正文吞进卡片。
+  bool _looksLikeQuotedBlock(dom.Element element, String tag) {
+    if (!const {'div', 'section', 'dl'}.contains(tag)) return false;
+    if (element.querySelector('div, p, ul, ol, table, blockquote, fieldset') != null) return false;
+    final text = _cleanInline(element.text).trim();
+    if (text.isEmpty || text.length > 1500) return false;
+    final head = text.length > 48 ? text.substring(0, 48) : text;
+    return RegExp(r'^[^。！？]{1,40}?发表于').hasMatch(head);
   }
 
   /// 引用统一渲染成灰色摘要块：头部是被引用者与时间，正文最多三行，
