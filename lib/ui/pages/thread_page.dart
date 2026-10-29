@@ -200,16 +200,6 @@ class _ThreadPageState extends State<ThreadPage> {
     _replyFocus.requestFocus();
   }
 
-  void _startReply(ForumPost post) {
-    setState(() {
-      _replyTarget = post;
-      _quoteTarget = false;
-      _hiddenQuotePayload = '';
-      _showEmoji = false;
-    });
-    _replyFocus.requestFocus();
-  }
-
   void _startQuote(ForumPost post) {
     final plain = _plainText(post.html);
     // 引用内容保留在提交正文中，但不放进可见输入框，避免占满输入区域。
@@ -231,37 +221,6 @@ class _ThreadPageState extends State<ThreadPage> {
       _quoteTarget = false;
       _hiddenQuotePayload = '';
     });
-  }
-
-  /// 楼中楼：在指定楼层下直接点评，走 Discuz 的 `action=comment`。
-  Future<void> _openCommentSheet(ForumPost post, {String replyTo = ''}) async {
-    if (!await _ensureLogin()) return;
-    final detail = _detail;
-    if (detail == null) return;
-    if (!mounted) return;
-    final text = await showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (_) => _CommentSheet(
-        title: '点评 · ${post.floorLabel}',
-        hint: replyTo.isEmpty ? '说点什么…' : '回复这条点评…',
-      ),
-    );
-    if (text == null || text.isEmpty || !mounted) return;
-    try {
-      final message = await _repo.addComment(
-        tid: widget.tid,
-        pid: post.pid,
-        message: text,
-        formhash: detail.formhash,
-      );
-      if (!mounted) return;
-      _toast(message);
-      await _load();
-    } catch (e) {
-      _toast(_message(e));
-    }
   }
 
   Future<void> _sendReply() async {
