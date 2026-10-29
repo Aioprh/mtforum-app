@@ -209,7 +209,9 @@ class ForumRepository {
       replies: math.max(0, total - 1),
       posts: posts,
       formhash: formhash,
-      hasMore: page * AppConfig.postsPerPage < total,
+      hasMore: _hasNextThreadPage(doc, page) ||
+          page * AppConfig.postsPerPage < total ||
+          posts.length >= AppConfig.postsPerPage,
       isLoggedIn: loggedIn,
       likes: _intOf(doc.querySelector('.comiis_recommend_num')?.text ?? doc.querySelector('#recommendv_add')?.text),
       dislikes: _intOf(doc.querySelector('#recommendv_subtract')?.text),
@@ -223,6 +225,28 @@ class ForumRepository {
       kickVotes: int.tryParse(kickLabel?.group(1) ?? '') ?? 0,
       kickLimit: int.tryParse(kickLabel?.group(2) ?? '') ?? 5,
     );
+  }
+
+  /// 优先读取 Discuz 页面实际分页链接；部分主题页的回复总数节点并不可靠，
+  /// 只按 total 推算会把“下一页”错误地隐藏。
+  bool _hasNextThreadPage(Document doc, int currentPage) {
+    for (final link in doc.querySelectorAll(
+      '.pg a[href], .comiis_page a[href], a[href*="mod=viewthread"][href*="page="], a[href*="viewthread-"]',
+    )) {
+      final href = (link.attributes['href'] ?? '').replaceAll('&amp;', '&');
+      final queryPage = RegExp(r'(?:[?&])page=(\\d+)').firstMatch(href)?.group(1);
+      final prettyPage = RegExp(r'viewthread-\\d+-(\\d+)-\\d+\\.html').firstMatch(href)?.group(1);
+      final targetPage = int.tryParse(queryPage ?? prettyPage ?? '');
+      if (targetPage != null && targetPage > currentPage) return true;
+      final label = _clean(link.text);
+      if (targetPage == null &&
+          (label == '下一页' || label == '下页' || label == '»' || label == '›') &&
+          !link.classes.contains('nxt_disabled') &&
+          !link.classes.contains('disabled')) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /// 解析投票区块：兼容存在可投票表单与仅展示结果两种页面。
