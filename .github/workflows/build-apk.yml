@@ -97,6 +97,27 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      # 固定发布签名：早期版本每次都用 CI 临时生成的 debug 证书，指纹每次都变，
+      # 新装包无法覆盖旧版本（INSTALL_FAILED_UPDATE_INCOMPATIBLE）。
+      # 密钥存在仓库 Secret 里，构建时还原；缺失则回退 debug 签名并告警。
+      - name: Configure release signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::warning::未配置 ANDROID_KEYSTORE_BASE64，本次回退 debug 签名，装机需先卸载旧版"
+            exit 0
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$GITHUB_WORKSPACE/release.jks"
+          printf 'storeFile=%s\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' \
+            "$GITHUB_WORKSPACE/release.jks" "$KEYSTORE_PASSWORD" "$KEY_ALIAS" "$KEY_PASSWORD" \
+            > android/key.properties
+          keytool -list -v -keystore "$GITHUB_WORKSPACE/release.jks" \
+            -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" | grep "SHA256:"
+
       - name: Generate launcher icons
         run: |
           python3 -m pip install --user Pillow
@@ -110,6 +131,17 @@ jobs:
 
       - name: Build split APKs
         run: flutter build apk --release --split-per-abi --no-pub
+
+      # 把实际签进包里的证书打出来，方便对不上时直接比对指纹。
+      - name: Show APK signing certificate
+        run: |
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          BT=$(ls -d "${ANDROID_SDK_ROOT:-$ANDROID_HOME}"/build-tools/* 2>/dev/null | sort -V | tail -1)
+          if [ -n "$BT" ] && [ -x "$BT/apksigner" ] && [ -f "$APK" ]; then
+            "$BT/apksigner" verify --print-certs "$APK" | grep -E "Signer #1 certificate (DN|SHA-256)"
+          else
+            echo "apksigner 不可用，跳过证书打印"
+          fi
 
       # Save even when a build step fails, so the next run does not have to
       # download the Gradle distribution and all dependencies again.
