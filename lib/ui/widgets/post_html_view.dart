@@ -6,12 +6,15 @@ import 'package:html/parser.dart' as parser;
 
 import '../../core/app_config.dart';
 import '../../core/http_session.dart';
+import '../../core/video_link.dart';
 import '../pages/board_threads_page.dart';
 import '../pages/image_viewer_page.dart';
 import '../pages/internal_browser_page.dart';
 import '../pages/thread_page.dart';
 import '../pages/user_page.dart';
+import '../pages/video_player_page.dart';
 import 'smart_image.dart';
+import 'video_card.dart';
 
 /// 将论坛帖子的 HTML 内容解析为原生 Flutter 组件。
 class PostHtmlView extends StatefulWidget {
@@ -138,11 +141,7 @@ class _PostHtmlViewState extends State<PostHtmlView> {
       if (node is dom.Text) {
         final text = _cleanInline(node.text);
         if (text.trim().isEmpty) continue;
-        inline.addAll(_linkifyText(context, text, TextStyle(
-          fontSize: 15.5,
-          height: 1.62,
-          color: Theme.of(context).colorScheme.onSurface,
-        )));
+        _appendText(context, text, inline, widgets, flush);
         continue;
       }
       if (node is! dom.Element) continue;
@@ -164,6 +163,19 @@ class _PostHtmlViewState extends State<PostHtmlView> {
         final text = node.text.trim();
         if (text.isNotEmpty) inline.add(TextSpan(text: text));
         continue;
+      }
+      // 整段就是一个视频链接时，直接把这块换成可点击播放的区域。
+      if (tag == 'a' && node.querySelector('img') == null) {
+        final href = node.attributes['href'] ?? '';
+        final video = href.isEmpty ? null : parseVideoLink(AppConfig.uri(href).toString());
+        if (video != null) {
+          final text = node.text.trim();
+          if (text.isEmpty || text == href || parseStandaloneVideo(text) != null) {
+            flush();
+            widgets.add(_videoCard(context, video, title: _videoLabel(text)));
+            continue;
+          }
+        }
       }
       if (tag == 'img') {
         if (_isSmiley(node)) {
@@ -213,6 +225,57 @@ class _PostHtmlViewState extends State<PostHtmlView> {
     }
     flush();
     return widgets;
+  }
+
+  /// 文本节点里的视频链接有两种归宿：
+  /// 单独成行的换成播放卡片，混在句子里的保持行内可点链接（点击也走应用内播放）。
+  void _appendText(
+    BuildContext context,
+    String text,
+    List<InlineSpan> inline,
+    List<Widget> widgets,
+    void Function() flush,
+  ) {
+    final style = TextStyle(
+      fontSize: 15.5,
+      height: 1.62,
+      color: Theme.of(context).colorScheme.onSurface,
+    );
+    final lines = text.split('\n');
+    for (var i = 0; i < lines.length; i++) {
+      final line = lines[i];
+      if (i > 0 && inline.isNotEmpty) inline.add(const TextSpan(text: '\n'));
+      if (line.trim().isEmpty) continue;
+      final video = parseStandaloneVideo(line);
+      if (video != null) {
+        flush();
+        widgets.add(_videoCard(context, video, title: _videoLabel(line)));
+        continue;
+      }
+      inline.addAll(_linkifyText(context, line, style));
+    }
+  }
+
+  Widget _videoCard(BuildContext context, VideoLink video, {String? title}) {
+    return VideoCard(
+      video: video,
+      title: title,
+      onTap: () => _openVideo(context, video, title),
+    );
+  }
+
+  /// 从「视频演示：https://…」里取出前半句说明，作为卡片标题。
+  String? _videoLabel(String text) {
+    final withoutUrl = text.replaceAll(RegExp(r'https?://\S+'), '').trim();
+    final cleaned = withoutUrl.replaceAll(RegExp(r'[：:，,。.、；;\-—\s]+$'), '').replaceAll(RegExp(r'^[「『“"（(\[]+'), '').trim();
+    if (cleaned.isEmpty || cleaned.length > 20) return null;
+    return cleaned;
+  }
+
+  void _openVideo(BuildContext context, VideoLink video, [String? title]) {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => VideoPlayerPage(video: video, title: title),
+    ));
   }
 
   List<Widget> _blockElement(BuildContext context, dom.Element element) {
@@ -294,16 +357,25 @@ class _PostHtmlViewState extends State<PostHtmlView> {
       ];
     }
 
-    if (tag == 'iframe' || tag == 'video' || tag == 'audio') {
+    if (tag == 'iframe' || tag == 'video') {
+      final src = element.attributes['src'] ?? element.querySelector('source')?.attributes['src'] ?? '';
+      if (src.isEmpty) return const [];
+      final resolved = AppConfig.uri(src).toString();
+      final video = parseVideoLink(resolved) ??
+          VideoLink(url: resolved, kind: VideoKind.other, playUrl: resolved, asPage: true);
+      return [_videoCard(context, video)];
+    }
+
+    if (tag == 'audio') {
       final src = element.attributes['src'] ?? element.querySelector('source')?.attributes['src'] ?? '';
       if (src.isEmpty) return const [];
       return [
         Card(
           child: ListTile(
             leading: const Icon(Icons.play_circle_outline),
-            title: const Text('媒体内容'),
+            title: const Text('音频内容'),
             subtitle: Text(src, maxLines: 1, overflow: TextOverflow.ellipsis),
-            onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => InternalBrowserPage(url: AppConfig.uri(src).toString(), title: '媒体内容'))),
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => InternalBrowserPage(url: AppConfig.uri(src).toString(), title: '音频内容'))),
           ),
         ),
       ];
@@ -754,6 +826,12 @@ class _PostHtmlViewState extends State<PostHtmlView> {
   }
 
   void _openLink(BuildContext context, String url) {
+    // 视频链接统一进应用内播放，不再丢给系统浏览器。
+    final video = parseVideoLink(url);
+    if (video != null) {
+      _openVideo(context, video);
+      return;
+    }
     final thread = RegExp(r'thread-(\d+)-1-1\.html').firstMatch(url);
     if (thread != null) {
       Navigator.of(context).push(MaterialPageRoute(builder: (_) => ThreadPage(tid: int.parse(thread.group(1)!))));
