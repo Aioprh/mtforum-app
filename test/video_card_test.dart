@@ -58,4 +58,20 @@ void main() {
     expect(find.byType(VideoCard), findsNothing);
     expect(find.textContaining('pan.quark.cn', findRichText: true), findsWidgets);
   });
+
+  // 线上帖子的真实写法：正文里一行说明 + 一个「视频演示」文字链接指向 mp4。
+  testWidgets('文字是「视频演示」的直链 mp4 也变成播放区域', (tester) async {
+    await pump(tester, '''
+      <div class="comiis_a">
+        对，就是这样，如果你想看一下成果视频的话，链接如下<br/>
+        <a href="https://oss.crash.fan/video/Video_1793383126518_230.mp4" target="_blank">视频演示</a><br/>
+        感谢感谢
+      </div>
+    ''');
+
+    expect(find.byType(VideoCard), findsOneWidget);
+    expect(find.text('视频文件 · 点击在应用内播放'), findsOneWidget);
+    expect(find.text('视频演示'), findsWidgets);
+    expect(find.textContaining('感谢感谢', findRichText: true), findsWidgets);
+  });
 }

@@ -170,7 +170,13 @@ class _PostHtmlViewState extends State<PostHtmlView> {
         final video = href.isEmpty ? null : parseVideoLink(AppConfig.uri(href).toString());
         if (video != null) {
           final text = node.text.trim();
-          if (text.isEmpty || text == href || parseStandaloneVideo(text) != null) {
+          // 链接文字是「视频演示」这类短标题、或者干脆就是链接本身，就做成播放区域；
+          // 一整句话里夹着的链接保持行内样式，点击时同样走应用内播放。
+          final standalone = text.isEmpty ||
+              text == href ||
+              parseStandaloneVideo(text) != null ||
+              (text.length <= 20 && !text.contains(RegExp(r'[。！？!?\n]')));
+          if (standalone) {
             flush();
             widgets.add(_videoCard(context, video, title: _videoLabel(text)));
             continue;
