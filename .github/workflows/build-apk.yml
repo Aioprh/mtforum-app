@@ -133,15 +133,20 @@ jobs:
         run: flutter build apk --release --split-per-abi --no-pub
 
       # 把实际签进包里的证书打出来，方便对不上时直接比对指纹。
+      # --split-per-abi 之后 app-release.apk 可能已被清理，这里挑任意一个产物即可。
       - name: Show APK signing certificate
+        continue-on-error: true
         run: |
-          APK=build/app/outputs/flutter-apk/app-release.apk
+          set +e
+          APK=$(ls build/app/outputs/flutter-apk/*.apk 2>/dev/null | head -1)
           BT=$(ls -d "${ANDROID_SDK_ROOT:-$ANDROID_HOME}"/build-tools/* 2>/dev/null | sort -V | tail -1)
-          if [ -n "$BT" ] && [ -x "$BT/apksigner" ] && [ -f "$APK" ]; then
+          echo "检查 $APK"
+          if [ -n "$BT" ] && [ -x "$BT/apksigner" ] && [ -n "$APK" ]; then
             "$BT/apksigner" verify --print-certs "$APK" | grep -E "Signer #1 certificate (DN|SHA-256)"
           else
             echo "apksigner 不可用，跳过证书打印"
           fi
+          exit 0
 
       # Save even when a build step fails, so the next run does not have to
       # download the Gradle distribution and all dependencies again.
