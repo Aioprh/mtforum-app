@@ -100,23 +100,70 @@ jobs:
       # 固定发布签名：早期版本每次都用 CI 临时生成的 debug 证书，指纹每次都变，
       # 新装包无法覆盖旧版本（INSTALL_FAILED_UPDATE_INCOMPATIBLE）。
       # 密钥存在仓库 Secret 里，构建时还原；缺失则回退 debug 签名并告警。
+      # fork 出来的仓库不会继承原仓库的 Secret，这里先看有没有。
+      - name: Detect signing secret
+        id: signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "has_secret=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_secret=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::没有配置 ANDROID_KEYSTORE_BASE64（fork 仓库不会继承 Secret），改用本仓库缓存的备用签名；首次构建会生成一张并缓存，之后版本可互相覆盖。"
+          fi
+
+      # 备用签名：同一仓库的自建构建共用一个 keystore，避免每次全新生成导致无法覆盖安装。
+      - name: Restore fallback signing key
+        id: fallback_key
+        if: steps.signing.outputs.has_secret == 'false'
+        uses: actions/cache/restore@v4
+        with:
+          path: fallback-release.jks
+          key: mtforum-fallback-keystore-v1
+
       - name: Configure release signing
         env:
+          HAS_SECRET: ${{ steps.signing.outputs.has_secret }}
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          FALLBACK_STORE_PASSWORD: mtforum-fallback
+          FALLBACK_KEY_ALIAS: mtforum-fallback
         run: |
-          if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "::warning::未配置 ANDROID_KEYSTORE_BASE64，本次回退 debug 签名，装机需先卸载旧版"
+          set -e
+          if [ "$HAS_SECRET" = "true" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$GITHUB_WORKSPACE/release.jks"
+            printf 'storeFile=%s\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' \
+              "$GITHUB_WORKSPACE/release.jks" "$KEYSTORE_PASSWORD" "$KEY_ALIAS" "$KEY_PASSWORD" \
+              > android/key.properties
+            keytool -list -v -keystore "$GITHUB_WORKSPACE/release.jks" \
+              -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" | grep "SHA256:"
             exit 0
           fi
-          echo "$KEYSTORE_BASE64" | base64 -d > "$GITHUB_WORKSPACE/release.jks"
+          KS="$GITHUB_WORKSPACE/fallback-release.jks"
+          if [ ! -f "$KS" ]; then
+            keytool -genkeypair -keystore "$KS" -alias "$FALLBACK_KEY_ALIAS" \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass "$FALLBACK_STORE_PASSWORD" -keypass "$FALLBACK_STORE_PASSWORD" \
+              -dname "CN=MT Forum Self Build, O=Local, C=CN"
+            echo "已生成备用签名（将写入 Actions 缓存）"
+          else
+            echo "复用缓存里的备用签名"
+          fi
           printf 'storeFile=%s\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' \
-            "$GITHUB_WORKSPACE/release.jks" "$KEYSTORE_PASSWORD" "$KEY_ALIAS" "$KEY_PASSWORD" \
+            "$KS" "$FALLBACK_STORE_PASSWORD" "$FALLBACK_KEY_ALIAS" "$FALLBACK_STORE_PASSWORD" \
             > android/key.properties
-          keytool -list -v -keystore "$GITHUB_WORKSPACE/release.jks" \
-            -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" | grep "SHA256:"
+          keytool -list -v -keystore "$KS" \
+            -storepass "$FALLBACK_STORE_PASSWORD" -alias "$FALLBACK_KEY_ALIAS" | grep "SHA256:"
+
+      - name: Save fallback signing key
+        if: always() && steps.signing.outputs.has_secret == 'false' && steps.fallback_key.outputs.cache-hit != 'true' && hashFiles('fallback-release.jks') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: fallback-release.jks
+          key: mtforum-fallback-keystore-v1
 
       - name: Generate launcher icons
         run: |

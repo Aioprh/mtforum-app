@@ -43,7 +43,29 @@ git tag v1.0.1
 git push origin v1.0.1
 ```
 
+## 签名与 fork
+
+APK 的签名证书决定了能不能覆盖安装。本仓库的 CI 按下面的顺序取签名：
+
+1. 仓库 Secret 里的 `ANDROID_KEYSTORE_BASE64`（正式发布用，长期固定）；
+2. 没有 Secret 时，用 Actions 缓存里的备用签名 `mtforum-fallback-keystore-v1`；
+3. 缓存也没有，就现生成一张并写回缓存，之后的构建继续用它。
+
+**fork 本仓库**：GitHub 不会把 Secret 带到 fork 里，所以走的是第 2、3 条。第一次构建会生成
+一张属于你自己仓库的证书并缓存，此后你自己打的所有包都能互相覆盖。缓存被清理（长期不构建）
+后会重新生成，届时需要卸载一次。
+
+想给自己 fork 一份独立、长期固定的正式签名，跑一次：
+
+```bash
+tool/setup_signing.sh            # 自动识别当前仓库，生成密钥并写入 4 条 Secret
+```
+
+也可以传入已有的 keystore：`KEYSTORE=my.jks KEYSTORE_PASSWORD=xxx tool/setup_signing.sh`。
+
+注意：包名是 `cc.binmt.mt_forum`，和官方包一致，**签名不同就无法共存**，从官方版换到自建
+版（或反过来）必须先卸载。
+
 ## 说明
 
-- 当前 release 使用 debug 签名，便于直接安装测试；正式分发请配置自己的签名。
 - 站点可能更新前端模板或安全校验，如解析失效请对照 `lib/data/forum_repository.dart` 调整选择器。
