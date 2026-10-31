@@ -19,6 +19,7 @@ dependencies:
   file_picker: ^13.2.0
   in_app_webview_flutter: ^1.1.0
   path_provider: ^2.1.5
+  video_player: ^2.14.1
 
 dev_dependencies:
   flutter_test:

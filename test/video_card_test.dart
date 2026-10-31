@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mt_forum/ui/widgets/post_html_view.dart';
+import 'package:mt_forum/ui/pages/video_player_page.dart';
+import 'package:mt_forum/ui/widgets/inline_video_player.dart';
 import 'package:mt_forum/ui/widgets/video_card.dart';
 
 /// 正文里的视频链接应当渲染成一块可点击的播放区域，
@@ -70,8 +72,34 @@ void main() {
     ''');
 
     expect(find.byType(VideoCard), findsOneWidget);
-    expect(find.text('视频文件 · 点击在应用内播放'), findsOneWidget);
+    expect(find.textContaining('点击在应用内播放'), findsOneWidget);
     expect(find.text('视频演示'), findsWidgets);
     expect(find.textContaining('感谢感谢', findRichText: true), findsWidgets);
+  });
+
+  // 用户要的是「点一下就播」，而不是跳到另一个页面。
+  testWidgets('点击播放区域就地展开播放器，页面不跳转', (tester) async {
+    await pump(tester, '''
+      <div class="comiis_a">
+        链接如下<br/>
+        <a href="https://oss.crash.fan/video/Video_1793383126518_230.mp4">视频演示</a>
+      </div>
+    ''');
+
+    expect(find.byType(InlineVideoPlayer), findsNothing);
+
+    await tester.tap(find.byIcon(Icons.play_arrow_rounded));
+    await tester.pump();
+
+    expect(find.byType(InlineVideoPlayer), findsOneWidget);
+    expect(find.text('收起'), findsOneWidget);
+    expect(find.text('正在正文中播放'), findsOneWidget);
+    // 仍在帖子正文里，没有 push 播放页
+    expect(find.byType(PostHtmlView), findsOneWidget);
+    expect(find.byType(VideoPlayerPage), findsNothing);
+
+    await tester.tap(find.text('收起'));
+    await tester.pump();
+    expect(find.byType(InlineVideoPlayer), findsNothing);
   });
 }

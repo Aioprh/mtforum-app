@@ -2,6 +2,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:html/dom.dart' as dom;
+import 'package:url_launcher/url_launcher.dart';
 import 'package:html/parser.dart' as parser;
 
 import '../../core/app_config.dart';
@@ -266,8 +267,14 @@ class _PostHtmlViewState extends State<PostHtmlView> {
     return VideoCard(
       video: video,
       title: title,
-      onTap: () => _openVideo(context, video, title),
+      onOpenExternal: () => _openInBrowser(video.url),
     );
+  }
+
+  Future<void> _openInBrowser(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   /// 从「视频演示：https://…」里取出前半句说明，作为卡片标题。
