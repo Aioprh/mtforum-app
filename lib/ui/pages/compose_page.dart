@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/app_config.dart';
 import '../../core/http_session.dart';
+import '../../core/pending_upload.dart';
 import '../../data/models.dart';
 import '../../state/app_state.dart';
 import '../widgets/emoji_panel.dart';
@@ -38,6 +39,9 @@ class _DraftAttachment {
   int? aid;
   bool uploading = false;
   String? error;
+
+  /// 站点模板拿不到 swfupload 凭证，改成跟着发帖请求一起提交。
+  bool pending = false;
 }
 
 class _ComposePageState extends State<ComposePage> {
@@ -373,19 +377,29 @@ class _ComposePageState extends State<ComposePage> {
     if (info == null || info.uploadHash.isEmpty || info.uid <= 0) {
       info = await _refreshInfo();
     }
-    if (info == null || info.uploadHash.isEmpty || info.uid <= 0) {
-      final reason = info?.debug ?? '发帖页打不开';
-      final message = '没取到上传凭证（$reason）';
+    if (info == null) {
       setState(() {
         attachment.uploading = false;
-        attachment.error = message;
+        attachment.error = '发帖页打不开，稍后再试';
       });
-      _toast(message);
+      _toast('发帖页打不开，稍后再试');
+      return;
+    }
+    if (info.uploadHash.isEmpty || info.uid <= 0) {
+      // 这套模板的页面上没有 swfupload 的 hash（它由站点私钥算出来，客户端
+      // 推不出来），只能学网页的做法：把文件放进发帖表单一起提交。
+      setState(() {
+        attachment.uploading = false;
+        attachment.error = null;
+        attachment.pending = true;
+      });
+      _toast('图片会跟着帖子一起提交，发帖后出现在文末');
       return;
     }
     setState(() {
       attachment.uploading = true;
       attachment.error = null;
+      attachment.pending = false;
       _uploading = true;
     });
     try {
@@ -546,6 +560,16 @@ class _ComposePageState extends State<ComposePage> {
         attachmentIds: [
           for (final attachment in _attachments)
             if (attachment.aid != null) attachment.aid!,
+        ],
+        // 拿不到 swfupload 凭证的那些图，跟着这次提交一起送上去。
+        pendingFiles: [
+          for (final attachment in _attachments)
+            if (attachment.pending)
+              PendingUpload(
+                filename: attachment.name,
+                bytes: attachment.bytes,
+                image: attachment.image,
+              ),
         ],
         replyOnly: _replyOnly,
         orderDesc: _orderDesc,
@@ -962,6 +986,22 @@ class _ComposePageState extends State<ComposePage> {
                     color: Colors.white,
                     size: 20,
                   ),
+                ),
+              ),
+            ),
+          if (attachment.pending)
+            Positioned(
+              left: 2,
+              bottom: 2,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.black54,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Text(
+                  '随帖上传',
+                  style: TextStyle(fontSize: 8.5, color: Colors.white),
                 ),
               ),
             ),
@@ -1403,6 +1443,8 @@ class _ComposePageState extends State<ComposePage> {
                             ? '上传中…'
                             : attachment.aid != null
                             ? '上传完成'
+                            : attachment.pending
+                            ? '会随帖子一起提交'
                             : '等待上传',
                       )
                     : Text(

@@ -7,6 +7,7 @@ import 'package:html/parser.dart' as parser;
 
 import '../core/app_config.dart';
 import '../core/http_session.dart';
+import '../core/pending_upload.dart';
 import '../core/upload_hash.dart';
 import '../core/upload_result.dart';
 import '../core/waf_solver.dart';
@@ -561,28 +562,37 @@ class ForumRepository {
     }
     var uploadHash = findUploadHash(page.body);
     var uid = findUploadUid(page.body);
+    var source = '手机版';
     if (uploadHash.isEmpty || uid <= 0) {
-      // 有的模板把凭证只放在 AJAX 版发帖页里，普通页面里没有。
-      // 再要一次 inajax 版本，拿不到就交给上层提示，不在这里打断发帖。
-      try {
-        final ajax = await _http.get(
-          'forum.php',
-          query: {'mod': 'post', 'action': 'newthread', 'fid': '$fid', 'mobile': '2', 'inajax': '1'},
-        );
-        if (ajax.statusCode == 200) {
-          uploadHash = findUploadHash(ajax.body);
-          if (uid <= 0) uid = findUploadUid(ajax.body);
+      // 手机模板（含 comiis 这类改版）走的是表单直传：发帖表单里直接放
+      // `<input type="file" name="Filedata">`，页面根本不输出 swfupload 的 hash。
+      // 桌面模板会输出 `post_params: {"uid" : "34273", "hash":"..."}`，
+      // 所以改去桌面版页面拿一份。
+      for (final query in <Map<String, String>>[
+        {'mod': 'post', 'action': 'newthread', 'fid': '$fid', 'mobile': 'no'},
+        {'mod': 'post', 'action': 'newthread', 'fid': '$fid', 'mobile': '2', 'inajax': '1'},
+      ]) {
+        try {
+          final extra = await _http.get('forum.php', query: query);
+          if (extra.statusCode != 200) continue;
+          final hash = findUploadHash(extra.body);
+          if (uploadHash.isEmpty && hash.isNotEmpty) {
+            uploadHash = hash;
+            source = query['mobile'] == 'no' ? '桌面版' : 'ajax版';
+          }
+          if (uid <= 0) uid = findUploadUid(extra.body);
+          if (uploadHash.isNotEmpty && uid > 0) break;
+        } catch (_) {
+          // 兜底请求失败不影响发文字帖。
         }
-      } catch (_) {
-        // 兜底请求失败不影响发文字帖。
       }
     }
     return ComposeInfo(
       formhash: formhash,
       uploadHash: uploadHash,
       uid: uid,
-      debug: '页面 ${page.body.length}B，hash='
-          '${uploadHash.isEmpty ? '无' : '${uploadHash.length}位'}，uid=$uid',
+      debug: '手机版 ${page.body.length}B，hash='
+          '${uploadHash.isEmpty ? '无' : '${uploadHash.length}位($source)'}，uid=$uid',
     );
   }
 
@@ -2473,6 +2483,7 @@ class ForumRepository {
     required String message,
     String formhash = '',
     List<int> attachmentIds = const [],
+    List<PendingUpload> pendingFiles = const [],
     bool replyOnly = false,
     bool orderDesc = false,
     bool notify = false,
@@ -2503,45 +2514,69 @@ class ForumRepository {
       throw SiteException('无法进入发帖页面');
     }
 
-    final response = await _http.post(
-      'forum.php',
-      referer: AppConfig.uri('forum.php', {
-        'mod': 'post',
-        'action': 'newthread',
-        'fid': '$fid',
-        if (poll) 'special': '1',
-        'mobile': '2',
-      }).toString(),
-      query: {
-        'mod': 'post',
-        'action': 'newthread',
-        'fid': '$fid',
-        'topicsubmit': 'yes',
-        if (poll) 'special': '1',
-        'mobile': '2',
+    final form = <String, String>{
+      'formhash': hash,
+      'posttime': '${DateTime.now().millisecondsSinceEpoch ~/ 1000}',
+      'wysiwyg': '1',
+      'subject': subject,
+      'message': message,
+      'tags': tags,
+      'usesig': useSignature ? '1' : '0',
+      if (readPerm.isNotEmpty && readPerm != '0') 'readperm': readPerm,
+      if (price.isNotEmpty && price != '0') 'price': price,
+      if (replyOnly) 'replyonly': '1',
+      if (orderDesc) 'ordertype': '1',
+      if (notify) 'emailnotify': '1',
+      if (poll) ...{
+        'polloptions': pollOptions.join('\n'),
+        'pollmultiple': pollMultiple ? '1' : '0',
+        'maxselect': pollMultiple ? '${pollOptions.length}' : '1',
       },
-      form: {
-        'formhash': hash,
-        'posttime': '${DateTime.now().millisecondsSinceEpoch ~/ 1000}',
-        'wysiwyg': '1',
-        'subject': subject,
-        'message': message,
-        'tags': tags,
-        'usesig': useSignature ? '1' : '0',
-        if (readPerm.isNotEmpty && readPerm != '0') 'readperm': readPerm,
-        if (price.isNotEmpty && price != '0') 'price': price,
-        if (replyOnly) 'replyonly': '1',
-        if (orderDesc) 'ordertype': '1',
-        if (notify) 'emailnotify': '1',
-        if (poll) ...{
-          'polloptions': pollOptions.join('\n'),
-          'pollmultiple': pollMultiple ? '1' : '0',
-          'maxselect': pollMultiple ? '${pollOptions.length}' : '1',
+      for (final aid in attachmentIds) 'attachnew[$aid][description]': '',
+      'save': '',
+    };
+    final referer = AppConfig.uri('forum.php', {
+      'mod': 'post',
+      'action': 'newthread',
+      'fid': '$fid',
+      if (poll) 'special': '1',
+      'mobile': '2',
+    }).toString();
+    final HttpResult response;
+    if (pendingFiles.isNotEmpty) {
+      // 没有 swfupload 凭证时，照网页的做法把文件塞进发帖表单一起提交。
+      // 手机模板的表单本身就是 multipart + `Filedata`，服务端按同一套逻辑收。
+      response = await _http.postFile(
+        'forum.php',
+        query: {
+          'mod': 'post',
+          'action': 'newthread',
+          'fid': '$fid',
+          'topicsubmit': 'yes',
+          if (poll) 'special': '1',
+          'mobile': '2',
         },
-        for (final aid in attachmentIds) 'attachnew[$aid][description]': '',
-        'save': '',
-      },
-    );
+        field: pendingFiles.first.field,
+        filename: pendingFiles.first.filename,
+        bytes: pendingFiles.first.bytes,
+        fields: form,
+        referer: referer,
+      );
+    } else {
+      response = await _http.post(
+        'forum.php',
+        referer: referer,
+        query: {
+          'mod': 'post',
+          'action': 'newthread',
+          'fid': '$fid',
+          'topicsubmit': 'yes',
+          if (poll) 'special': '1',
+          'mobile': '2',
+        },
+        form: form,
+      );
+    }
     final doc = parser.parse(response.body);
     final msg = _pageMessage(doc);
     if (msg != null && _looksLikeError(msg)) throw SiteException(msg);
