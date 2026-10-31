@@ -7,6 +7,7 @@ import 'package:html/parser.dart' as parser;
 
 import '../core/app_config.dart';
 import '../core/http_session.dart';
+import '../core/page_message.dart';
 import '../core/pending_upload.dart';
 import '../core/upload_hash.dart';
 import '../core/upload_result.dart';
@@ -816,9 +817,19 @@ class ForumRepository {
         'save': '',
       },
     );
+    // 保存成功后服务端 302 回帖子页：落点就是 viewthread，直接算成功。
+    // 那个页面上有一条「本帖最后由 xxx 于 … 编辑 …」的记录，若继续按「页面消息」
+    // 解析，会因为它引用了正文里的「登录」「审核」之类的字眼被判成错误。
+    if (_landedOnThread(response)) return '编辑成功';
     final msg = _pageMessage(parser.parse(response.body));
     if (msg != null && _looksLikeError(msg)) throw SiteException(msg);
     return '编辑成功';
+  }
+
+  /// 请求最终落在帖子页（`mod=viewthread`），说明提交被服务端接受了。
+  bool _landedOnThread(HttpResult response) {
+    final uri = response.uri.toString();
+    return uri.contains('mod=viewthread') || uri.contains('thread-');
   }
 
   /// 删除自己的帖子 / 回复。
@@ -3145,7 +3156,9 @@ class ForumRepository {
       '.comiis_tip',
     ]) {
       final text = _clean(doc.querySelector(selector)?.text ?? '');
-      if (text.isNotEmpty && text.length < 800) return text;
+      // 编辑记录也放在 `.alert_info` 里，不能当提示返回。
+      if (text.isEmpty || text.length >= 800 || isEditNote(text)) continue;
+      return text;
     }
     return null;
   }
