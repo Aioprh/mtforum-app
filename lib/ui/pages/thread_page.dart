@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../services/browse_history.dart';
 import '../../services/offline_thread_cache.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -120,6 +121,7 @@ class _ThreadPageState extends State<ThreadPage> {
         _pollSelected.clear();
         _loading = false;
       });
+      _recordHistory(detail);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -211,6 +213,7 @@ class _ThreadPageState extends State<ThreadPage> {
         _hasMore = detail.hasMore;
         _loadingMore = false;
       });
+      if (page == 1) _recordHistory(detail);
       if (jumpToTop && _scroll.hasClients) {
         await _scroll.animateTo(0, duration: const Duration(milliseconds: 220), curve: Curves.easeOut);
       }
@@ -222,6 +225,27 @@ class _ThreadPageState extends State<ThreadPage> {
   }
 
   String _message(Object error) => error is SiteException ? error.message : '加载失败，请稍后重试';
+
+  /// 记一条浏览历史。只在第一页成功加载后调用，翻页/刷新不重复写。
+  void _recordHistory(ThreadDetail detail) {
+    if (detail.tid <= 0) return;
+    final first = detail.posts.isEmpty ? null : detail.posts.first;
+    final cover = first?.images.firstWhere(
+          (value) => value.trim().isNotEmpty,
+          orElse: () => '',
+        ) ??
+        '';
+    BrowseHistory.instance.record(
+      tid: detail.tid,
+      title: detail.title.isEmpty ? widget.title : detail.title,
+      boardName: detail.boardName,
+      author: detail.author,
+      cover: cover,
+      postedAt: detail.time,
+      replies: detail.replies,
+      views: detail.views,
+    );
+  }
 
   Future<bool> _ensureLogin() async {
     if (AppState.instance.isLoggedIn) return true;

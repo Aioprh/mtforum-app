@@ -7,6 +7,7 @@ import '../widgets/thread_feed.dart';
 import '../widgets/user_avatar.dart';
 import 'about_page.dart';
 import 'black_house_page.dart';
+import 'browse_history_page.dart';
 import 'friends_page.dart';
 import 'followers_page.dart';
 import 'following_page.dart';
@@ -536,6 +537,9 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
                   }),
                   _MenuItem(Icons.download_for_offline_outlined, '下载管理', () {
                     _openPage(const DownloadManagerPage());
+                  }),
+                  _MenuItem(Icons.history_rounded, '浏览历史', () {
+                    _openPage(const BrowseHistoryPage());
                   }),
                   _MenuItem(Icons.offline_pin_outlined, '离线缓存', () {
                     _openPage(const OfflineCachePage());
