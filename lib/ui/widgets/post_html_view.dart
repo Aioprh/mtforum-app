@@ -74,6 +74,20 @@ class _PostHtmlViewState extends State<PostHtmlView> {
     _recognizers.clear();
   }
 
+  /// 页面里的隐藏层（附件弹层、模板占位等）不该出现在正文里。
+  /// Discuz 的附件提示层就是 `style="display:none"` 的 div，里面装着缩略图和
+  /// 下载链接；照常渲染会凭空多出图片占位块，视觉上就是一片空白。
+  bool _isHidden(dom.Element element) {
+    if (element.attributes.containsKey('hidden')) return true;
+    final style = (element.attributes['style'] ?? '').replaceAll(' ', '').toLowerCase();
+    if (style.isEmpty) return false;
+    return style.contains('display:none') || style.contains('visibility:hidden');
+  }
+
+  /// 脚本与样式内容不是正文，直接跳过；否则会把 JS/CSS 原样当段落显示。
+  bool _isSkippedTag(String tag) =>
+      const {'script', 'style', 'noscript', 'template', 'link', 'meta'}.contains(tag);
+
   bool _isBlockTag(String tag) => const {
         'div', 'p', 'section', 'article', 'blockquote', 'pre', 'ul', 'ol',
         'table', 'hr', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'iframe', 'video',
@@ -148,6 +162,7 @@ class _PostHtmlViewState extends State<PostHtmlView> {
       if (node is! dom.Element) continue;
 
       final tag = node.localName ?? '';
+      if (_isSkippedTag(tag) || _isHidden(node)) continue;
       if (tag == 'br') {
         if (inline.isNotEmpty) inline.add(const TextSpan(text: '\n'));
         continue;

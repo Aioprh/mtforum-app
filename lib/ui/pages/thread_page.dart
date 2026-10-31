@@ -729,6 +729,8 @@ class _ThreadPageState extends State<ThreadPage> {
     switch (value) {
       case 'copy':
         _copyFloor(post);
+      case 'source':
+        await _copySource(post);
       case 'report':
         await _report(post);
       case 'rate':
@@ -748,6 +750,13 @@ class _ThreadPageState extends State<ThreadPage> {
       case 'warn':
         await _moderate('warn', '警告');
     }
+  }
+
+  /// 排错用：把这一楼的原始 HTML 放进剪贴板。
+  /// 帖子里出现异常空白时，靠它确认到底是哪个标签占出来的。
+  Future<void> _copySource(ForumPost post) async {
+    await Clipboard.setData(ClipboardData(text: post.html));
+    _toast('本楼源码已复制（${post.html.length} 字）');
   }
 
   Future<void> _report(ForumPost post) async {
@@ -1521,6 +1530,15 @@ class _ThreadPageState extends State<ThreadPage> {
                         contentPadding: EdgeInsets.zero,
                         leading: Icon(Icons.flag_outlined, size: 20),
                         title: Text('举报'),
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'source',
+                      child: ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(Icons.code_rounded, size: 20),
+                        title: Text('复制本楼源码'),
                       ),
                     ),
                     if (!_isMine(post))
