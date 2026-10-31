@@ -239,6 +239,19 @@ class _PostHtmlViewState extends State<PostHtmlView> {
         continue;
       }
 
+      // 行内元素里包着的图片（`<span class="comiis_postimg"><img></span>` 是最常见
+      // 的形态，手机模板的附件图都是这么包的）不能当行内元素处理。
+      //
+      // 塞进 Text 的 WidgetSpan 后，图片按整行宽度铺开、高度按原图比例算：
+      // 一张 1080×4252 的截图会给这一段排出一千三百多像素的行高，而这一行里
+      // 的文字按行内对齐垂直居中——于是正文里凭空多出上下好几屏空白，长按也
+      // 选不中（那是图片容器，不是文字）。整块递归下去，让图片走块级路径。
+      if (node.querySelectorAll('img').any((img) => !_isSmiley(img))) {
+        flush();
+        widgets.addAll(_blocks(context, node.nodes));
+        continue;
+      }
+
       inline.addAll(_inlineNode(context, node, TextStyle(
         fontSize: 15.5,
         height: 1.62,
