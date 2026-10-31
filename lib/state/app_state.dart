@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/http_session.dart';
+import '../core/sign_in_status.dart';
 import '../data/forum_repository.dart';
 import '../data/models.dart';
 
@@ -20,6 +21,12 @@ class AppState extends ChangeNotifier {
   static const String _autoSignInDateKey = 'mt_forum_auto_signin_date';
   bool _autoSignInRunning = false;
   String? _autoSignInAttemptDate;
+
+  /// 已确认签到成功的自然日（本地缓存），配合 [signedInToday] 给「我的」卡片用。
+  String? _signInDay;
+
+  /// 手动签到进行中，用来在卡片上转圈、防连点。
+  bool signingIn = false;
 
   final ForumRepository repo = ForumRepository.instance;
   final HttpSession session = HttpSession.instance;
@@ -43,6 +50,9 @@ class AppState extends ChangeNotifier {
 
   bool get isLoggedIn => session.hasLoginCookie;
 
+  /// 今天是否已经签到。未登录时没有意义，卡片也不显示。
+  bool get signedInToday => signedInOn(_signInDay, DateTime.now());
+
   Future<void> bootstrapLocal() async {
     await repo.init();
     final prefs = await SharedPreferences.getInstance();
@@ -53,6 +63,7 @@ class AppState extends ChangeNotifier {
     floatingGlassNavBlur = (prefs.getDouble(_floatingGlassNavBlurKey) ?? 30.0).clamp(0.0, 40.0).toDouble();
     composeGlassOpacity = (prefs.getDouble(_composeGlassOpacityKey) ?? 0.28).clamp(0.05, 0.75).toDouble();
     composeGlassBlur = (prefs.getDouble(_composeGlassBlurKey) ?? 26.0).clamp(0.0, 40.0).toDouble();
+    _signInDay = prefs.getString(_autoSignInDateKey);
     themeMode = switch (theme) {
       'light' => ThemeMode.light,
       'dark' => ThemeMode.dark,
@@ -71,22 +82,55 @@ class AppState extends ChangeNotifier {
   /// 网络失败时不写入日期，下一次启动仍可重试。整个过程不展示提示。
   Future<void> autoSignInOncePerDay() async {
     if (!isLoggedIn || _autoSignInRunning) return;
-    final now = DateTime.now();
-    final today =
-        '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final today = signInDayKey(DateTime.now());
     if (_autoSignInAttemptDate == today) return;
 
     _autoSignInRunning = true;
     _autoSignInAttemptDate = today;
     try {
       final prefs = await SharedPreferences.getInstance();
-      if (prefs.getString(_autoSignInDateKey) == today) return;
+      // 本地已经有今天的记录：直接认，不必再打一次接口。
+      _signInDay ??= prefs.getString(_autoSignInDateKey);
+      if (_signInDay == today) {
+        notifyListeners();
+        return;
+      }
       await repo.signIn();
+      _signInDay = today;
       await prefs.setString(_autoSignInDateKey, today);
+      // 卡片上的「今日未签到」要跟着翻成「已签到」。
+      notifyListeners();
     } catch (_) {
       // 静默失败，不打扰用户；未保存日期，下一次启动可重新尝试。
     } finally {
       _autoSignInRunning = false;
+    }
+  }
+
+  /// 手动签到。返回给用户的提示文案；返回 null 表示正在签到、忽略这次点击。
+  Future<String?> signInNow() async {
+    if (!isLoggedIn) return '请先登录后再签到';
+    if (signedInToday) return '今天已经签过到了';
+    if (_autoSignInRunning) return '正在签到，稍等一下';
+    if (signingIn) return null;
+
+    signingIn = true;
+    notifyListeners();
+    try {
+      final message = await repo.signIn();
+      final today = signInDayKey(DateTime.now());
+      _signInDay = today;
+      _autoSignInAttemptDate = today;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_autoSignInDateKey, today);
+      return message;
+    } on SiteException catch (e) {
+      return e.message;
+    } catch (_) {
+      return '签到失败，请稍后重试';
+    } finally {
+      signingIn = false;
+      notifyListeners();
     }
   }
 
@@ -129,6 +173,11 @@ class AppState extends ChangeNotifier {
     profile = null;
     profileError = null;
     _announcements = null;
+    // 签到是按账号算的，换号后不能沿用上一个人的「今天已签到」。
+    _signInDay = null;
+    _autoSignInAttemptDate = null;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_autoSignInDateKey);
     notifyListeners();
   }
 

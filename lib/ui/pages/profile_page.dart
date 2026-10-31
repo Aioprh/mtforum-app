@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../data/models.dart';
 import '../../state/app_state.dart';
 import '../widgets/glass_compose_button.dart';
+import '../widgets/sign_in_badge.dart';
 import '../widgets/thread_feed.dart';
 import '../widgets/user_avatar.dart';
 import 'about_page.dart';
@@ -692,9 +693,24 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
                 ),
             ],
           ),
+          // 自动签到是静默跑的，不给个位置用户根本不知道今天签没签。
+          Padding(
+            padding: const EdgeInsets.only(top: 14),
+            child: SignInBadge(
+              signedIn: AppState.instance.signedInToday,
+              busy: AppState.instance.signingIn,
+              onSignIn: _manualSignIn,
+            ),
+          ),
         ],
       ),
     );
+  }
+
+  Future<void> _manualSignIn() async {
+    final message = await AppState.instance.signInNow();
+    if (!mounted || message == null) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Widget _tag(ColorScheme scheme, String text, Color color) => Container(
