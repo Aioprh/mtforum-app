@@ -687,8 +687,13 @@ class _PostHtmlViewState extends State<PostHtmlView> {
     final index = widget.images.indexOf(url);
     // 正文里常有十几张长截图：加载时先占一屏灰会让人以为正文没出来，
     // 统一给 160 的矮占位；同时按屏幕宽度解码，避免 3768px 原图直接进内存。
+    final screen = MediaQuery.sizeOf(context);
     final scale = MediaQuery.devicePixelRatioOf(context);
-    final cacheWidth = (MediaQuery.sizeOf(context).width * scale).round().clamp(320, 1440);
+    final cacheWidth = (screen.width * scale).round().clamp(320, 1440);
+    // 手机截图（1080×2400 这类）按屏宽铺满就有 800 多高，之前外面套死 520，
+    // 超出的部分被圆角直接裁掉，长截图只能看见上面一截——「图片显示不全」就是这么来的。
+    // 现在上限放到一屏半，并且用 contain：再长的图也整体缩进框里，不裁。
+    final maxImageHeight = (screen.height * 1.6).clamp(400.0, 1600.0);
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       // 图片解码完成、进度刷新都只脏这一块；否则整楼（几百段文字）会跟着重绘一次。
@@ -701,11 +706,11 @@ class _PostHtmlViewState extends State<PostHtmlView> {
             ));
           },
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 520),
+            constraints: BoxConstraints(maxHeight: maxImageHeight),
             child: SmartImage(
               url: url,
               width: double.infinity,
-              fit: BoxFit.fitWidth,
+              fit: BoxFit.contain,
               filterQuality: FilterQuality.low,
               radius: BorderRadius.circular(12),
               cacheWidth: cacheWidth,
