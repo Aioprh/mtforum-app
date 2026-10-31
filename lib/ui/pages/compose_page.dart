@@ -26,7 +26,11 @@ class ComposePage extends StatefulWidget {
 enum _ComposePanel { emoji, mention, insert, attach, advanced }
 
 class _DraftAttachment {
-  _DraftAttachment({required this.name, required this.bytes, required this.image});
+  _DraftAttachment({
+    required this.name,
+    required this.bytes,
+    required this.image,
+  });
 
   final String name;
   final Uint8List bytes;
@@ -124,7 +128,9 @@ class _ComposePageState extends State<ComposePage> {
     final message = prefs.getString(_draftMessage) ?? '';
     if (subject.trim().isEmpty && message.trim().isEmpty) return;
     final savedAt = prefs.getInt(_draftAt) ?? 0;
-    if (savedAt > 0 && DateTime.now().millisecondsSinceEpoch - savedAt > 7 * 24 * 3600 * 1000) {
+    if (savedAt > 0 &&
+        DateTime.now().millisecondsSinceEpoch - savedAt >
+            7 * 24 * 3600 * 1000) {
       return;
     }
     _subject.text = subject;
@@ -156,9 +162,12 @@ class _ComposePageState extends State<ComposePage> {
       final value = await AppState.instance.boards();
       if (!mounted) return;
       var fid = _fid ?? _draftFid ?? widget.initialFid;
-      final exists = fid != null && value.any((c) => c.boards.any((b) => b.fid == fid));
+      final exists =
+          fid != null && value.any((c) => c.boards.any((b) => b.fid == fid));
       if (!exists) {
-        fid = value.isNotEmpty && value.first.boards.isNotEmpty ? value.first.boards.first.fid : null;
+        fid = value.isNotEmpty && value.first.boards.isNotEmpty
+            ? value.first.boards.first.fid
+            : null;
       }
       setState(() {
         _categories = value;
@@ -184,18 +193,19 @@ class _ComposePageState extends State<ComposePage> {
     return options;
   }
 
-  String _messageOf(Object error) => error is SiteException ? error.message : '操作失败，请稍后重试';
+  String _messageOf(Object error) =>
+      error is SiteException ? error.message : '操作失败，请稍后重试';
 
   void _toast(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.maybeOf(context)
+        ?.showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<bool> _ensureLogin() async {
     if (AppState.instance.isLoggedIn) return true;
-    final ok = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => const LoginPage()),
-    );
+    final ok = await Navigator.of(context)
+        .push<bool>(MaterialPageRoute(builder: (_) => const LoginPage()));
     return ok == true && AppState.instance.isLoggedIn;
   }
 
@@ -235,7 +245,8 @@ class _ComposePageState extends State<ComposePage> {
     }
   }
 
-  void _onBoardChanged(int? value) {    if (value == null) return;
+  void _onBoardChanged(int? value) {
+    if (value == null) return;
     setState(() {
       _fid = value;
       _info = null;
@@ -247,7 +258,9 @@ class _ComposePageState extends State<ComposePage> {
     if (_panel != null) {
       setState(() => _panel = null);
     }
-    WidgetsBinding.instance.addPostFrameCallback((_) => _ensureMessageVisible());
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _ensureMessageVisible(),
+    );
     Future<void>.delayed(const Duration(milliseconds: 320), () {
       if (mounted) _ensureMessageVisible();
     });
@@ -304,13 +317,20 @@ class _ComposePageState extends State<ComposePage> {
   Future<void> _pickImages() async {
     final info = await _ensureInfo();
     if (info == null) return;
-    final picked = await _picker.pickMultiImage(maxWidth: 1600, imageQuality: 78);
+    final picked = await _picker.pickMultiImage(
+      maxWidth: 1600,
+      imageQuality: 78,
+    );
     if (picked.isEmpty) return;
     if (!mounted) return;
     for (final file in picked) {
       final bytes = await file.readAsBytes();
       if (!mounted) return;
-      final attachment = _DraftAttachment(name: file.name, bytes: bytes, image: true);
+      final attachment = _DraftAttachment(
+        name: file.name,
+        bytes: bytes,
+        image: true,
+      );
       setState(() => _attachments.add(attachment));
       await _upload(attachment, image: true);
     }
@@ -331,13 +351,20 @@ class _ComposePageState extends State<ComposePage> {
         continue;
       }
       if (!mounted) return;
-      final attachment = _DraftAttachment(name: file.name, bytes: bytes, image: false);
+      final attachment = _DraftAttachment(
+        name: file.name,
+        bytes: bytes,
+        image: false,
+      );
       setState(() => _attachments.add(attachment));
       await _upload(attachment, image: false);
     }
   }
 
-  Future<void> _upload(_DraftAttachment attachment, {required bool image}) async {
+  Future<void> _upload(
+    _DraftAttachment attachment, {
+    required bool image,
+  }) async {
     var info = _info;
     final fid = _fid;
     if (fid == null) return;
@@ -346,7 +373,16 @@ class _ComposePageState extends State<ComposePage> {
     if (info == null || info.uploadHash.isEmpty || info.uid <= 0) {
       info = await _refreshInfo();
     }
-    if (info == null) return;
+    if (info == null || info.uploadHash.isEmpty || info.uid <= 0) {
+      final reason = info?.debug ?? '发帖页打不开';
+      final message = '没取到上传凭证（$reason）';
+      setState(() {
+        attachment.uploading = false;
+        attachment.error = message;
+      });
+      _toast(message);
+      return;
+    }
     setState(() {
       attachment.uploading = true;
       attachment.error = null;
@@ -358,6 +394,7 @@ class _ComposePageState extends State<ComposePage> {
         filename: attachment.name,
         uploadHash: info.uploadHash,
         uid: info.uid,
+        fid: fid,
         referer: AppConfig.uri('forum.php', {
           'mod': 'post',
           'action': 'newthread',
@@ -388,7 +425,9 @@ class _ComposePageState extends State<ComposePage> {
   void _removeAttachment(_DraftAttachment attachment) {
     final aid = attachment.aid;
     if (aid != null) {
-      final tag = attachment.image ? '[attachimg]$aid[/attachimg]' : '[attach]$aid[/attach]';
+      final tag = attachment.image
+          ? '[attachimg]$aid[/attachimg]'
+          : '[attach]$aid[/attach]';
       _message.text = _message.text.replaceAll(tag, '');
     }
     setState(() => _attachments.remove(attachment));
@@ -463,9 +502,9 @@ class _ComposePageState extends State<ComposePage> {
   }
 
   List<String> get _pollTexts => [
-        for (final controller in _pollOptions)
-          if (controller.text.trim().isNotEmpty) controller.text.trim(),
-      ];
+    for (final controller in _pollOptions)
+      if (controller.text.trim().isNotEmpty) controller.text.trim(),
+  ];
 
   Future<void> _submit() async {
     if (_submitting) return;
@@ -521,7 +560,8 @@ class _ComposePageState extends State<ComposePage> {
       );
       await _clearDraft();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(result)));
       Navigator.of(context).pop(true);
     } catch (e) {
       if (!mounted) return;
@@ -539,13 +579,24 @@ class _ComposePageState extends State<ComposePage> {
       // 自行处理键盘高度，保证底部输入区始终浮在输入法之上。
       resizeToAvoidBottomInset: false,
       appBar: AppBar(
-        title: Text(widget.initialBoardName == null ? '发帖' : '发帖 · ${widget.initialBoardName}'),
+        title: Text(
+          widget.initialBoardName == null
+              ? '发帖'
+              : '发帖 · ${widget.initialBoardName}',
+        ),
         actions: [
           TextButton(
             onPressed: _submitting ? null : _submit,
             child: _submitting
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Text('发布', style: TextStyle(fontWeight: FontWeight.w700)),
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text(
+                    '发布',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
           ),
         ],
       ),
@@ -556,7 +607,8 @@ class _ComposePageState extends State<ComposePage> {
             Expanded(
               child: ListView(
                 controller: _scroll,
-                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
                 children: _content(scheme),
               ),
@@ -564,14 +616,15 @@ class _ComposePageState extends State<ComposePage> {
             Container(
               decoration: BoxDecoration(
                 color: scheme.surface,
-                border: Border(top: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.6))),
+                border: Border(
+                  top: BorderSide(
+                    color: scheme.outlineVariant.withValues(alpha: 0.6),
+                  ),
+                ),
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
-                children: [
-                  _toolbar(scheme),
-                  _panelArea(),
-                ],
+                children: [_toolbar(scheme), _panelArea()],
               ),
             ),
             if (insets > 0) SizedBox(height: insets),
@@ -588,7 +641,13 @@ class _ComposePageState extends State<ComposePage> {
       if (_loadingBoards)
         const Padding(
           padding: EdgeInsets.symmetric(vertical: 12),
-          child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
+          child: Center(
+            child: SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          ),
         )
       else if (_options.isNotEmpty)
         DropdownButtonFormField<int>(
@@ -601,7 +660,11 @@ class _ComposePageState extends State<ComposePage> {
             for (final option in _options)
               DropdownMenuItem(
                 value: option.$2,
-                child: Text(option.$1, maxLines: 1, overflow: TextOverflow.ellipsis),
+                child: Text(
+                  option.$1,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
           ],
           onChanged: _onBoardChanged,
@@ -630,10 +693,7 @@ class _ComposePageState extends State<ComposePage> {
         ),
       ),
       const SizedBox(height: 14),
-      if (_poll) ...[
-        _pollEditor(scheme),
-        const SizedBox(height: 14),
-      ],
+      if (_poll) ...[_pollEditor(scheme), const SizedBox(height: 14)],
       TextField(
         key: _messageKey,
         controller: _message,
@@ -669,7 +729,11 @@ class _ComposePageState extends State<ComposePage> {
               Expanded(
                 child: Text(
                   _error!,
-                  style: TextStyle(fontSize: 12.5, height: 1.5, color: scheme.onErrorContainer),
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    height: 1.5,
+                    color: scheme.onErrorContainer,
+                  ),
                 ),
               ),
             ],
@@ -732,7 +796,11 @@ class _ComposePageState extends State<ComposePage> {
 
     return Container(
       decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.55))),
+        border: Border(
+          bottom: BorderSide(
+            color: scheme.outlineVariant.withValues(alpha: 0.55),
+          ),
+        ),
       ),
       child: Row(
         children: [
@@ -759,9 +827,15 @@ class _ComposePageState extends State<ComposePage> {
               Icon(Icons.how_to_vote_outlined, size: 18, color: scheme.primary),
               const SizedBox(width: 6),
               const Expanded(
-                child: Text('投票选项', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+                child: Text(
+                  '投票选项',
+                  style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+                ),
               ),
-              Text('${_pollOptions.length}/10', style: TextStyle(fontSize: 11.5, color: scheme.outline)),
+              Text(
+                '${_pollOptions.length}/10',
+                style: TextStyle(fontSize: 11.5, color: scheme.outline),
+              ),
             ],
           ),
           for (var i = 0; i < _pollOptions.length; i++)
@@ -840,7 +914,8 @@ class _ComposePageState extends State<ComposePage> {
                   ? Image.memory(
                       attachment.bytes,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => _fileTile(scheme, Icons.broken_image_outlined),
+                      errorBuilder: (_, __, ___) =>
+                          _fileTile(scheme, Icons.broken_image_outlined),
                     )
                   : _fileTile(scheme, Icons.insert_drive_file_outlined),
             ),
@@ -858,24 +933,45 @@ class _ComposePageState extends State<ComposePage> {
           if (attachment.uploading)
             Positioned.fill(
               child: DecoratedBox(
-                decoration: BoxDecoration(color: Colors.black38, borderRadius: BorderRadius.circular(12)),
+                decoration: BoxDecoration(
+                  color: Colors.black38,
+                  borderRadius: BorderRadius.circular(12),
+                ),
                 child: const Center(
-                  child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
+                  child: SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  ),
                 ),
               ),
             ),
           if (attachment.error != null)
             Positioned.fill(
               child: DecoratedBox(
-                decoration: BoxDecoration(color: Colors.red.withValues(alpha: 0.25), borderRadius: BorderRadius.circular(12)),
-                child: const Center(child: Icon(Icons.error_outline_rounded, color: Colors.white, size: 20)),
+                decoration: BoxDecoration(
+                  color: Colors.red.withValues(alpha: 0.25),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Center(
+                  child: Icon(
+                    Icons.error_outline_rounded,
+                    color: Colors.white,
+                    size: 20,
+                  ),
+                ),
               ),
             ),
           Positioned(
             top: 2,
             right: 2,
             child: GestureDetector(
-              onTap: attachment.uploading ? null : () => _removeAttachment(attachment),
+              onTap: attachment.uploading
+                  ? null
+                  : () => _removeAttachment(attachment),
               child: const CircleAvatar(
                 radius: 9,
                 backgroundColor: Colors.black54,
@@ -908,7 +1004,11 @@ class _ComposePageState extends State<ComposePage> {
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: scheme.outlineVariant),
         ),
-        child: Icon(Icons.add_rounded, color: scheme.onSurfaceVariant, size: 30),
+        child: Icon(
+          Icons.add_rounded,
+          color: scheme.onSurfaceVariant,
+          size: 30,
+        ),
       ),
     );
   }
@@ -935,14 +1035,18 @@ class _ComposePageState extends State<ComposePage> {
                     Icon(
                       item.$2,
                       size: 21,
-                      color: _panel == item.$1 ? scheme.primary : scheme.onSurfaceVariant,
+                      color: _panel == item.$1
+                          ? scheme.primary
+                          : scheme.onSurfaceVariant,
                     ),
                     const SizedBox(height: 2),
                     Text(
                       item.$3,
                       style: TextStyle(
                         fontSize: 10.5,
-                        color: _panel == item.$1 ? scheme.primary : scheme.onSurfaceVariant,
+                        color: _panel == item.$1
+                            ? scheme.primary
+                            : scheme.onSurfaceVariant,
                       ),
                     ),
                   ],
@@ -956,7 +1060,9 @@ class _ComposePageState extends State<ComposePage> {
 
   Widget _panelArea() {
     return switch (_panel) {
-      _ComposePanel.emoji => EmojiPanel(onSelected: (emoji) => insertAtCursor(_message, emoji)),
+      _ComposePanel.emoji => EmojiPanel(
+        onSelected: (emoji) => insertAtCursor(_message, emoji),
+      ),
       _ComposePanel.mention => _mentionPanel(),
       _ComposePanel.insert => _insertPanel(),
       _ComposePanel.attach => _attachPanel(),
@@ -970,7 +1076,9 @@ class _ComposePageState extends State<ComposePage> {
       constraints: const BoxConstraints(maxHeight: 250),
       decoration: BoxDecoration(
         color: scheme.surfaceContainer.withValues(alpha: 0.98),
-        border: Border(top: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.72))),
+        border: Border(
+          top: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.72)),
+        ),
       ),
       child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
@@ -983,7 +1091,11 @@ class _ComposePageState extends State<ComposePage> {
     final scheme = Theme.of(context).colorScheme;
     final keyword = _mention.text.trim().toLowerCase();
     final visibleFriends = _mentionFriends
-        .where((friend) => keyword.isEmpty || friend.username.toLowerCase().contains(keyword))
+        .where(
+          (friend) =>
+              keyword.isEmpty ||
+              friend.username.toLowerCase().contains(keyword),
+        )
         .take(12)
         .toList();
     return _panelShell(
@@ -1008,10 +1120,7 @@ class _ComposePageState extends State<ComposePage> {
                 ),
               ),
               const SizedBox(width: 8),
-              FilledButton(
-                onPressed: _insertMention,
-                child: const Text('@添加'),
-              ),
+              FilledButton(onPressed: _insertMention, child: const Text('@添加')),
             ],
           ),
           const SizedBox(height: 8),
@@ -1020,14 +1129,19 @@ class _ComposePageState extends State<ComposePage> {
               Expanded(
                 child: Text(
                   '选择好友可快速插入 @用户名；也可以手动输入。',
-                  style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant),
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    color: scheme.onSurfaceVariant,
+                  ),
                 ),
               ),
               if (AppState.instance.isLoggedIn)
                 IconButton(
                   tooltip: '刷新好友',
                   visualDensity: VisualDensity.compact,
-                  onPressed: _mentionFriendsLoading ? null : () => _loadMentionFriends(force: true),
+                  onPressed: _mentionFriendsLoading
+                      ? null
+                      : () => _loadMentionFriends(force: true),
                   icon: const Icon(Icons.refresh, size: 18),
                 )
               else
@@ -1043,7 +1157,13 @@ class _ComposePageState extends State<ComposePage> {
           if (_mentionFriendsLoading)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 12),
-              child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
+              child: Center(
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
             )
           else if (_mentionFriendsError != null)
             Padding(
@@ -1084,7 +1204,11 @@ class _ComposePageState extends State<ComposePage> {
                   radius: 17,
                   backgroundColor: scheme.surfaceContainerHighest,
                   child: avatar.isEmpty
-                      ? Icon(Icons.person_outline, size: 18, color: scheme.onSurfaceVariant)
+                      ? Icon(
+                          Icons.person_outline,
+                          size: 18,
+                          color: scheme.onSurfaceVariant,
+                        )
                       : ClipOval(
                           child: Image.network(
                             avatar.startsWith('//') ? 'https:$avatar' : avatar,
@@ -1099,8 +1223,18 @@ class _ComposePageState extends State<ComposePage> {
                           ),
                         ),
                 ),
-                title: Text(friend.username, maxLines: 1, overflow: TextOverflow.ellipsis),
-                subtitle: friend.note.isEmpty ? null : Text(friend.note, maxLines: 1, overflow: TextOverflow.ellipsis),
+                title: Text(
+                  friend.username,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                subtitle: friend.note.isEmpty
+                    ? null
+                    : Text(
+                        friend.note,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                 trailing: const Icon(Icons.alternate_email, size: 18),
                 onTap: () => _insertMention(friend.username),
               );
@@ -1152,8 +1286,11 @@ class _ComposePageState extends State<ComposePage> {
                   ),
                   selected: _insertKind == chip.$1,
                   onSelected: (_) {
-                    if (chip.$3 != 'url' && chip.$3 != 'img' && chip.$3 != 'audio' &&
-                        chip.$3 != 'video' && chip.$3 != 'flash') {
+                    if (chip.$3 != 'url' &&
+                        chip.$3 != 'img' &&
+                        chip.$3 != 'audio' &&
+                        chip.$3 != 'video' &&
+                        chip.$3 != 'flash') {
                       _insertWrap(chip.$3);
                       return;
                     }
@@ -1170,12 +1307,20 @@ class _ComposePageState extends State<ComposePage> {
             TextField(
               controller: _linkUrl,
               keyboardType: TextInputType.url,
-              decoration: const InputDecoration(labelText: '链接网址', isDense: true, border: OutlineInputBorder()),
+              decoration: const InputDecoration(
+                labelText: '链接网址',
+                isDense: true,
+                border: OutlineInputBorder(),
+              ),
             ),
             const SizedBox(height: 10),
             TextField(
               controller: _linkText,
-              decoration: const InputDecoration(labelText: '链接文字（可留空）', isDense: true, border: OutlineInputBorder()),
+              decoration: const InputDecoration(
+                labelText: '链接文字（可留空）',
+                isDense: true,
+                border: OutlineInputBorder(),
+              ),
             ),
             const SizedBox(height: 10),
             FilledButton(onPressed: _insertLink, child: const Text('插入')),
@@ -1184,7 +1329,11 @@ class _ComposePageState extends State<ComposePage> {
             TextField(
               controller: _mediaUrl,
               keyboardType: TextInputType.url,
-              decoration: const InputDecoration(labelText: '链接地址', isDense: true, border: OutlineInputBorder()),
+              decoration: const InputDecoration(
+                labelText: '链接地址',
+                isDense: true,
+                border: OutlineInputBorder(),
+              ),
             ),
             const SizedBox(height: 10),
             FilledButton(
@@ -1237,8 +1386,8 @@ class _ComposePageState extends State<ComposePage> {
                   attachment.error != null
                       ? Icons.error_outline_rounded
                       : attachment.uploading
-                          ? Icons.cloud_upload_outlined
-                          : Icons.insert_drive_file_outlined,
+                      ? Icons.cloud_upload_outlined
+                      : Icons.insert_drive_file_outlined,
                   color: attachment.error != null
                       ? scheme.error
                       : scheme.onSurfaceVariant,
@@ -1249,7 +1398,13 @@ class _ComposePageState extends State<ComposePage> {
                   overflow: TextOverflow.ellipsis,
                 ),
                 subtitle: attachment.error == null
-                    ? Text(attachment.uploading ? '上传中…' : attachment.aid != null ? '上传完成' : '等待上传')
+                    ? Text(
+                        attachment.uploading
+                            ? '上传中…'
+                            : attachment.aid != null
+                            ? '上传完成'
+                            : '等待上传',
+                      )
                     : Text(
                         attachment.error!,
                         maxLines: 2,

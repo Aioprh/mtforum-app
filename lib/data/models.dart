@@ -431,11 +431,16 @@ class ComposeInfo {
     required this.formhash,
     required this.uploadHash,
     required this.uid,
+    this.debug = '',
   });
 
   final String formhash;
   final String uploadHash;
   final int uid;
+
+  /// 凭证没取到时用来定位问题的一行摘要（页面大小、有没有 hash、uid 多少），
+  /// 直接拼进错误提示里，用户截图就能看出是哪一步断了。
+  final String debug;
 }
 
 class UserProfile {

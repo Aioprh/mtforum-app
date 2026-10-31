@@ -366,8 +366,23 @@ class _ThreadPageState extends State<ThreadPage> {
     final detail = _detail;
     if (detail == null) return;
     if (!await _ensureLogin()) return;
-    if (detail.uploadHash.isEmpty) {
-      _toast('没取到上传凭证，退出帖子重新进入再试');
+    // 帖子页自己不一定带上传凭证（手机模板的回复框经常没有上传按钮），
+    // 缺了就去发帖页现取一份，这也顺带把 uid 拿到手。
+    var uploadHash = detail.uploadHash;
+    var uid = detail.uid;
+    var reason = '帖子页里没有凭证';
+    if (uploadHash.isEmpty || uid <= 0) {
+      try {
+        final info = await _repo.fetchComposeInfo(detail.fid);
+        uploadHash = info.uploadHash;
+        uid = info.uid;
+        reason = info.debug;
+      } catch (e) {
+        reason = '发帖页打不开：${_message(e)}';
+      }
+    }
+    if (uploadHash.isEmpty || uid <= 0) {
+      _toast('没取到上传凭证（$reason）');
       return;
     }
     final picked = await _picker.pickMultiImage(maxWidth: 1600, imageQuality: 78);
@@ -381,8 +396,9 @@ class _ThreadPageState extends State<ThreadPage> {
         final aid = await _repo.uploadAttachment(
           bytes: bytes,
           filename: file.name,
-          uploadHash: detail.uploadHash,
-          uid: detail.uid,
+          uploadHash: uploadHash,
+          uid: uid,
+          fid: detail.fid,
           referer: _link,
         );
         if (!mounted) return;
@@ -2199,7 +2215,7 @@ class _EditPostPageState extends State<_EditPostPage> {
           try {
             final aid = await AppState.instance.repo.uploadAttachment(
               bytes: await file.readAsBytes(), filename: file.name,
-              uploadHash: info.uploadHash, uid: info.uid,
+              uploadHash: info.uploadHash, uid: info.uid, fid: widget.fid,
               referer: AppConfig.uri('forum.php', {'mod':'post','action':'edit','fid':'${widget.fid}','tid':'${widget.tid}','pid':'${widget.pid}','mobile':'2'}).toString(),
               image: true,
             );
@@ -2227,7 +2243,7 @@ class _EditPostPageState extends State<_EditPostPage> {
             final bytes = await file.readAsBytes();
             final aid = await AppState.instance.repo.uploadAttachment(
               bytes: bytes, filename: file.name,
-              uploadHash: info.uploadHash, uid: info.uid,
+              uploadHash: info.uploadHash, uid: info.uid, fid: widget.fid,
               referer: AppConfig.uri('forum.php', {'mod':'post','action':'edit','fid':'${widget.fid}','tid':'${widget.tid}','pid':'${widget.pid}','mobile':'2'}).toString(),
               image: false,
             );

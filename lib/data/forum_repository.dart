@@ -8,6 +8,7 @@ import 'package:html/parser.dart' as parser;
 import '../core/app_config.dart';
 import '../core/http_session.dart';
 import '../core/upload_hash.dart';
+import '../core/upload_result.dart';
 import '../core/waf_solver.dart';
 import 'models.dart';
 
@@ -560,8 +561,8 @@ class ForumRepository {
     }
     var uploadHash = findUploadHash(page.body);
     var uid = findUploadUid(page.body);
-    if (uploadHash.isEmpty) {
-      // 有的模板把 uploadformdata 只放在 AJAX 版发帖页里，普通页面里没有。
+    if (uploadHash.isEmpty || uid <= 0) {
+      // 有的模板把凭证只放在 AJAX 版发帖页里，普通页面里没有。
       // 再要一次 inajax 版本，拿不到就交给上层提示，不在这里打断发帖。
       try {
         final ajax = await _http.get(
@@ -580,6 +581,8 @@ class ForumRepository {
       formhash: formhash,
       uploadHash: uploadHash,
       uid: uid,
+      debug: '页面 ${page.body.length}B，hash='
+          '${uploadHash.isEmpty ? '无' : '${uploadHash.length}位'}，uid=$uid',
     );
   }
 
@@ -591,34 +594,53 @@ class ForumRepository {
     required int uid,
     required String referer,
     bool image = true,
+    int? fid,
   }) async {
+    if (uid <= 0 || uploadHash.isEmpty) {
+      // 服务端校验 `hash == md5(salt + uid)`，缺一个必定 exit() 成空白响应。
+      // 与其发出去挨一个看不懂的失败，不如把话说清楚，让调用方重拉发帖页。
+      throw SiteException(
+        uid <= 0 ? '没取到账号 ID，退出发帖页重新进入再试' : '没取到上传凭证，退出发帖页重新进入再试',
+      );
+    }
     final result = await _http.postFile(
       'misc.php',
       query: {
         'mod': 'swfupload',
+        // 桌面版模板的上传地址带这一段，缺了会落到别的 operation 分支。
+        'action': 'swfupload',
         'operation': 'upload',
         'type': image ? 'image' : 'attach',
+        if (fid != null && fid > 0) 'fid': '$fid',
+        // 关键：forum_upload 类校验的是 $_GET['uid'] / $_GET['hash']，
+        // 只放在 POST 里会直接判成「非法操作」（错误码 10）。
+        'uid': '$uid',
+        'hash': uploadHash,
+        // simple=2 才输出 DISCUZUPLOAD|type|error|aid|... 的 8 段格式，
+        // 不传就只剩一个裸数字，解析不了。
+        'simple': '2',
         'inajax': 'yes',
         'infloat': 'yes',
-        'simple': '2',
       },
       field: 'Filedata',
       filename: filename,
       bytes: bytes,
-      // 凭证没解析出来也照发：有的模板只校验登录态和 uid，hash 只是形式。
-      // 以前在这里就地抛错，请求根本没出去，用户只能干看着「凭证已失效」。
-      fields: {'uid': '$uid', if (uploadHash.isNotEmpty) 'hash': uploadHash},
+      fields: {'uid': '$uid', 'hash': uploadHash, if (fid != null && fid > 0) 'fid': '$fid'},
       referer: referer,
     );
-    final match = RegExp(r'DISCUZUPLOAD\|(\d*)\|(-?\d+)\|(\d+)').firstMatch(result.body);
-    if (match == null) {
+    final parsed = parseUploadResult(result.body);
+    if (parsed == null) {
       final msg = _pageMessage(parser.parse(result.body));
-      throw SiteException(msg ?? '上传失败，请稍后重试');
+      // 服务端不认凭证时会直接 exit()，响应是空的。把发出去的关键值带出来，
+      // 用户截图就能分清是「没取到 hash」还是「取到但不对」。
+      throw SiteException(
+        '${msg ?? '服务器没接受这个上传凭证'}（hash ${uploadHash.length} 位，uid $uid）',
+      );
     }
-    final status = int.tryParse(match.group(2)!) ?? -1;
-    final aid = int.tryParse(match.group(3)!) ?? 0;
-    if (status != 0 || aid <= 0) throw SiteException(_uploadMessage(status));
-    return aid;
+    if (!parsed.ok) {
+      throw SiteException(_uploadMessage(parsed.errorCode));
+    }
+    return parsed.aid;
   }
 
   /// 页面中收藏 / 取消收藏的原始链接（已收藏时 Discuz 会输出 op=delete&favid=xx）。

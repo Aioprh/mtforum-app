@@ -50,4 +50,52 @@ void main() {
       expect(findUploadHash(html), '');
     });
   });
+
+  group('手机版发帖表单', () {
+    // template/default/mobile/forum/post.htm 的真实结构：
+    // 表单里直接放 uid / hash 隐藏域和一个 Filedata 文件框，靠整表单提交上传。
+    const html = '''
+      <form method="post" id="postform" enctype="multipart/form-data"
+            action="forum.php?mod=post&action=newthread&fid=41&extra=&topicsubmit=yes&mobile=yes">
+        <input type="hidden" name="formhash" id="formhash" value="35cecc51" />
+        <input type="hidden" name="uid" value="34273" />
+        <input type="hidden" name="type" value="image" />
+        <input type="hidden" name="hash" value="9f2c4b7a1d8e0356c1b4a7d2e5f80193">
+        <input type="file" name="Filedata">
+      </form>
+    ''';
+
+    test('uid 从表单隐藏域读出', () {
+      expect(findUploadUid(html), 34273);
+    });
+
+    test('hash 从表单隐藏域读出', () {
+      expect(findUploadHash(html), '9f2c4b7a1d8e0356c1b4a7d2e5f80193');
+    });
+  });
+
+  group('桌面版发帖页', () {
+    // 桌面模板走 swfupload，凭证以 JS 对象字面量形式写在 post_params 里。
+    const html = '''
+      <script>
+        var swfconfig = {
+          upload_url: "misc.php?mod=swfupload&action=swfupload&operation=upload&fid=41",
+          post_params: {"uid" : "34273", "hash":"c4ca4238a0b923820dcc509a6f75849b", "type":"image"},
+        };
+      </script>
+    ''';
+
+    test('uid 从 post_params 读出', () {
+      expect(findUploadUid(html), 34273);
+    });
+
+    test('hash 从 post_params 读出', () {
+      expect(findUploadHash(html), 'c4ca4238a0b923820dcc509a6f75849b');
+    });
+  });
+
+  test('formhash 不会被当成 hash 对', () {
+    const html = '<script>var x = {formhash:"35cecc51abc", other:1};</script>';
+    expect(findUploadHash(html), '');
+  });
 }
