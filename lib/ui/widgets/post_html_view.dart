@@ -282,6 +282,8 @@ class _PostHtmlViewState extends State<PostHtmlView> {
     final withoutUrl = text.replaceAll(RegExp(r'https?://\S+'), '').trim();
     final cleaned = withoutUrl.replaceAll(RegExp(r'[：:，,。.、；;\-—\s]+$'), '').replaceAll(RegExp(r'^[「『“"（(\[]+'), '').trim();
     if (cleaned.isEmpty || cleaned.length > 20) return null;
+    // 「点我播放」「点击观看」这类只是操作指令，不算说明，卡片用默认标题。
+    if (cleaned.length <= 8 && RegExp(r'^(点我|点击|点此|直接)?(播放|观看)').hasMatch(cleaned)) return null;
     return cleaned;
   }
 
@@ -313,29 +315,7 @@ class _PostHtmlViewState extends State<PostHtmlView> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               for (final (index, li) in element.querySelectorAll('li').indexed)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 5),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        tag == 'ol' ? '${index + 1}.' : '•',
-                        style: TextStyle(fontSize: 15, height: 1.5, color: Theme.of(context).colorScheme.primary),
-                      ),
-                      const SizedBox(width: 7),
-                      Expanded(
-                        child: Text.rich(
-                          TextSpan(children: _inlineNode(context, li, TextStyle(
-                            fontSize: 15,
-                            height: 1.58,
-                            color: Theme.of(context).colorScheme.onSurface,
-                          ))),
-                          style: const TextStyle(fontSize: 15, height: 1.58),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                _listItem(context, li, marker: tag == 'ol' ? '${index + 1}.' : '•'),
             ],
           ),
         ),
@@ -426,6 +406,64 @@ class _PostHtmlViewState extends State<PostHtmlView> {
 
     // 普通容器：递归渲染内部块。
     return _blocks(context, element.nodes);
+  }
+
+  /// 列表项：整项就是一个视频链接时换成播放卡片，其余照旧一行文本。
+  Widget _listItem(BuildContext context, dom.Element li, {required String marker}) {
+    final video = _standaloneVideoIn(li);
+    if (video != null) {
+      // 卡片自己带边框，项目符号就省了，只留和正文对齐的缩进。
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(14, 0, 0, 5),
+        child: _videoCard(context, video, title: _videoLabel(li.text.trim())),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 5),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            marker,
+            style: TextStyle(fontSize: 15, height: 1.5, color: Theme.of(context).colorScheme.primary),
+          ),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Text.rich(
+              TextSpan(children: _inlineNode(context, li, TextStyle(
+                fontSize: 15,
+                height: 1.58,
+                color: Theme.of(context).colorScheme.onSurface,
+              ))),
+              style: const TextStyle(fontSize: 15, height: 1.58),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 列表项里只有一个视频链接时把它取出来。
+  ///
+  /// 「▍视频教程」下面常见写法就是 `<li><a href="bilibili…">点我播放</a></li>`，
+  /// 整项没有别的字，做成播放区域比留一条蓝色链接顺手。
+  VideoLink? _standaloneVideoIn(dom.Element item) {
+    if (item.querySelector('img, iframe, video, audio, ul, ol, table') != null) return null;
+    final links = item.querySelectorAll('a').where((a) => a.querySelector('img') == null).toList();
+    if (links.length != 1) return null;
+    final link = links.first;
+    final href = link.attributes['href'] ?? '';
+    if (href.isEmpty) return null;
+    final video = parseVideoLink(AppConfig.uri(href).toString());
+    if (video == null) return null;
+    final text = link.text.trim();
+    // 链接之外还有别的字，说明是句子里的链接，保持行内样式。
+    if (item.text.replaceFirst(text, '').trim().isNotEmpty) return null;
+    final standalone = text.isEmpty ||
+        text == href ||
+        parseStandaloneVideo(text) != null ||
+        (text.length <= 20 && !text.contains(RegExp(r'[。！？!?\n]')));
+    return standalone ? video : null;
   }
 
   /// 引用容器：标准的 blockquote，以及皮肤改写后的 div.quote 等。
