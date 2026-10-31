@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/app_config.dart';
 import '../../core/http_session.dart';
 import '../../core/native_bridge.dart';
+import '../../core/reply_notice.dart';
 import '../../data/forum_repository.dart';
 import '../../data/models.dart';
 import '../../state/app_state.dart';
@@ -271,13 +272,17 @@ class _ThreadPageState extends State<ThreadPage> {
     _replyFocus.requestFocus();
   }
 
-  /// 回复某楼：只把回复挂到这一楼，不把对方原文引用进正文，
-  /// 发出来就是一条独立的评论。需要带原文时用 [quote] 那条路径。
+  /// 回复某楼：带上一条「回复 xxx 的帖子」的引用条，但不复制对方原文，
+  /// 需要带原文时用 [quote] 那条路径。服务端那边还会按 `reppost` 发提醒。
   void _startReply(ForumPost post) {
     setState(() {
       _replyTarget = post;
       _quoteTarget = false;
-      _hiddenQuotePayload = '';
+      _hiddenQuotePayload = buildReplyNotice(
+        author: post.author,
+        pid: post.pid,
+        tid: widget.tid,
+      );
       _showEmoji = false;
     });
     _replyFocus.requestFocus();
