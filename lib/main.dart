@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'core/app_config.dart';
 import 'core/app_theme.dart';
+import 'mcp/mcp_server.dart';
 import 'state/app_state.dart';
 import 'ui/app_shell.dart';
 import 'ui/navigation/swipe_navigation.dart';
@@ -14,6 +17,8 @@ Future<void> main() async {
   } catch (_) {
     // 本地缓存初始化失败也应进入应用。
   }
+  // 上次开着 MCP 服务的话，开机自动恢复监听；关着就只读一下配置。
+  unawaited(McpServer.instance.load());
   runApp(const MtForumApp());
 }
 

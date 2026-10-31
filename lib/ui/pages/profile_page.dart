@@ -19,6 +19,7 @@ import 'rankings_page.dart';
 import 'site_features_page.dart';
 import 'tags_page.dart';
 import 'download_manager_page.dart';
+import 'mcp_page.dart';
 import 'offline_cache_page.dart';
 import 'user_page.dart';
 import '../navigation/swipe_navigation.dart';
@@ -554,6 +555,9 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
                   }),
                   _MenuItem(Icons.apps_rounded, '更多站点功能', () {
                     _openPage(const SiteFeaturesPage());
+                  }),
+                  _MenuItem(Icons.smart_toy_outlined, 'MCP 服务', () {
+                    _openPage(const McpPage());
                   }),
                 ]),
                 const SizedBox(height: 14),
