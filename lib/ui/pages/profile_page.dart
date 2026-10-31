@@ -501,6 +501,9 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
                         'mobile': '2',
                       }, '你还没有收藏帖子');
                     }),
+                    _MenuItem(Icons.history_rounded, '浏览历史', () {
+                      _openPage(const BrowseHistoryPage());
+                    }),
                   ]),
                   const SizedBox(height: 14),
                   _menuGroup(scheme, [
@@ -538,9 +541,12 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
                   _MenuItem(Icons.download_for_offline_outlined, '下载管理', () {
                     _openPage(const DownloadManagerPage());
                   }),
-                  _MenuItem(Icons.history_rounded, '浏览历史', () {
-                    _openPage(const BrowseHistoryPage());
-                  }),
+                  // 未登录时「我的收藏」那一组不可见，这里保留一个入口，
+                  // 浏览历史是纯本地数据，游客也该能翻。
+                  if (!state.isLoggedIn)
+                    _MenuItem(Icons.history_rounded, '浏览历史', () {
+                      _openPage(const BrowseHistoryPage());
+                    }),
                   _MenuItem(Icons.offline_pin_outlined, '离线缓存', () {
                     _openPage(const OfflineCachePage());
                   }),
