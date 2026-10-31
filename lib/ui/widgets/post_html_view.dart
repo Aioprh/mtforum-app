@@ -683,38 +683,98 @@ class _PostHtmlViewState extends State<PostHtmlView> {
     );
   }
 
+  /// 估算一段文本排成一行大概多宽，用来给表格分列。
+  ///
+  /// 不需要精确，只要比例对得上：全角按 1 个字宽，半角按 0.55 个字宽。
+  /// 超长单元格直接截断计算——最终宽度会被 clamp，算到底也没意义。
+  double _textWidth(String text, double fontSize) {
+    var units = 0.0;
+    for (final rune in text.runes) {
+      units += (rune >= 0x2E80 && rune <= 0xFFEF) ? 1.0 : 0.55;
+      if (units > 60) break;
+    }
+    return units * fontSize;
+  }
+
   Widget _tableBlock(BuildContext context, dom.Element table) {
     final rows = table.querySelectorAll('tr');
     if (rows.isEmpty) return const SizedBox.shrink();
     final scheme = Theme.of(context).colorScheme;
     final columnCount = rows.map((row) => row.querySelectorAll('td,th').length).fold(0, (a, b) => a > b ? a : b);
     if (columnCount == 0) return const SizedBox.shrink();
+
+    const fontSize = 12.5;
+
+    // 每列按最长的那个单元格估宽度，只用来定分列比例。
+    //
+    // 之前是「Table 直接塞进横向 SingleChildScrollView」：横向滚动给子级的是
+    // 无限宽约束，Table 的 FlexColumnWidth 在无界宽度下没有可分配空间，列宽会
+    // 塌到只剩单元格 padding。文字被挤成一行一个字，整张参数表变成一根竖条，
+    // 右边留一大片空白——帖子里的「乱码 + 巨型空白」就是这么来的。
+    final wanted = List<double>.filled(columnCount, 0);
+    for (final row in rows) {
+      final cells = row.querySelectorAll('td,th');
+      for (var i = 0; i < columnCount && i < cells.length; i++) {
+        final width = _textWidth(_cleanInline(cells[i].text).trim(), fontSize);
+        if (width > wanted[i]) wanted[i] = width;
+      }
+    }
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Table(
-          border: TableBorder.all(color: scheme.outlineVariant.withValues(alpha: 0.55), width: 0.7),
-          defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-          children: [
-            for (final row in rows)
-              TableRow(
-                children: [
-                  for (var i = 0; i < columnCount; i++)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                      child: Text(
-                        _cleanInline(() {
-                          final cells = row.querySelectorAll('td,th');
-                          return i < cells.length ? cells[i].text : '';
-                        }()),
-                        style: TextStyle(fontSize: 12.5, color: scheme.onSurface),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final available = constraints.maxWidth.isFinite && constraints.maxWidth > 0
+              ? constraints.maxWidth
+              : 320.0;
+          // 列多到手机放不下时才横向滚动；普通两三列的参数表铺满屏宽，
+          // 文字正常折行，比让用户左右拖着看舒服。
+          final scrollable = columnCount > 5;
+          final minColumn = scrollable ? 72.0 : 44.0;
+          final columns = [for (final w in wanted) (w + 16).clamp(minColumn, 320.0)];
+          final wantedTotal = columns.fold<double>(0, (a, b) => a + b);
+          final tableWidth = scrollable ? wantedTotal.clamp(available, 2400.0) : available;
+          final columnWidths = <int, TableColumnWidth>{
+            for (var i = 0; i < columnCount; i++)
+              i: FixedColumnWidth(columns[i] / wantedTotal * tableWidth),
+          };
+
+          final body = Table(
+            defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+            border: TableBorder.all(color: scheme.outlineVariant.withValues(alpha: 0.55), width: 0.7),
+            columnWidths: columnWidths,
+            children: [
+              for (final row in rows)
+                TableRow(
+                  // 带 <th> 的行当表头：加粗 + 淡底色，和网页端观感接近。
+                  decoration: row.querySelector('th') == null
+                      ? null
+                      : BoxDecoration(color: scheme.surfaceContainerHighest.withValues(alpha: 0.45)),
+                  children: [
+                    for (var i = 0; i < columnCount; i++)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                        child: Text(
+                          () {
+                            final cells = row.querySelectorAll('td,th');
+                            return i < cells.length ? _cleanInline(cells[i].text).trim() : '';
+                          }(),
+                          style: TextStyle(
+                            fontSize: fontSize,
+                            height: 1.35,
+                            color: scheme.onSurface,
+                            fontWeight: row.querySelector('th') == null ? FontWeight.w400 : FontWeight.w600,
+                          ),
+                        ),
                       ),
-                    ),
-                ],
-              ),
-          ],
-        ),
+                  ],
+                ),
+            ],
+          );
+
+          if (!scrollable || tableWidth <= available + 0.5) return body;
+          return SingleChildScrollView(scrollDirection: Axis.horizontal, child: body);
+        },
       ),
     );
   }
