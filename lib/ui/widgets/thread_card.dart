@@ -4,6 +4,7 @@ import '../../data/models.dart';
 import '../pages/user_page.dart';
 import 'smart_image.dart';
 import 'user_avatar.dart';
+import '../navigation/swipe_navigation.dart';
 
 class ThreadCard extends StatelessWidget {
   const ThreadCard({super.key, required this.thread, required this.onTap, this.onDoubleTap});
@@ -43,7 +44,7 @@ class ThreadCard extends StatelessWidget {
                     behavior: HitTestBehavior.opaque,
                     onTap: thread.uid > 0
                         ? () => Navigator.of(context).push(
-                              MaterialPageRoute(
+                              appRoute(
                                 builder: (_) => UserPage(uid: thread.uid, name: thread.author),
                               ),
                             )
@@ -59,7 +60,7 @@ class ThreadCard extends StatelessWidget {
                           behavior: HitTestBehavior.opaque,
                           onTap: thread.uid > 0
                               ? () => Navigator.of(context).push(
-                                    MaterialPageRoute(
+                                    appRoute(
                                       builder: (_) => UserPage(uid: thread.uid, name: thread.author),
                                     ),
                                   )

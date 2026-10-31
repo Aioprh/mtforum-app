@@ -7,6 +7,7 @@ import '../widgets/state_views.dart';
 import '../widgets/user_avatar.dart';
 import 'login_page.dart';
 import 'pm_chat_page.dart';
+import '../navigation/swipe_navigation.dart';
 
 /// 私信会话列表。
 class PmListPage extends StatefulWidget {
@@ -60,13 +61,13 @@ class _PmListPageState extends State<PmListPage> {
 
   Future<void> _openLogin() async {
     final ok = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => const LoginPage()),
+      noSwipeRoute(builder: (_) => const LoginPage()),
     );
     if (ok == true) await _load();
   }
 
   Future<void> _openChat(PmConversation conversation) async {
-    await Navigator.of(context).push(MaterialPageRoute(
+    await Navigator.of(context).push(appRoute(
       builder: (_) => PmChatPage(uid: conversation.uid, name: conversation.name),
     ));
     if (mounted) await _load();

@@ -6,6 +6,7 @@ import '../pages/thread_page.dart';
 import 'back_to_top.dart';
 import 'state_views.dart';
 import 'thread_card.dart';
+import '../navigation/swipe_navigation.dart';
 
 /// 通用主题流：首屏加载、下拉刷新、触底加载更多。
 class ThreadFeed extends StatefulWidget {
@@ -197,7 +198,7 @@ class _ThreadFeedState extends State<ThreadFeed> {
                 thread: thread,
                 onDoubleTap: widget.doubleTapToTop && _farFromTop ? () => scrollToTop(_scroll) : null,
                 onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => ThreadPage(tid: thread.tid, title: thread.title)),
+                  appRoute(builder: (_) => ThreadPage(tid: thread.tid, title: thread.title)),
                 ),
               ),
             );

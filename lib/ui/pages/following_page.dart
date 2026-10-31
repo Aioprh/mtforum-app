@@ -7,6 +7,7 @@ import '../widgets/state_views.dart';
 import '../widgets/user_avatar.dart';
 import 'login_page.dart';
 import 'user_page.dart';
+import '../navigation/swipe_navigation.dart';
 
 /// 当前账号关注的用户列表。
 class FollowingPage extends StatefulWidget {
@@ -133,14 +134,14 @@ class _FollowingPageState extends State<FollowingPage> {
 
   Future<void> _openLogin() async {
     final ok = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => const LoginPage()),
+      noSwipeRoute(builder: (_) => const LoginPage()),
     );
     if (ok == true) await _load();
   }
 
   void _openUser(FriendItem user) {
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => UserPage(uid: user.uid, name: user.username)),
+      appRoute(builder: (_) => UserPage(uid: user.uid, name: user.username)),
     );
   }
 

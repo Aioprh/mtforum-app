@@ -5,6 +5,7 @@ import 'core/app_config.dart';
 import 'core/app_theme.dart';
 import 'state/app_state.dart';
 import 'ui/app_shell.dart';
+import 'ui/navigation/swipe_navigation.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -26,6 +27,12 @@ class MtForumApp extends StatelessWidget {
       builder: (context, _) => MaterialApp(
         title: AppConfig.appName,
         debugShowCheckedModeBanner: false,
+        navigatorKey: SwipeNavigator.instance.navigatorKey,
+        navigatorObservers: [SwipeNavigator.instance],
+        // 手势层铺在 Navigator 外面：页面内部的横向滚动（图片翻页、表格）
+        // 会先拿到手势，抢不到的地方才归导航用。
+        builder: (context, child) =>
+            SwipeGestureRegion(child: child ?? const SizedBox.shrink()),
         theme: AppTheme.light(AppState.instance.themeSeedColor),
         darkTheme: AppTheme.dark(AppState.instance.themeSeedColor),
         themeMode: AppState.instance.themeMode,

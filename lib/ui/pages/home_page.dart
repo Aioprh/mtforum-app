@@ -5,6 +5,7 @@ import '../../state/app_state.dart';
 import '../pages/thread_page.dart';
 import '../widgets/thread_feed.dart';
 import 'notifications_page.dart';
+import '../navigation/swipe_navigation.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key, this.onOpenSearch});
@@ -86,7 +87,7 @@ class _HomePageState extends State<HomePage> {
               ),
               IconButton.filledTonal(
                 onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const NotificationsPage()),
+                  appRoute(builder: (_) => const NotificationsPage()),
                 ),
                 icon: const Icon(Icons.notifications_none_rounded, size: 21),
                 style: IconButton.styleFrom(
@@ -121,7 +122,7 @@ class _HomePageState extends State<HomePage> {
                 final item = _announcements[index];
                 return GestureDetector(
                   onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => ThreadPage(tid: item.tid, title: item.title)),
+                    appRoute(builder: (_) => ThreadPage(tid: item.tid, title: item.title)),
                   ),
                   child: Container(
                     width: 262,

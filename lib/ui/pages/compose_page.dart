@@ -12,6 +12,7 @@ import '../../data/models.dart';
 import '../../state/app_state.dart';
 import '../widgets/emoji_panel.dart';
 import 'login_page.dart';
+import '../navigation/swipe_navigation.dart';
 
 /// 发布新主题：标题 / 正文 / 表情 / 图片 / @ / 插入 / 附件 / 高级选项 / 草稿。
 class ComposePage extends StatefulWidget {
@@ -209,7 +210,7 @@ class _ComposePageState extends State<ComposePage> {
   Future<bool> _ensureLogin() async {
     if (AppState.instance.isLoggedIn) return true;
     final ok = await Navigator.of(context)
-        .push<bool>(MaterialPageRoute(builder: (_) => const LoginPage()));
+        .push<bool>(noSwipeRoute(builder: (_) => const LoginPage()));
     return ok == true && AppState.instance.isLoggedIn;
   }
 

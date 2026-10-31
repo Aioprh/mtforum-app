@@ -10,6 +10,7 @@ import 'pm_chat_page.dart';
 import 'pm_list_page.dart';
 import 'thread_page.dart';
 import 'user_page.dart';
+import '../navigation/swipe_navigation.dart';
 
 /// 原生提醒列表页。
 ///
@@ -123,7 +124,7 @@ class _NativeNoticeCategoryPageState extends State<NativeNoticeCategoryPage> {
 
   Future<void> _openLogin() async {
     final ok = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => const LoginPage()),
+      noSwipeRoute(builder: (_) => const LoginPage()),
     );
     if (ok == true) await _load();
   }
@@ -132,20 +133,20 @@ class _NativeNoticeCategoryPageState extends State<NativeNoticeCategoryPage> {
   Future<void> _openItem(NoticeItem item) async {
     switch (item.target) {
       case NoticeTarget.thread:
-        await Navigator.of(context).push(MaterialPageRoute(
+        await Navigator.of(context).push(appRoute(
           builder: (_) => ThreadPage(tid: item.tid),
         ));
       case NoticeTarget.user:
-        await Navigator.of(context).push(MaterialPageRoute(
+        await Navigator.of(context).push(appRoute(
           builder: (_) => UserPage(uid: item.uid),
         ));
       case NoticeTarget.pm:
         if (item.uid > 0) {
-          await Navigator.of(context).push(MaterialPageRoute(
+          await Navigator.of(context).push(appRoute(
             builder: (_) => PmChatPage(uid: item.uid),
           ));
         } else {
-          await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PmListPage()));
+          await Navigator.of(context).push(appRoute(builder: (_) => const PmListPage()));
         }
       case NoticeTarget.none:
         // 系统提醒没有落地页，直接把完整正文展示成原生弹窗。

@@ -8,6 +8,7 @@ import '../widgets/user_avatar.dart';
 import 'login_page.dart';
 import 'pm_chat_page.dart';
 import 'user_page.dart';
+import '../navigation/swipe_navigation.dart';
 
 /// 我的好友：好友列表，可进入主页或直接私聊。
 class FriendsPage extends StatefulWidget {
@@ -61,20 +62,20 @@ class _FriendsPageState extends State<FriendsPage> {
 
   Future<void> _openLogin() async {
     final ok = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => const LoginPage()),
+      noSwipeRoute(builder: (_) => const LoginPage()),
     );
     if (ok == true) await _load();
   }
 
   void _openUser(FriendItem friend) {
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => UserPage(uid: friend.uid, name: friend.username)),
+      appRoute(builder: (_) => UserPage(uid: friend.uid, name: friend.username)),
     );
   }
 
   void _openChat(FriendItem friend) {
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => PmChatPage(uid: friend.uid, name: friend.username)),
+      appRoute(builder: (_) => PmChatPage(uid: friend.uid, name: friend.username)),
     );
   }
 

@@ -6,6 +6,7 @@ import '../../core/video_link.dart';
 import '../pages/video_player_page.dart';
 import 'inline_video_player.dart';
 import 'smart_image.dart';
+import '../navigation/swipe_navigation.dart';
 
 /// 正文里的视频播放区域。
 ///
@@ -74,13 +75,13 @@ class _VideoCardState extends State<VideoCard> {
   }
 
   void _openFullscreen(VideoPlayerController controller) {
-    Navigator.of(context).push(MaterialPageRoute(
+    Navigator.of(context).push(appRoute(
       builder: (_) => FullscreenVideoPage(controller: controller),
     ));
   }
 
   void _openStandalone() {
-    Navigator.of(context).push(MaterialPageRoute(
+    Navigator.of(context).push(appRoute(
       builder: (_) => VideoPlayerPage(video: widget.video, title: widget.title),
     ));
   }

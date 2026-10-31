@@ -9,6 +9,7 @@ import '../widgets/site_form_dialog.dart';
 import '../widgets/smart_image.dart';
 import '../widgets/state_views.dart';
 import 'login_page.dart';
+import '../navigation/swipe_navigation.dart';
 
 /// 积分商城商品详情（原生，不跳浏览器）。
 class MallProductPage extends StatefulWidget {
@@ -58,7 +59,7 @@ class _MallProductPageState extends State<MallProductPage> {
     if (product == null || product.buyHref.isEmpty || _busy) return;
     if (!AppState.instance.isLoggedIn) {
       final ok = await Navigator.of(context).push<bool>(
-        MaterialPageRoute(builder: (_) => const LoginPage()),
+        noSwipeRoute(builder: (_) => const LoginPage()),
       );
       if (ok == true) await _buy();
       return;
@@ -131,7 +132,7 @@ class _MallProductPageState extends State<MallProductPage> {
     if (product == null || product.statusHref.isEmpty || _busy) return;
     if (!AppState.instance.isLoggedIn) {
       final ok = await Navigator.of(context).push<bool>(
-        MaterialPageRoute(builder: (_) => const LoginPage()),
+        noSwipeRoute(builder: (_) => const LoginPage()),
       );
       if (ok != true) return;
     }

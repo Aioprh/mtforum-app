@@ -16,6 +16,7 @@ import '../pages/user_page.dart';
 import '../pages/video_player_page.dart';
 import 'smart_image.dart';
 import 'video_card.dart';
+import '../navigation/swipe_navigation.dart';
 
 /// 将论坛帖子的 HTML 内容解析为原生 Flutter 组件。
 class PostHtmlView extends StatefulWidget {
@@ -316,7 +317,7 @@ class _PostHtmlViewState extends State<PostHtmlView> {
   }
 
   void _openVideo(BuildContext context, VideoLink video, [String? title]) {
-    Navigator.of(context).push(MaterialPageRoute(
+    Navigator.of(context).push(appRoute(
       builder: (_) => VideoPlayerPage(video: video, title: title),
     ));
   }
@@ -396,7 +397,7 @@ class _PostHtmlViewState extends State<PostHtmlView> {
             leading: const Icon(Icons.play_circle_outline),
             title: const Text('音频内容'),
             subtitle: Text(src, maxLines: 1, overflow: TextOverflow.ellipsis),
-            onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => InternalBrowserPage(url: AppConfig.uri(src).toString(), title: '音频内容'))),
+            onTap: () => Navigator.of(context).push(appRoute(builder: (_) => InternalBrowserPage(url: AppConfig.uri(src).toString(), title: '音频内容'))),
           ),
         ),
       ];
@@ -628,7 +629,7 @@ class _PostHtmlViewState extends State<PostHtmlView> {
 
   void _openUser(BuildContext context, int uid, String name) {
     if (uid <= 0) return;
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => UserPage(uid: uid, name: name)));
+    Navigator.of(context).push(appRoute(builder: (_) => UserPage(uid: uid, name: name)));
   }
 
   /// 引用正文的纯文本：保留换行，丢掉图片（引用里的原图会重复占屏）。
@@ -827,7 +828,7 @@ class _PostHtmlViewState extends State<PostHtmlView> {
         child: GestureDetector(
           onTap: () {
             final images = widget.images.isEmpty ? <String>[url] : widget.images;
-            Navigator.of(context).push(MaterialPageRoute(
+            Navigator.of(context).push(noSwipeRoute(
               builder: (_) => ImageViewerPage(images: images, initialIndex: index < 0 ? 0 : index),
             ));
           },
@@ -978,12 +979,12 @@ class _PostHtmlViewState extends State<PostHtmlView> {
     }
     final thread = RegExp(r'thread-(\d+)-1-1\.html').firstMatch(url);
     if (thread != null) {
-      Navigator.of(context).push(MaterialPageRoute(builder: (_) => ThreadPage(tid: int.parse(thread.group(1)!))));
+      Navigator.of(context).push(appRoute(builder: (_) => ThreadPage(tid: int.parse(thread.group(1)!))));
       return;
     }
     final board = RegExp(r'forum-(\d+)-1\.html').firstMatch(url);
     if (board != null) {
-      Navigator.of(context).push(MaterialPageRoute(
+      Navigator.of(context).push(appRoute(
         builder: (_) => BoardThreadsPage(fid: int.parse(board.group(1)!), name: '版块'),
       ));
       return;
@@ -1004,14 +1005,14 @@ class _PostHtmlViewState extends State<PostHtmlView> {
       if (mod == 'forumdisplay') {
         final fid = int.tryParse(uri.queryParameters['fid'] ?? '');
         if (fid != null) {
-          Navigator.of(context).push(MaterialPageRoute(
+          Navigator.of(context).push(appRoute(
             builder: (_) => BoardThreadsPage(fid: fid, name: '版块'),
           ));
           return;
         }
       }
     }
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => InternalBrowserPage(url: url)));
+    Navigator.of(context).push(appRoute(builder: (_) => InternalBrowserPage(url: url)));
   }
 
   Map<String, String> _headers() {

@@ -20,6 +20,7 @@ import '../widgets/user_avatar.dart';
 import 'login_page.dart';
 import 'pm_page.dart';
 import 'user_page.dart';
+import '../navigation/swipe_navigation.dart';
 
 /// 帖子详情：楼层流 + 分页加载 + 点赞 / 收藏 / 回复 / 楼中楼。
 class ThreadPage extends StatefulWidget {
@@ -249,7 +250,7 @@ class _ThreadPageState extends State<ThreadPage> {
   Future<bool> _ensureLogin() async {
     if (AppState.instance.isLoggedIn) return true;
     final ok = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => const LoginPage()),
+      noSwipeRoute(builder: (_) => const LoginPage()),
     );
     return ok == true && AppState.instance.isLoggedIn;
   }
@@ -678,7 +679,7 @@ class _ThreadPageState extends State<ThreadPage> {
   Future<void> _openPm(ForumPost post) async {
     if (!await _ensureLogin()) return;
     if (!mounted) return;
-    await Navigator.of(context).push(MaterialPageRoute(
+    await Navigator.of(context).push(appRoute(
       builder: (_) => PmPage(uid: post.uid, name: post.author),
     ));
   }
@@ -722,7 +723,7 @@ class _ThreadPageState extends State<ThreadPage> {
 
   void _openUser(int uid, String name) {
     if (uid <= 0) return;
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => UserPage(uid: uid, name: name)));
+    Navigator.of(context).push(appRoute(builder: (_) => UserPage(uid: uid, name: name)));
   }
 
   Future<void> _handleFloorMenu(ForumPost post, String value) async {
@@ -790,7 +791,7 @@ class _ThreadPageState extends State<ThreadPage> {
     final detail = _detail;
     if (detail == null) return;
     final result = await Navigator.of(context).push<Object?>(
-      MaterialPageRoute(
+      appRoute(
         builder: (_) => _EditPostPage(
           fid: detail.fid,
           tid: widget.tid,

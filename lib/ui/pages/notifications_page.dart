@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'followers_page.dart';
 import 'native_notice_category_page.dart';
 import 'pm_list_page.dart';
+import '../navigation/swipe_navigation.dart';
 
 /// 消息通知：私信、粉丝与各类提醒。全部为原生页面。
 class NotificationsPage extends StatefulWidget {
@@ -14,7 +15,7 @@ class NotificationsPage extends StatefulWidget {
 
 class _NotificationsPageState extends State<NotificationsPage> {
   Future<void> _openCategory(String title, String view) async {
-    await Navigator.of(context).push(MaterialPageRoute(
+    await Navigator.of(context).push(appRoute(
       builder: (_) => NativeNoticeCategoryPage(title: title, view: view),
     ));
   }
@@ -51,9 +52,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
             trailing: Icon(Icons.chevron_right_rounded, color: scheme.outline),
             onTap: () {
               if (item.title == '我的消息') {
-                Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PmListPage()));
+                Navigator.of(context).push(appRoute(builder: (_) => const PmListPage()));
               } else if (item.title == '我的粉丝') {
-                Navigator.of(context).push(MaterialPageRoute(builder: (_) => const FollowersPage()));
+                Navigator.of(context).push(appRoute(builder: (_) => const FollowersPage()));
               } else {
                 _openCategory(item.title, item.view);
               }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../services/offline_thread_cache.dart';
 import '../widgets/post_html_view.dart';
+import '../navigation/swipe_navigation.dart';
 
 class OfflineCachePage extends StatefulWidget {
   const OfflineCachePage({super.key});
@@ -28,7 +29,7 @@ class _OfflineCachePageState extends State<OfflineCachePage> {
       actions: [TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('取消')), FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('全部清理'))]));
     if (ok == true) { await OfflineThreadCache.instance.clear(); await _refresh(); }
   }
-  void _open(Map<String, dynamic> item) => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => _OfflineThreadDetail(item: item)));
+  void _open(Map<String, dynamic> item) => Navigator.push(context, appRoute<void>(builder: (_) => _OfflineThreadDetail(item: item)));
   @override Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(appBar: AppBar(title: const Text('离线缓存'), actions: [IconButton(tooltip: '清理全部缓存', onPressed: _items.isEmpty ? null : _clearAll, icon: const Icon(Icons.delete_sweep_outlined))]),

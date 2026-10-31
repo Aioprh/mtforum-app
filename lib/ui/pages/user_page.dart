@@ -11,6 +11,7 @@ import '../widgets/thread_feed.dart';
 import '../widgets/user_avatar.dart';
 import 'login_page.dart';
 import 'pm_chat_page.dart';
+import '../navigation/swipe_navigation.dart';
 
 /// 他人主页：资料、关注、私信与 TA 的主题 / 回复。
 class UserPage extends StatefulWidget {
@@ -75,7 +76,7 @@ class _UserPageState extends State<UserPage> {
     if (_followBusy) return;
     if (!AppState.instance.isLoggedIn) {
       final ok = await Navigator.of(context).push<bool>(
-        MaterialPageRoute(builder: (_) => const LoginPage()),
+        noSwipeRoute(builder: (_) => const LoginPage()),
       );
       if (ok != true || !mounted) return;
     }
@@ -101,12 +102,12 @@ class _UserPageState extends State<UserPage> {
     final name = _profile?.username.isNotEmpty == true ? _profile!.username : widget.name;
     if (!AppState.instance.isLoggedIn) {
       await Navigator.of(context).push<bool>(
-        MaterialPageRoute(builder: (_) => const LoginPage()),
+        noSwipeRoute(builder: (_) => const LoginPage()),
       );
       return;
     }
     if (!mounted) return;
-    await Navigator.of(context).push(MaterialPageRoute(
+    await Navigator.of(context).push(appRoute(
       builder: (_) => PmChatPage(uid: widget.uid, name: name),
     ));
   }

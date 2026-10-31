@@ -4,6 +4,7 @@ import '../../core/http_session.dart';
 import '../../state/app_state.dart';
 import '../widgets/state_views.dart';
 import '../widgets/thread_feed.dart';
+import '../navigation/swipe_navigation.dart';
 
 /// 标签广场：点击标签查看该标签下的主题。
 class TagsPage extends StatefulWidget {
@@ -89,7 +90,7 @@ class _TagsPageState extends State<TagsPage> {
                                     InkWell(
                                       borderRadius: BorderRadius.circular(20),
                                       onTap: () => Navigator.of(context).push(
-                                        MaterialPageRoute(
+                                        appRoute(
                                           builder: (_) => _TagThreadsPage(id: tag.$2, name: tag.$1),
                                         ),
                                       ),

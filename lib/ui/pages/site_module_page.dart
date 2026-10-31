@@ -11,6 +11,7 @@ import '../widgets/state_views.dart';
 import 'mall_product_page.dart';
 import 'thread_page.dart';
 import 'user_page.dart';
+import '../navigation/swipe_navigation.dart';
 
 /// 通用站点模块页：原生渲染道具、任务、积分、推广等页面里的条目。
 class SiteModulePage extends StatefulWidget {
@@ -78,7 +79,7 @@ class _SiteModulePageState extends State<SiteModulePage> {
       final tid = RegExp(r'[?&]tid=(\d+)').firstMatch(href)?.group(1);
       if (tid != null) {
         await Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => MallProductPage(tid: int.parse(tid))),
+          appRoute(builder: (_) => MallProductPage(tid: int.parse(tid))),
         );
         return;
       }
@@ -87,14 +88,14 @@ class _SiteModulePageState extends State<SiteModulePage> {
         RegExp(r'space-uid-(\d+)\.html').firstMatch(href)?.group(1);
     if (uid != null) {
       await Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => UserPage(uid: int.parse(uid), name: row.title)),
+        appRoute(builder: (_) => UserPage(uid: int.parse(uid), name: row.title)),
       );
       return;
     }
     final tid = RegExp(r'thread-(\d+)-\d+-\d+\.html').firstMatch(href)?.group(1) ??
         RegExp(r'[?&]tid=(\d+)').firstMatch(href)?.group(1);
     if (tid != null) {
-      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => ThreadPage(tid: int.parse(tid))));
+      await Navigator.of(context).push(appRoute(builder: (_) => ThreadPage(tid: int.parse(tid))));
       return;
     }
     if (!_isAction(href)) {

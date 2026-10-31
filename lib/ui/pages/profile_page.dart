@@ -21,6 +21,7 @@ import 'tags_page.dart';
 import 'download_manager_page.dart';
 import 'offline_cache_page.dart';
 import 'user_page.dart';
+import '../navigation/swipe_navigation.dart';
 
 /// 个人中心：账号信息、我的主题 / 回复 / 收藏、外观与退出。
 class ProfilePage extends StatefulWidget {
@@ -49,7 +50,7 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
 
   Future<void> _openLogin() async {
     final ok = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => const LoginPage()),
+      noSwipeRoute(builder: (_) => const LoginPage()),
     );
     if (ok == true && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('登录成功')));
@@ -414,7 +415,7 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
 
   void _openPersonal(String title, String path, Map<String, String> query, String emptyText,
       {bool replies = false}) {
-    Navigator.of(context).push(MaterialPageRoute(
+    Navigator.of(context).push(appRoute(
       builder: (_) => _PersonalThreadsPage(
         title: title,
         path: path,
@@ -426,7 +427,7 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
   }
 
   void _openPage(Widget page) {
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
+    Navigator.of(context).push(appRoute(builder: (_) => page));
   }
 
   void _openMySpace() {
@@ -562,7 +563,7 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
                   _MenuItem(Icons.blur_on_rounded, '底栏液态玻璃悬浮', _pickFloatingGlassNav),
                   _MenuItem(Icons.auto_awesome_rounded, '发帖按钮液态玻璃', _pickComposeGlass),
                   _MenuItem(Icons.info_outline_rounded, '关于本应用', () {
-                    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AboutPage()));
+                    Navigator.of(context).push(appRoute(builder: (_) => const AboutPage()));
                   }),
                 ]),
                 if (state.isLoggedIn) ...[

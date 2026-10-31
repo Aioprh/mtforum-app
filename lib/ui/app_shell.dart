@@ -12,6 +12,7 @@ import 'pages/home_page.dart';
 import 'pages/profile_page.dart';
 import 'pages/search_page.dart';
 import 'widgets/glass_compose_button.dart';
+import 'navigation/swipe_navigation.dart';
 
 /// 主框架：底部四栏 + 发帖入口。
 class AppShell extends StatefulWidget {
@@ -33,7 +34,7 @@ class _AppShellState extends State<AppShell> {
   ];
 
   Future<void> _openCompose() async {
-    await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => const ComposePage()));
+    await Navigator.of(context).push<bool>(noSwipeRoute(builder: (_) => const ComposePage()));
   }
 
   void _handleBack(bool didPop) {

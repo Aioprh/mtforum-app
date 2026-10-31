@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../services/browse_history.dart';
 import '../widgets/smart_image.dart';
 import 'thread_page.dart';
+import '../navigation/swipe_navigation.dart';
 
 /// 浏览历史：按时间倒序列出打开过的帖子，点一下直接回到帖子。
 class BrowseHistoryPage extends StatefulWidget {
@@ -63,7 +64,7 @@ class _BrowseHistoryPageState extends State<BrowseHistoryPage> {
   }
 
   Future<void> _open(BrowseHistoryEntry entry) async {
-    await Navigator.of(context).push(MaterialPageRoute<void>(
+    await Navigator.of(context).push(appRoute<void>(
       builder: (_) => ThreadPage(tid: entry.tid, title: entry.title),
     ));
     // 回来后浏览时间已刷新，重新排序。

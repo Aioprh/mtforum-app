@@ -6,6 +6,7 @@ import '../pages/board_threads_page.dart';
 import '../widgets/back_to_top.dart';
 import '../widgets/smart_image.dart';
 import '../widgets/state_views.dart';
+import '../navigation/swipe_navigation.dart';
 
 class BoardsPage extends StatefulWidget {
   const BoardsPage({super.key});
@@ -147,7 +148,7 @@ class _BoardTile extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => BoardThreadsPage(fid: board.fid, name: board.name)),
+          appRoute(builder: (_) => BoardThreadsPage(fid: board.fid, name: board.name)),
         ),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),

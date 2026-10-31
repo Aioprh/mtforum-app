@@ -7,6 +7,7 @@ import 'login_page.dart';
 import 'magic_page.dart';
 import 'medals_page.dart';
 import 'site_module_page.dart';
+import '../navigation/swipe_navigation.dart';
 
 /// 站点功能导航：全部在 App 内原生呈现，不再跳浏览器。
 class SiteFeaturesPage extends StatelessWidget {
@@ -15,12 +16,12 @@ class SiteFeaturesPage extends StatelessWidget {
   Future<void> _open(BuildContext context, Widget page, {bool needLogin = false}) async {
     if (needLogin && !AppState.instance.isLoggedIn) {
       final ok = await Navigator.of(context).push<bool>(
-        MaterialPageRoute(builder: (_) => const LoginPage()),
+        noSwipeRoute(builder: (_) => const LoginPage()),
       );
       if (ok != true) return;
     }
     if (!context.mounted) return;
-    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
+    await Navigator.of(context).push(appRoute(builder: (_) => page));
   }
 
   @override

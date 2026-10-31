@@ -7,6 +7,7 @@ import '../widgets/state_views.dart';
 import '../widgets/user_avatar.dart';
 import 'login_page.dart';
 import 'user_page.dart';
+import '../navigation/swipe_navigation.dart';
 
 /// 私信对话：与某个用户的来往消息，可直接回复。
 class PmChatPage extends StatefulWidget {
@@ -83,7 +84,7 @@ class _PmChatPageState extends State<PmChatPage> {
 
   Future<void> _openLogin() async {
     final ok = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => const LoginPage()),
+      noSwipeRoute(builder: (_) => const LoginPage()),
     );
     if (ok == true) await _load();
   }
@@ -141,7 +142,7 @@ class _PmChatPageState extends State<PmChatPage> {
   }
 
   void _openPeer() {
-    Navigator.of(context).push(MaterialPageRoute(
+    Navigator.of(context).push(appRoute(
       builder: (_) => UserPage(uid: widget.uid, name: _peer),
     ));
   }

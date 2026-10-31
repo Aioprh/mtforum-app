@@ -5,6 +5,7 @@ import '../../data/models.dart';
 import '../../state/app_state.dart';
 import '../widgets/state_views.dart';
 import 'user_page.dart';
+import '../navigation/swipe_navigation.dart';
 
 /// 小黑屋：站点公示的违规用户列表（forum.php?mod=misc&action=showdarkroom）。
 class BlackHousePage extends StatefulWidget {
@@ -125,7 +126,7 @@ class _BlackHousePageState extends State<BlackHousePage> {
         onTap: item.uid <= 0
             ? null
             : () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => UserPage(uid: item.uid, name: item.name)),
+                  appRoute(builder: (_) => UserPage(uid: item.uid, name: item.name)),
                 ),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),

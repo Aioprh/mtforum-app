@@ -6,6 +6,7 @@ import '../../state/app_state.dart';
 import '../widgets/state_views.dart';
 import '../widgets/user_avatar.dart';
 import 'user_page.dart';
+import '../navigation/swipe_navigation.dart';
 
 /// 勋章中心：勋章目录 + 最近获得记录。
 class MedalsPage extends StatefulWidget {
@@ -185,7 +186,7 @@ class _MedalsPageState extends State<MedalsPage> {
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
         onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => UserPage(uid: record.uid, name: record.name)),
+          appRoute(builder: (_) => UserPage(uid: record.uid, name: record.name)),
         ),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),

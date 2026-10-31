@@ -7,6 +7,7 @@ import '../widgets/state_views.dart';
 import '../widgets/thread_card.dart';
 import 'login_page.dart';
 import 'thread_page.dart';
+import '../navigation/swipe_navigation.dart';
 
 /// 站内搜索（Discuz 原生搜索流程）。
 class SearchPage extends StatefulWidget {
@@ -128,7 +129,7 @@ class _SearchPageState extends State<SearchPage> with AutomaticKeepAliveClientMi
 
   Future<void> _openLogin() async {
     final ok = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => const LoginPage()),
+      noSwipeRoute(builder: (_) => const LoginPage()),
     );
     if (ok == true) _search();
   }
@@ -310,7 +311,7 @@ class _SearchPageState extends State<SearchPage> with AutomaticKeepAliveClientMi
         return ThreadCard(
           thread: thread,
           onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => ThreadPage(tid: thread.tid, title: thread.title)),
+            appRoute(builder: (_) => ThreadPage(tid: thread.tid, title: thread.title)),
           ),
         );
       },

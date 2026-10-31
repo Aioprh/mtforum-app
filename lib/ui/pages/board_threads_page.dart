@@ -5,6 +5,7 @@ import '../../state/app_state.dart';
 import '../widgets/back_to_top.dart';
 import '../widgets/thread_feed.dart';
 import 'compose_page.dart';
+import '../navigation/swipe_navigation.dart';
 
 /// 单个版块的主题列表。
 class BoardThreadsPage extends StatefulWidget {
@@ -25,7 +26,7 @@ class _BoardThreadsPageState extends State<BoardThreadsPage> {
 
   Future<void> _openCompose() async {
     await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
+      noSwipeRoute(
         builder: (_) => ComposePage(initialFid: widget.fid, initialBoardName: widget.name),
       ),
     );
