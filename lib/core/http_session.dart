@@ -35,12 +35,29 @@ class HttpUpload {
     required this.filename,
     required this.bytes,
     this.fields = const {},
+    this.extraFiles = const [],
   });
 
   final String field;
   final String filename;
   final List<int> bytes;
   final Map<String, String> fields;
+
+  /// 同一个字段名下的其它文件，多图一起提交时用（Discuz 表单里就是多个
+  /// `<input type="file" name="Filedata">`，字段名重复出现）。
+  final List<HttpUploadFile> extraFiles;
+
+  Iterable<HttpUploadFile> get allFiles => [
+    HttpUploadFile(filename: filename, bytes: bytes),
+    ...extraFiles,
+  ];
+}
+
+class HttpUploadFile {
+  const HttpUploadFile({required this.filename, required this.bytes});
+
+  final String filename;
+  final List<int> bytes;
 }
 
 /// 带 Cookie、重定向、gzip 与 WAF 自动处理的 HTTP 会话。
@@ -153,6 +170,7 @@ class HttpSession {
     required String field,
     required String filename,
     required List<int> bytes,
+    List<HttpUploadFile> extraFiles = const [],
     Map<String, String>? fields,
     Map<String, String>? query,
     String? referer,
@@ -165,6 +183,7 @@ class HttpSession {
           filename: filename,
           bytes: bytes,
           fields: fields ?? const {},
+          extraFiles: extraFiles,
         ),
         referer: referer,
       );
@@ -233,11 +252,14 @@ class HttpSession {
         final multipart = http.MultipartRequest(currentMethod, currentUri);
         multipart.headers.addAll(requestHeaders);
         multipart.fields.addAll(currentUpload.fields);
-        multipart.files.add(http.MultipartFile.fromBytes(
-          currentUpload.field,
-          currentUpload.bytes,
-          filename: currentUpload.filename,
-        ));
+        // 同一个字段可以出现多次，服务端按出现顺序收，多图不会丢。
+        for (final file in currentUpload.allFiles) {
+          multipart.files.add(http.MultipartFile.fromBytes(
+            currentUpload.field,
+            file.bytes,
+            filename: file.filename,
+          ));
+        }
         request = multipart;
       } else {
         final plain = http.Request(currentMethod, currentUri);

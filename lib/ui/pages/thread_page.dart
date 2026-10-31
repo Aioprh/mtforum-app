@@ -272,17 +272,14 @@ class _ThreadPageState extends State<ThreadPage> {
     _replyFocus.requestFocus();
   }
 
-  /// 回复某楼：带上一条「回复 xxx 的帖子」的引用条，但不复制对方原文，
-  /// 需要带原文时用 [quote] 那条路径。服务端那边还会按 `reppost` 发提醒。
+  /// 回复某楼：提交时带上服务端算好的 `repquote` 引用条，发出来和网页端
+  /// 点「回复」的结果一致——正文顶部有一段灰色引用框，写着谁在哪层说的。
+  /// 引用条不在这里拼，等服务端给（见 [buildReplyNotice] 里的说明）。
   void _startReply(ForumPost post) {
     setState(() {
       _replyTarget = post;
       _quoteTarget = false;
-      _hiddenQuotePayload = buildReplyNotice(
-        author: post.author,
-        pid: post.pid,
-        tid: widget.tid,
-      );
+      _hiddenQuotePayload = '';
       _showEmoji = false;
     });
     _replyFocus.requestFocus();
@@ -313,9 +310,8 @@ class _ThreadPageState extends State<ThreadPage> {
 
   Future<void> _sendReply() async {
     final visibleText = _replyController.text.trim();
-    final text = [if (_hiddenQuotePayload.isNotEmpty) _hiddenQuotePayload.trim(), visibleText]
-        .where((part) => part.isNotEmpty).join('\n');
-    if (text.isEmpty && _replyAttachments.isEmpty) {
+    final target = _replyTarget;
+    if (visibleText.isEmpty && _replyAttachments.isEmpty && _hiddenQuotePayload.isEmpty) {
       _toast('请输入回复内容');
       return;
     }
@@ -332,13 +328,46 @@ class _ThreadPageState extends State<ThreadPage> {
     if (!mounted) return;
     setState(() => _sending = true);
     try {
-      final message = await _repo.reply(
+      // 回复某一楼：先到回复页取服务端算好的引用条（noticeauthor / noticetrimstr）。
+      // 带上它，网页端看到的才是「回复某某的帖子」那种引用框，而不是一条独立回复。
+      var noticeAuthor = '';
+      var noticeTrim = '';
+      var noticeAuthorMsg = '';
+      var quoteBlock = '';
+      if (target != null) {
+        final ctx = await _repo.fetchReplyContext(
+          tid: widget.tid,
+          fid: detail.fid,
+          pid: target.pid,
+        );
+        noticeAuthor = ctx.noticeAuthor;
+        noticeAuthorMsg = ctx.noticeAuthorMsg;
+        if (_quoteTarget) {
+          // 引用：客户端已经拼好带原文的全文引用，直接当引用条交给服务端。
+          quoteBlock = _hiddenQuotePayload.trim();
+        }
+        noticeTrim = quoteBlock.isNotEmpty
+            ? quoteBlock
+            : ctx.noticeTrim.isNotEmpty
+            ? ctx.noticeTrim
+            : buildReplyNotice(
+                author: target.author,
+                time: target.time,
+                pid: target.pid,
+                tid: widget.tid,
+              );
+      }
+      final message = composeReplyMessage(visible: visibleText, quote: quoteBlock);
+      if (!mounted) return;
+      final result = await _repo.reply(
         tid: widget.tid,
         fid: detail.fid,
         formhash: detail.formhash,
-        message: text,
-        replyToPid: _replyTarget?.pid,
-        quote: _quoteTarget,
+        message: message,
+        replyToPid: target?.pid,
+        noticeAuthor: noticeAuthor,
+        noticeTrim: noticeTrim,
+        noticeAuthorMsg: noticeAuthorMsg,
         attachmentIds: List<int>.from(_replyAttachments),
       );
       if (!mounted) return;
@@ -352,7 +381,7 @@ class _ThreadPageState extends State<ThreadPage> {
         _showEmoji = false;
       });
       final beforePids = _posts.map((post) => post.pid).toSet();
-      _toast(message);
+      _toast(result);
       // 刷新当前页而不是整篇重载：回复后要留在原处，并尽量滚到自己那条。
       await _refreshKeepPosition();
       if (!mounted) return;

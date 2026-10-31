@@ -9,6 +9,7 @@ import '../core/app_config.dart';
 import '../core/http_session.dart';
 import '../core/page_message.dart';
 import '../core/pending_upload.dart';
+import '../core/reply_context.dart';
 import '../core/upload_hash.dart';
 import '../core/upload_result.dart';
 import '../core/waf_solver.dart';
@@ -2422,7 +2423,9 @@ class ForumRepository {
     required String formhash,
     required String message,
     int? replyToPid,
-    bool quote = false,
+    String noticeAuthor = '',
+    String noticeTrim = '',
+    String noticeAuthorMsg = '',
     List<int> attachmentIds = const [],
     bool useSignature = true,
   }) async {
@@ -2435,7 +2438,9 @@ class ForumRepository {
       'mobile': '2',
     };
     if (replyToPid != null && replyToPid > 0) {
-      query[quote ? 'repquote' : 'reppost'] = '$replyToPid';
+      // 手机版网页回复某一楼用的就是 repquote；reppost 只发提醒、不动正文，
+      // 用它发出来就是一条看不出对象的独立回复。
+      query['repquote'] = '$replyToPid';
     }
     final response = await _http.post(
       'forum.php',
@@ -2444,18 +2449,52 @@ class ForumRepository {
       form: {
         'formhash': formhash,
         'message': message,
+        // 服务端会把 noticetrimstr 拼在正文最前面，就是网页端那个灰色引用框。
+        if (noticeTrim.isNotEmpty) 'noticetrimstr': noticeTrim,
+        if (noticeAuthor.isNotEmpty) 'noticeauthor': noticeAuthor,
+        if (noticeAuthorMsg.isNotEmpty) 'noticeauthormsg': noticeAuthorMsg,
         'posttime': '${DateTime.now().millisecondsSinceEpoch ~/ 1000}',
         'usesig': useSignature ? '1' : '0',
         for (final aid in attachmentIds) 'attachnew[$aid][description]': '',
       },
     );
     final doc = parser.parse(response.body);
-    final msg = _pageMessage(doc);
-    if (msg != null && _looksLikeError(msg)) throw SiteException(msg);
-    if (response.body.contains('需要审核') || response.body.contains('审核')) {
+    // 「需要审核」里带「审核」二字，会被错误关键词命中；先认它，别当成失败抛出去。
+    if (response.body.contains('需要审核') || response.body.contains('审核通过')) {
       return '回复已提交，等待审核通过';
     }
+    final msg = _pageMessage(doc);
+    // 已经回到帖子页说明服务端收下了，页面上的站点提示不算拒绝。
+    if (msg != null && _looksLikeError(msg) && !_landedOnThread(response)) {
+      throw SiteException(msg);
+    }
     return '回复成功';
+  }
+
+  /// 取回复页上服务端算好的引用凭证（`noticeauthor` / `noticetrimstr`）。
+  ///
+  /// 这两个值带 `authcode()` 加密，客户端算不出来；取不到时返回空对象，
+  /// 上层用本地兜底格式，不影响回复本身发出去。
+  Future<ReplyContext> fetchReplyContext({
+    required int tid,
+    required int fid,
+    int? pid,
+  }) async {
+    final query = <String, String>{
+      'mod': 'post',
+      'action': 'reply',
+      'fid': '$fid',
+      'tid': '$tid',
+      'mobile': '2',
+    };
+    if (pid != null && pid > 0) query['repquote'] = '$pid';
+    try {
+      final page = await _http.get('forum.php', query: query);
+      if (page.statusCode >= 400) return ReplyContext.empty;
+      return ReplyContext.fromHtml(page.body);
+    } catch (_) {
+      return ReplyContext.empty;
+    }
   }
 
   /// 楼中楼点评：Discuz 的 `action=comment`，直接挂在指定楼层下。
@@ -2570,6 +2609,11 @@ class ForumRepository {
         field: pendingFiles.first.field,
         filename: pendingFiles.first.filename,
         bytes: pendingFiles.first.bytes,
+        // 多选了几张图时全部带上，字段名重复出现即可（网页端表单就是这样）。
+        extraFiles: [
+          for (final file in pendingFiles.skip(1))
+            HttpUploadFile(filename: file.filename, bytes: file.bytes),
+        ],
         fields: form,
         referer: referer,
       );
@@ -2589,9 +2633,14 @@ class ForumRepository {
       );
     }
     final doc = parser.parse(response.body);
+    // 「需要审核」自带「审核」二字，会被错误关键词命中，先按成功处理。
+    if (response.body.contains('需要审核') || response.body.contains('审核通过')) {
+      return '主题已提交，等待审核通过';
+    }
     final msg = _pageMessage(doc);
-    if (msg != null && _looksLikeError(msg)) throw SiteException(msg);
-    if (response.body.contains('审核')) return '主题已提交，等待审核通过';
+    if (msg != null && _looksLikeError(msg) && !_landedOnThread(response)) {
+      throw SiteException(msg);
+    }
     final tid = RegExp(r'thread-(\d+)-1-1\.html').firstMatch(response.uri.toString())?.group(1);
     return tid == null ? '发布成功' : '发布成功，主题 ID $tid';
   }
