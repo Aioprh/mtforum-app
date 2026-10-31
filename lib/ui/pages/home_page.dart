@@ -231,6 +231,7 @@ class _HomePageState extends State<HomePage> {
           onRefresh: () => _loadAnnouncements(force: true),
           emptyText: '暂时没有内容，稍后再来看看',
           padding: const EdgeInsets.fromLTRB(14, 0, 14, 88),
+          doubleTapToTop: true,
         ),
       ),
     );

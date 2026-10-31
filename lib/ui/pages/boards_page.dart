@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../data/models.dart';
 import '../../state/app_state.dart';
 import '../pages/board_threads_page.dart';
+import '../widgets/back_to_top.dart';
 import '../widgets/smart_image.dart';
 import '../widgets/state_views.dart';
 
@@ -14,6 +15,7 @@ class BoardsPage extends StatefulWidget {
 }
 
 class _BoardsPageState extends State<BoardsPage> with AutomaticKeepAliveClientMixin {
+  final ScrollController _scroll = ScrollController();
   List<ForumCategory> _categories = const [];
   bool _loading = true;
   String? _error;
@@ -25,6 +27,12 @@ class _BoardsPageState extends State<BoardsPage> with AutomaticKeepAliveClientMi
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
   }
 
   Future<void> _load({bool force = false}) async {
@@ -53,6 +61,8 @@ class _BoardsPageState extends State<BoardsPage> with AutomaticKeepAliveClientMi
     return Scaffold(
       appBar: AppBar(
         title: const Text('版块'),
+        // 顶栏空白处双击回顶。
+        flexibleSpace: DoubleTapTopArea(controller: _scroll),
         actions: [
           IconButton(
             onPressed: () => _load(force: true),
@@ -68,6 +78,7 @@ class _BoardsPageState extends State<BoardsPage> with AutomaticKeepAliveClientMi
               : RefreshIndicator(
                   onRefresh: () => _load(force: true),
                   child: ListView.builder(
+                    controller: _scroll,
                     physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
                     padding: const EdgeInsets.fromLTRB(14, 8, 14, 88),
                     itemCount: _categories.length + 1,

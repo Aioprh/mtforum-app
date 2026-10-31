@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/http_session.dart';
 import '../../data/models.dart';
 import '../pages/thread_page.dart';
+import 'back_to_top.dart';
 import 'state_views.dart';
 import 'thread_card.dart';
 
@@ -16,6 +17,8 @@ class ThreadFeed extends StatefulWidget {
     this.enabled = true,
     this.padding = const EdgeInsets.fromLTRB(14, 8, 14, 24),
     this.onRefresh,
+    this.controller,
+    this.doubleTapToTop = false,
   });
 
   final Future<List<ThreadSummary>> Function(int page) loader;
@@ -25,22 +28,35 @@ class ThreadFeed extends StatefulWidget {
   final EdgeInsets padding;
   final Future<void> Function()? onRefresh;
 
+  /// 外部传进来的滚动控制器，页面级的「双击顶栏回顶」要用。
+  final ScrollController? controller;
+
+  /// 内容区双击回到顶部。
+  ///
+  /// 只有滚离顶部之后才挂上双击识别，回到顶部就摘掉——否则单击进帖子
+  /// 每次都要等双击判定超时，点起来会发钝。
+  final bool doubleTapToTop;
+
   @override
   State<ThreadFeed> createState() => _ThreadFeedState();
 }
 
 class _ThreadFeedState extends State<ThreadFeed> {
   final List<ThreadSummary> _items = [];
-  final ScrollController _scroll = ScrollController();
+  late final ScrollController _scroll;
+  late final bool _ownsScroll;
   bool _loading = false;
   bool _initialized = false;
   bool _hasMore = true;
+  bool _farFromTop = false;
   String? _error;
   int _page = 1;
 
   @override
   void initState() {
     super.initState();
+    _scroll = widget.controller ?? ScrollController();
+    _ownsScroll = widget.controller == null;
     _scroll.addListener(_onScroll);
     if (widget.enabled) _loadFirst();
   }
@@ -53,12 +69,16 @@ class _ThreadFeedState extends State<ThreadFeed> {
 
   @override
   void dispose() {
-    _scroll.dispose();
+    if (_ownsScroll) _scroll.dispose();
     super.dispose();
   }
 
   void _onScroll() {
-    if (!_scroll.hasClients || _loading || !_hasMore || _error != null) return;
+    if (!_scroll.hasClients) return;
+    // 双击回顶只在离开首屏后启用，跨过阈值时刷新一次就够，别每帧都 setState。
+    final far = _scroll.position.pixels > 8;
+    if (far != _farFromTop) setState(() => _farFromTop = far);
+    if (_loading || !_hasMore || _error != null) return;
     if (_scroll.position.pixels >= _scroll.position.maxScrollExtent - 500) {
       _loadMore();
     }
@@ -150,7 +170,7 @@ class _ThreadFeedState extends State<ThreadFeed> {
     final scheme = Theme.of(context).colorScheme;
     final showSkeleton = _loading && _items.isEmpty && _error == null;
 
-    return RefreshIndicator(
+    final feed = RefreshIndicator(
       onRefresh: _refresh,
       edgeOffset: widget.header == null ? 0 : 8,
       child: ListView.builder(
@@ -175,6 +195,7 @@ class _ThreadFeedState extends State<ThreadFeed> {
               padding: const EdgeInsets.only(bottom: 11),
               child: ThreadCard(
                 thread: thread,
+                onDoubleTap: widget.doubleTapToTop && _farFromTop ? () => scrollToTop(_scroll) : null,
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => ThreadPage(tid: thread.tid, title: thread.title)),
                 ),
@@ -218,6 +239,13 @@ class _ThreadFeedState extends State<ThreadFeed> {
           return const SizedBox(height: 20);
         },
       ),
+    );
+
+    if (!widget.doubleTapToTop) return feed;
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onDoubleTap: _farFromTop ? () => scrollToTop(_scroll) : null,
+      child: feed,
     );
   }
 }

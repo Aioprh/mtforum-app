@@ -6,10 +6,16 @@ import 'smart_image.dart';
 import 'user_avatar.dart';
 
 class ThreadCard extends StatelessWidget {
-  const ThreadCard({super.key, required this.thread, required this.onTap});
+  const ThreadCard({super.key, required this.thread, required this.onTap, this.onDoubleTap});
 
   final ThreadSummary thread;
   final VoidCallback onTap;
+
+  /// 双击卡片时的动作（首页用来回顶）。
+  ///
+  /// 给 null 时卡片只有单击，点起来没有延迟；挂上之后单击要等双击判定超时，
+  /// 所以调用方只在已经滚离顶部时才传。
+  final VoidCallback? onDoubleTap;
 
   @override
   Widget build(BuildContext context) {
@@ -25,6 +31,7 @@ class ThreadCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
+        onDoubleTap: onDoubleTap,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(14, 13, 14, 14),
           child: Column(

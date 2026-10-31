@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/models.dart';
 import '../../state/app_state.dart';
+import '../widgets/back_to_top.dart';
 import '../widgets/thread_feed.dart';
 import 'compose_page.dart';
 
@@ -17,6 +18,8 @@ class BoardThreadsPage extends StatefulWidget {
 }
 
 class _BoardThreadsPageState extends State<BoardThreadsPage> {
+  final ScrollController _scroll = ScrollController();
+
   Future<List<ThreadSummary>> _loader(int page) =>
       AppState.instance.repo.fetchBoardThreads(widget.fid, page: page);
 
@@ -29,10 +32,18 @@ class _BoardThreadsPageState extends State<BoardThreadsPage> {
   }
 
   @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+        // 顶栏空白处双击回顶；标题和右侧发帖按钮在上层，不受影响。
+        flexibleSpace: DoubleTapTopArea(controller: _scroll),
         actions: [
           IconButton(
             tooltip: '发帖',
@@ -45,6 +56,7 @@ class _BoardThreadsPageState extends State<BoardThreadsPage> {
         top: false,
         child: ThreadFeed(
           loader: _loader,
+          controller: _scroll,
           emptyText: '该版块暂时还没有主题',
           padding: const EdgeInsets.fromLTRB(14, 10, 14, 24),
           header: _header(context),
