@@ -7,6 +7,7 @@ import 'package:html/parser.dart' as parser;
 
 import '../core/app_config.dart';
 import '../core/http_session.dart';
+import '../core/upload_hash.dart';
 import '../core/waf_solver.dart';
 import 'models.dart';
 
@@ -232,7 +233,7 @@ class ForumRepository {
       isLoggedIn: loggedIn,
       likes: _intOf(doc.querySelector('.comiis_recommend_num')?.text ?? doc.querySelector('#recommendv_add')?.text),
       dislikes: _intOf(doc.querySelector('#recommendv_subtract')?.text),
-      uploadHash: _findUploadHash(html),
+      uploadHash: findUploadHash(html),
       uid: _findUid(html),
       poll: _parsePoll(doc),
       notice: notice,
@@ -557,10 +558,28 @@ class ForumRepository {
     if (formhash.isEmpty) {
       throw SiteException(_pageMessage(parser.parse(page.body)) ?? '请先登录后再发帖');
     }
+    var uploadHash = findUploadHash(page.body);
+    var uid = _findUid(page.body);
+    if (uploadHash.isEmpty) {
+      // 有的模板把 uploadformdata 只放在 AJAX 版发帖页里，普通页面里没有。
+      // 再要一次 inajax 版本，拿不到就交给上层提示，不在这里打断发帖。
+      try {
+        final ajax = await _http.get(
+          'forum.php',
+          query: {'mod': 'post', 'action': 'newthread', 'fid': '$fid', 'mobile': '2', 'inajax': '1'},
+        );
+        if (ajax.statusCode == 200) {
+          uploadHash = findUploadHash(ajax.body);
+          if (uid <= 0) uid = _findUid(ajax.body);
+        }
+      } catch (_) {
+        // 兜底请求失败不影响发文字帖。
+      }
+    }
     return ComposeInfo(
       formhash: formhash,
-      uploadHash: _findUploadHash(page.body),
-      uid: _findUid(page.body),
+      uploadHash: uploadHash,
+      uid: uid,
     );
   }
 
@@ -573,7 +592,7 @@ class ForumRepository {
     required String referer,
     bool image = true,
   }) async {
-    if (uploadHash.isEmpty) throw SiteException('上传凭证已失效，请返回后重试');
+    if (uploadHash.isEmpty) throw SiteException('没取到上传凭证，退出发帖页重新进入再试');
     final result = await _http.postFile(
       'misc.php',
       query: {
@@ -3042,19 +3061,6 @@ class ForumRepository {
   bool _isLoggedInHtml(String html) {
     final match = RegExp(r"discuz_uid\s*=\s*'(\d+)'").firstMatch(html);
     return match != null && match.group(1) != '0';
-  }
-
-  /// 手机模板的附件上传凭证：`uploadformdata:{uid:"0", hash:"..."}`。
-  String _findUploadHash(String html) {
-    final patterns = [
-      RegExp(r'''hash\s*:\s*["']([0-9a-zA-Z]{16,40})["']'''),
-      RegExp(r'''name=["']hash["'][^>]*?value=["']([0-9a-zA-Z]{16,40})["']''', caseSensitive: false),
-    ];
-    for (final pattern in patterns) {
-      final match = pattern.firstMatch(html);
-      if (match != null) return match.group(1)!;
-    }
-    return '';
   }
 
   int _findUid(String html) {

@@ -222,8 +222,20 @@ class _ComposePageState extends State<ComposePage> {
     }
   }
 
-  void _onBoardChanged(int? value) {
-    if (value == null) return;
+  /// 忽略缓存重新拉发帖页，专治「上一秒还没拿到 hash」。
+  Future<ComposeInfo?> _refreshInfo() async {
+    final fid = _fid;
+    if (fid == null) return null;
+    try {
+      final value = await AppState.instance.repo.fetchComposeInfo(fid);
+      if (mounted) setState(() => _info = value);
+      return value;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _onBoardChanged(int? value) {    if (value == null) return;
     setState(() {
       _fid = value;
       _info = null;
@@ -326,9 +338,15 @@ class _ComposePageState extends State<ComposePage> {
   }
 
   Future<void> _upload(_DraftAttachment attachment, {required bool image}) async {
-    final info = _info;
+    var info = _info;
     final fid = _fid;
-    if (info == null || fid == null) return;
+    if (fid == null) return;
+    // 页面里没解析到上传凭证时（模板改版、hash 变短都可能），重新拉一次发帖页再试，
+    // 而不是直接让用户看着「凭证已失效」发懵。
+    if (info == null || info.uploadHash.isEmpty) {
+      info = await _refreshInfo();
+    }
+    if (info == null) return;
     setState(() {
       attachment.uploading = true;
       attachment.error = null;

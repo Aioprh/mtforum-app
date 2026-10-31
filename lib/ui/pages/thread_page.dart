@@ -367,7 +367,7 @@ class _ThreadPageState extends State<ThreadPage> {
     if (detail == null) return;
     if (!await _ensureLogin()) return;
     if (detail.uploadHash.isEmpty) {
-      _toast('上传凭证已失效，请下拉刷新后重试');
+      _toast('没取到上传凭证，退出帖子重新进入再试');
       return;
     }
     final picked = await _picker.pickMultiImage(maxWidth: 1600, imageQuality: 78);
