@@ -42,15 +42,3 @@ String buildReplyNotice({
 }) {
   return '${buildQuoteHeader(author: author, time: time, pid: pid, tid: tid)}[/quote]';
 }
-
-/// 拼最终提交的正文：引用在前，用户输入在后。
-///
-/// 空串不占位，避免正文结尾多出一堆空行；两边都有时用一个空行隔开，
-/// 和网页编辑器提交的形态一致。
-String composeReplyMessage({required String visible, String quote = ''}) {
-  final body = visible.trim();
-  final head = quote.trim();
-  if (head.isEmpty) return body;
-  if (body.isEmpty) return head;
-  return '$head\n\n$body';
-}

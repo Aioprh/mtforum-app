@@ -1,10 +1,12 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mt_forum/core/reply_notice.dart';
 
 /// 回复某楼时正文顶部那条引用框。
 ///
 /// 正常路径用服务端回复页上的 `noticetrimstr`（见 reply_context_test），
-/// 这里测的是取不到时的兜底格式，以及最终正文的拼接方式。
+/// 这里测的是取不到时的兜底格式。
 void main() {
   test('兜底引用条带上作者、时间、pid 与 tid', () {
     final notice = buildReplyNotice(
@@ -29,19 +31,11 @@ void main() {
     expect(notice, isNot(contains('  ')));
   });
 
-  test('正文拼接：引用在前、输入在后，空行分隔', () {
-    expect(
-      composeReplyMessage(visible: '同意', quote: '[quote]A[/quote]'),
-      '[quote]A[/quote]\n\n同意',
-    );
-  });
-
-  test('没有引用时正文不带多余空行', () {
-    expect(composeReplyMessage(visible: '  就这  '), '就这');
-    expect(composeReplyMessage(visible: '就这', quote: '   '), '就这');
-  });
-
-  test('只引用没打字时也能发出去', () {
-    expect(composeReplyMessage(visible: '', quote: '[quote]A[/quote]'), '[quote]A[/quote]');
+  test('正文只提交用户输入，引用条走 noticetrimstr，不再本地拼接', () {
+    final source = File('lib/ui/pages/thread_page.dart').readAsStringSync();
+    // 本地拼 quote 再塞进正文会让服务端前插一次，网页端出现两段引用。
+    expect(source.contains('_startQuote'), isFalse);
+    expect(source.contains('_hiddenQuotePayload'), isFalse);
+    expect(source.contains('composeReplyMessage'), isFalse);
   });
 }

@@ -66,8 +66,6 @@ class _ThreadPageState extends State<ThreadPage> {
   bool _voting = false;
   final Set<int> _pollSelected = <int>{};
   ForumPost? _replyTarget;
-  bool _quoteTarget = false;
-  String _hiddenQuotePayload = '';
   int _likes = 0;
   int _dislikes = 0;
   String? _error;
@@ -264,54 +262,30 @@ class _ThreadPageState extends State<ThreadPage> {
   // ------------------------------------------------------------- 回复 / 楼中楼
 
   void _focusReply() {
-    setState(() {
-      _replyTarget = null;
-      _quoteTarget = false;
-      _hiddenQuotePayload = '';
-    });
+    setState(() => _replyTarget = null);
     _replyFocus.requestFocus();
   }
 
   /// 回复某楼：提交时带上服务端算好的 `repquote` 引用条，发出来和网页端
   /// 点「回复」的结果一致——正文顶部有一段灰色引用框，写着谁在哪层说的。
-  /// 引用条不在这里拼，等服务端给（见 [buildReplyNotice] 里的说明）。
+  /// 引用条只走 `noticetrimstr` 隐藏域，不写进正文，否则服务端会再插一份，
+  /// 网页端就会出现两段一模一样的引用（见 [buildReplyNotice] 的说明）。
   void _startReply(ForumPost post) {
     setState(() {
       _replyTarget = post;
-      _quoteTarget = false;
-      _hiddenQuotePayload = '';
-      _showEmoji = false;
-    });
-    _replyFocus.requestFocus();
-  }
-
-  void _startQuote(ForumPost post) {
-    final plain = _plainText(post.html);
-    // 引用内容保留在提交正文中，但不放进可见输入框，避免占满输入区域。
-    _hiddenQuotePayload = plain.isEmpty
-        ? ''
-        : '[quote][size=2][url=forum.php?mod=redirect&goto=findpost&pid=${post.pid}&ptid=${widget.tid}]'
-          '[color=#999999]${post.author} 发表于 ${post.time}[/color][/url][/size]\n$plain\n[/quote]\n';
-    setState(() {
-      _replyTarget = post;
-      _quoteTarget = true;
       _showEmoji = false;
     });
     _replyFocus.requestFocus();
   }
 
   void _clearReplyTarget() {
-    setState(() {
-      _replyTarget = null;
-      _quoteTarget = false;
-      _hiddenQuotePayload = '';
-    });
+    setState(() => _replyTarget = null);
   }
 
   Future<void> _sendReply() async {
     final visibleText = _replyController.text.trim();
     final target = _replyTarget;
-    if (visibleText.isEmpty && _replyAttachments.isEmpty && _hiddenQuotePayload.isEmpty) {
+    if (visibleText.isEmpty && _replyAttachments.isEmpty) {
       _toast('请输入回复内容');
       return;
     }
@@ -333,7 +307,6 @@ class _ThreadPageState extends State<ThreadPage> {
       var noticeAuthor = '';
       var noticeTrim = '';
       var noticeAuthorMsg = '';
-      var quoteBlock = '';
       if (target != null) {
         final ctx = await _repo.fetchReplyContext(
           tid: widget.tid,
@@ -342,13 +315,9 @@ class _ThreadPageState extends State<ThreadPage> {
         );
         noticeAuthor = ctx.noticeAuthor;
         noticeAuthorMsg = ctx.noticeAuthorMsg;
-        if (_quoteTarget) {
-          // 引用：客户端已经拼好带原文的全文引用，直接当引用条交给服务端。
-          quoteBlock = _hiddenQuotePayload.trim();
-        }
-        noticeTrim = quoteBlock.isNotEmpty
-            ? quoteBlock
-            : ctx.noticeTrim.isNotEmpty
+        // 正文只放用户打的字，引用条单独交给 noticetrimstr；
+        // 两边都带的话服务端会前插一次，引用就重复了。
+        noticeTrim = ctx.noticeTrim.isNotEmpty
             ? ctx.noticeTrim
             : buildReplyNotice(
                 author: target.author,
@@ -357,13 +326,12 @@ class _ThreadPageState extends State<ThreadPage> {
                 tid: widget.tid,
               );
       }
-      final message = composeReplyMessage(visible: visibleText, quote: quoteBlock);
       if (!mounted) return;
       final result = await _repo.reply(
         tid: widget.tid,
         fid: detail.fid,
         formhash: detail.formhash,
-        message: message,
+        message: visibleText,
         replyToPid: target?.pid,
         noticeAuthor: noticeAuthor,
         noticeTrim: noticeTrim,
@@ -376,8 +344,6 @@ class _ThreadPageState extends State<ThreadPage> {
       _replyFocus.unfocus();
       setState(() {
         _replyTarget = null;
-        _quoteTarget = false;
-        _hiddenQuotePayload = '';
         _showEmoji = false;
       });
       final beforePids = _posts.map((post) => post.pid).toSet();
@@ -1530,9 +1496,7 @@ class _ThreadPageState extends State<ThreadPage> {
             const SizedBox(height: 4),
             Row(
               children: [
-                _floorAction(Icons.reply_rounded, '回复', () => _startReply(post), highlight: targeted && !_quoteTarget),
-                const SizedBox(width: 4),
-                _floorAction(Icons.format_quote_rounded, '引用', () => _startQuote(post), highlight: targeted && _quoteTarget),
+                _floorAction(Icons.reply_rounded, '回复', () => _startReply(post), highlight: targeted),
                 const Spacer(),
                 PopupMenuButton<String>(
                   tooltip: '更多操作',
@@ -1775,9 +1739,6 @@ class _ThreadPageState extends State<ThreadPage> {
     );
     setState(() {
       _replyTarget = post;
-      _quoteTarget = true;
-      // 点评引用是直接写进输入框的，不能再叠加隐藏的楼层引用。
-      _hiddenQuotePayload = '';
       _showEmoji = false;
     });
     _replyFocus.requestFocus();
@@ -1936,14 +1897,14 @@ class _ThreadPageState extends State<ThreadPage> {
               child: Row(
                 children: [
                   Icon(
-                    _quoteTarget ? Icons.format_quote_rounded : Icons.reply_rounded,
+                    Icons.reply_rounded,
                     size: 14,
                     color: scheme.primary,
                   ),
                   const SizedBox(width: 4),
                   Expanded(
                     child: Text(
-                      '${_quoteTarget ? '引用' : '回复'} ${_replyTarget!.author} · ${_replyTarget!.floorLabel}',
+                      '回复 ${_replyTarget!.author} · ${_replyTarget!.floorLabel}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(fontSize: 11.5, color: scheme.primary),
@@ -1980,7 +1941,7 @@ class _ThreadPageState extends State<ThreadPage> {
                     decoration: InputDecoration(
                       hintText: _replyTarget == null
                           ? '写下你的回复…'
-                          : '${_quoteTarget ? '引用' : '回复'} ${_replyTarget!.author}…',
+                          : '回复 ${_replyTarget!.author}…',
                       isDense: true,
                       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
                     ),
