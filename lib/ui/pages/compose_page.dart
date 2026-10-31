@@ -341,9 +341,9 @@ class _ComposePageState extends State<ComposePage> {
     var info = _info;
     final fid = _fid;
     if (fid == null) return;
-    // 页面里没解析到上传凭证时（模板改版、hash 变短都可能），重新拉一次发帖页再试，
+    // 页面里没解析到凭证、或者 uid 是 0 时，重新拉一次发帖页再试，
     // 而不是直接让用户看着「凭证已失效」发懵。
-    if (info == null || info.uploadHash.isEmpty) {
+    if (info == null || info.uploadHash.isEmpty || info.uid <= 0) {
       info = await _refreshInfo();
     }
     if (info == null) return;

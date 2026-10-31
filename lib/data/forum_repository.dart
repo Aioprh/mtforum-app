@@ -234,7 +234,7 @@ class ForumRepository {
       likes: _intOf(doc.querySelector('.comiis_recommend_num')?.text ?? doc.querySelector('#recommendv_add')?.text),
       dislikes: _intOf(doc.querySelector('#recommendv_subtract')?.text),
       uploadHash: findUploadHash(html),
-      uid: _findUid(html),
+      uid: findUploadUid(html),
       poll: _parsePoll(doc),
       notice: notice,
       favorited: _isThreadFavorited(html),
@@ -559,7 +559,7 @@ class ForumRepository {
       throw SiteException(_pageMessage(parser.parse(page.body)) ?? '请先登录后再发帖');
     }
     var uploadHash = findUploadHash(page.body);
-    var uid = _findUid(page.body);
+    var uid = findUploadUid(page.body);
     if (uploadHash.isEmpty) {
       // 有的模板把 uploadformdata 只放在 AJAX 版发帖页里，普通页面里没有。
       // 再要一次 inajax 版本，拿不到就交给上层提示，不在这里打断发帖。
@@ -570,7 +570,7 @@ class ForumRepository {
         );
         if (ajax.statusCode == 200) {
           uploadHash = findUploadHash(ajax.body);
-          if (uid <= 0) uid = _findUid(ajax.body);
+          if (uid <= 0) uid = findUploadUid(ajax.body);
         }
       } catch (_) {
         // 兜底请求失败不影响发文字帖。
@@ -592,7 +592,6 @@ class ForumRepository {
     required String referer,
     bool image = true,
   }) async {
-    if (uploadHash.isEmpty) throw SiteException('没取到上传凭证，退出发帖页重新进入再试');
     final result = await _http.postFile(
       'misc.php',
       query: {
@@ -606,7 +605,9 @@ class ForumRepository {
       field: 'Filedata',
       filename: filename,
       bytes: bytes,
-      fields: {'uid': '$uid', 'hash': uploadHash},
+      // 凭证没解析出来也照发：有的模板只校验登录态和 uid，hash 只是形式。
+      // 以前在这里就地抛错，请求根本没出去，用户只能干看着「凭证已失效」。
+      fields: {'uid': '$uid', if (uploadHash.isNotEmpty) 'hash': uploadHash},
       referer: referer,
     );
     final match = RegExp(r'DISCUZUPLOAD\|(\d*)\|(-?\d+)\|(\d+)').firstMatch(result.body);
@@ -3061,19 +3062,6 @@ class ForumRepository {
   bool _isLoggedInHtml(String html) {
     final match = RegExp(r"discuz_uid\s*=\s*'(\d+)'").firstMatch(html);
     return match != null && match.group(1) != '0';
-  }
-
-  int _findUid(String html) {
-    final patterns = [
-      RegExp(r"discuz_uid\s*=\s*'(\d+)'"),
-      RegExp(r"\buid\s*=\s*'(\d+)'"),
-    ];
-    for (final pattern in patterns) {
-      final match = pattern.firstMatch(html);
-      final value = int.tryParse(match?.group(1) ?? '') ?? 0;
-      if (value > 0) return value;
-    }
-    return 0;
   }
 
   int _intOf(String? text) =>

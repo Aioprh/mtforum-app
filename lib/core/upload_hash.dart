@@ -6,7 +6,7 @@
 library;
 
 final RegExp _hashPair = RegExp(
-  r'''["']?hash["']?\s*:\s*["']([0-9a-zA-Z_-]{6,64})["']''',
+  r'''["']?\bhash["']?\s*:\s*["']([0-9a-zA-Z_-]{6,64})["']''',
   caseSensitive: false,
 );
 
@@ -36,4 +36,19 @@ String findUploadHash(String html) {
   final input = _hashInput.firstMatch(html);
   if (input != null) return input.group(1)!;
   return _hashQuery.firstMatch(html)?.group(1) ?? '';
+}
+
+final RegExp _discuzUid = RegExp(r'''discuz_uid\s*=\s*['"]?(\d+)''');
+
+/// 保存网页会把 inline 脚本整段剥掉，`discuz_uid` 也随之消失；
+/// 这时退而求其次看个人中心链接里的 `uid=`。
+final RegExp _linkUid = RegExp(r'''[?&;]uid=(\d+)''');
+
+int findUploadUid(String html) {
+  for (final pattern in [_discuzUid, _linkUid]) {
+    final match = pattern.firstMatch(html);
+    final value = int.tryParse(match?.group(1) ?? '') ?? 0;
+    if (value > 0) return value;
+  }
+  return 0;
 }
