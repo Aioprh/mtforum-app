@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../data/models.dart';
 import '../../state/app_state.dart';
 import '../widgets/glass_compose_button.dart';
+import '../widgets/thread_glass.dart';
 import '../widgets/sign_in_badge.dart';
 import '../widgets/thread_feed.dart';
 import '../widgets/user_avatar.dart';
@@ -120,6 +121,8 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
     var navBlur = appState.floatingGlassNavBlur;
     var composeOpacity = appState.composeGlassOpacity;
     var composeBlur = appState.composeGlassBlur;
+    var threadOpacity = appState.threadGlassOpacity;
+    var threadBlur = appState.threadGlassBlur;
     final scheme = Theme.of(context).colorScheme;
 
     final result = await showModalBottomSheet<({
@@ -128,6 +131,8 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
       double navBlur,
       double composeOpacity,
       double composeBlur,
+      double threadOpacity,
+      double threadBlur,
     })>(
       context: context,
       isScrollControlled: true,
@@ -147,7 +152,7 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    '底栏和发帖按钮共用同一套玻璃材质，透明度和模糊度分开调，保存后立即生效。',
+                    '底栏、发帖按钮、帖子页各自一套玻璃材质，透明度和模糊度分开调，保存后立即生效。',
                     style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant, height: 1.5),
                   ),
                   const SizedBox(height: 18),
@@ -278,6 +283,153 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
                       child: const Text('发帖按钮恢复默认'),
                     ),
                   ),
+
+                  const SizedBox(height: 18),
+                  Divider(height: 1, color: scheme.outlineVariant.withValues(alpha: 0.4)),
+                  const SizedBox(height: 18),
+
+                  _glassSectionHeader(
+                    context,
+                    Icons.layers_rounded,
+                    '帖子页',
+                    '顶栏、底部回复框、右上角菜单共用一套材质',
+                  ),
+                  const SizedBox(height: 12),
+                  // 预览：上下两条玻璃压在同一块色块上，顶栏和回复框的观感一起看。
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(18),
+                    child: SizedBox(
+                      height: 132,
+                      child: Stack(
+                        children: [
+                          Positioned.fill(
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [scheme.primaryContainer, scheme.tertiaryContainer],
+                                ),
+                              ),
+                            ),
+                          ),
+                          Positioned.fill(
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(14, 44, 14, 50),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  _previewBar(scheme, 168, 0.30),
+                                  const SizedBox(height: 10),
+                                  _previewBar(scheme, 238, 0.20),
+                                ],
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            child: GlassBackdrop(
+                              opacity: threadOpacity,
+                              blur: threadBlur,
+                              showBorder: false,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.arrow_back_rounded, size: 17, color: scheme.onSurface),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Text(
+                                        '帖子标题',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w700,
+                                          color: scheme.onSurface,
+                                        ),
+                                      ),
+                                    ),
+                                    Icon(Icons.ios_share_rounded, size: 16, color: scheme.onSurfaceVariant),
+                                    const SizedBox(width: 10),
+                                    Icon(Icons.more_vert_rounded, size: 16, color: scheme.onSurfaceVariant),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            bottom: 0,
+                            left: 0,
+                            right: 0,
+                            child: GlassBackdrop(
+                              opacity: threadOpacity,
+                              blur: threadBlur,
+                              showBorder: false,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.sentiment_satisfied_alt_rounded, size: 17, color: scheme.onSurfaceVariant),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Container(
+                                        height: 28,
+                                        alignment: Alignment.centerLeft,
+                                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                                        decoration: BoxDecoration(
+                                          color: scheme.surface.withValues(alpha: 0.55),
+                                          borderRadius: BorderRadius.circular(14),
+                                        ),
+                                        child: Text(
+                                          '写下你的回复…',
+                                          style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Icon(Icons.image_outlined, size: 17, color: scheme.onSurfaceVariant),
+                                    const SizedBox(width: 8),
+                                    Icon(Icons.send_rounded, size: 17, color: scheme.primary),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  _glassSlider(
+                    label: '玻璃透明度',
+                    value: threadOpacity,
+                    min: 0.05,
+                    max: 0.85,
+                    divisions: 16,
+                    onChanged: (value) => setSheetState(() => threadOpacity = value),
+                  ),
+                  _glassSlider(
+                    label: '背景模糊度',
+                    value: threadBlur,
+                    min: 0,
+                    max: 40,
+                    divisions: 16,
+                    percent: false,
+                    onChanged: (value) => setSheetState(() => threadBlur = value),
+                  ),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: () => setSheetState(() {
+                        threadOpacity = 0.55;
+                        threadBlur = 22;
+                      }),
+                      child: const Text('帖子页恢复默认'),
+                    ),
+                  ),
                   const SizedBox(height: 4),
                   SizedBox(
                     width: double.infinity,
@@ -290,6 +442,8 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
                           navBlur: navBlur,
                           composeOpacity: composeOpacity,
                           composeBlur: composeBlur,
+                          threadOpacity: threadOpacity,
+                          threadBlur: threadBlur,
                         ),
                       ),
                       child: const Text('保存设置'),
@@ -313,7 +467,21 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
       opacity: result.composeOpacity,
       blur: result.composeBlur,
     );
+    await appState.setThreadGlassAppearance(
+      opacity: result.threadOpacity,
+      blur: result.threadBlur,
+    );
   }
+
+  /// 帖子页预览里的一条「假文字」，用色块代替真实文本。
+  Widget _previewBar(ColorScheme scheme, double width, double alpha) => Container(
+        width: width,
+        height: 10,
+        decoration: BoxDecoration(
+          color: scheme.onPrimaryContainer.withValues(alpha: alpha),
+          borderRadius: BorderRadius.circular(6),
+        ),
+      );
 
   /// 玻璃面板里的小节标题，图标 + 名称 + 一句解释，比纯文字分组好认。
   Widget _glassSectionHeader(BuildContext context, IconData icon, String title, String desc) {

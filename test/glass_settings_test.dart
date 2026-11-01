@@ -14,9 +14,11 @@ void main() {
     AppState.instance.floatingGlassNavBlur = 30;
     AppState.instance.composeGlassOpacity = 0.28;
     AppState.instance.composeGlassBlur = 26;
+    AppState.instance.threadGlassOpacity = 0.55;
+    AppState.instance.threadGlassBlur = 22;
   });
 
-  testWidgets('「液态玻璃」一个入口同时管底栏和发帖按钮', (tester) async {
+  testWidgets('「液态玻璃」一个入口同时管底栏、发帖按钮和帖子页', (tester) async {
     await tester.pumpWidget(const MaterialApp(home: ProfilePage()));
     await tester.pumpAndSettle();
 
@@ -34,10 +36,12 @@ void main() {
     // 面板里两节都在，调节项一个没少。
     expect(find.text('底部导航栏'), findsOneWidget);
     expect(find.text('发帖按钮'), findsOneWidget);
+    expect(find.text('帖子页'), findsOneWidget);
     expect(find.text('启用液态玻璃悬浮底栏'), findsOneWidget);
-    expect(find.text('玻璃透明度'), findsNWidgets(2));
-    expect(find.text('背景模糊度'), findsNWidgets(2));
+    expect(find.text('玻璃透明度'), findsNWidgets(3));
+    expect(find.text('背景模糊度'), findsNWidgets(3));
     expect(find.text('发帖按钮恢复默认'), findsOneWidget);
+    expect(find.text('帖子页恢复默认'), findsOneWidget);
   });
 
   testWidgets('面板里改底栏参数只写底栏，发帖按钮不受影响', (tester) async {
@@ -65,5 +69,36 @@ void main() {
     // 发帖按钮还是原来那套值。
     expect(AppState.instance.composeGlassOpacity, closeTo(0.28, 0.001));
     expect(AppState.instance.composeGlassBlur, closeTo(26, 0.001));
+    // 帖子页也没被带着改。
+    expect(AppState.instance.threadGlassOpacity, closeTo(0.55, 0.001));
+    expect(AppState.instance.threadGlassBlur, closeTo(22, 0.001));
+  });
+
+  testWidgets('帖子页那节单独写自己的参数', (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: ProfilePage()));
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(find.text('液态玻璃'), 260);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('液态玻璃'));
+    await tester.pumpAndSettle();
+
+    // 第三节的两条滑杆是面板里最后两条：透明度、模糊度。
+    final sliders = find.byType(Slider);
+    expect(sliders, findsNWidgets(6));
+    await tester.ensureVisible(sliders.at(4));
+    await tester.pumpAndSettle();
+    await tester.drag(sliders.at(4), const Offset(-400, 0));
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('保存设置'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('保存设置'));
+    await tester.pumpAndSettle();
+
+    expect(AppState.instance.threadGlassOpacity, lessThan(0.2));
+    // 另外两处不受影响。
+    expect(AppState.instance.floatingGlassNavOpacity, closeTo(0.25, 0.001));
+    expect(AppState.instance.composeGlassOpacity, closeTo(0.28, 0.001));
   });
 }

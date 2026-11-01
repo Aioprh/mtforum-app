@@ -17,6 +17,7 @@ import '../../state/app_state.dart';
 import '../widgets/emoji_panel.dart';
 import '../widgets/post_html_view.dart';
 import '../widgets/state_views.dart';
+import '../widgets/thread_glass.dart';
 import '../widgets/user_avatar.dart';
 import 'login_page.dart';
 import 'pm_page.dart';
@@ -950,92 +951,191 @@ class _ThreadPageState extends State<ThreadPage> {
     return Scaffold(
       // 输入框由页面自行避让键盘，避免被输入法遮挡。
       resizeToAvoidBottomInset: false,
+      // 让正文从顶栏背后滚过，玻璃顶栏才有东西可模糊。
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
         title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+        backgroundColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        shadowColor: Colors.transparent,
+        // 背景透明时 AppBar 会把透明当作「很暗」，从而选白色状态栏图标；
+        // 浅色主题下那等于看不见，这里按主题亮度自己定。
+        systemOverlayStyle: Theme.of(context).brightness == Brightness.dark
+            ? SystemUiOverlayStyle.light
+            : SystemUiOverlayStyle.dark,
+        flexibleSpace: GlassBackdrop(
+          showBorder: false,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(color: ThreadGlass.borderColor(context), width: 0.6),
+              ),
+            ),
+            child: const SizedBox.expand(),
+          ),
+        ),
         actions: [
           IconButton(
             tooltip: '分享链接',
             onPressed: _share,
             icon: const Icon(Icons.ios_share_rounded),
           ),
-          PopupMenuButton<String>(
-            onSelected: _handleMenu,
-            itemBuilder: (context) => [
-              PopupMenuItem(
-                value: 'favorite',
-                child: ListTile(
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(_favorited ? Icons.star_rounded : Icons.star_outline_rounded),
-                  title: Text(_favorited ? '已收藏' : '收藏主题'),
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'offlineCache',
-                child: ListTile(
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.download_for_offline_outlined),
-                  title: Text('缓存帖子供离线阅读'),
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'copy',
-                child: ListTile(
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.link_rounded),
-                  title: Text('复制链接'),
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'browser',
-                child: ListTile(
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.open_in_browser_rounded),
-                  title: Text('在浏览器打开'),
-                ),
-              ),
-              PopupMenuItem(
-                value: 'onlyOp',
-                child: ListTile(
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(_onlyOp ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded),
-                  title: const Text('只看楼主'),
-                ),
-              ),
-              PopupMenuItem(
-                value: 'order',
-                child: ListTile(
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(_orderDesc ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded),
-                  title: const Text('倒序浏览'),
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'refresh',
-                child: ListTile(
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.refresh_rounded),
-                  title: Text('刷新'),
-                ),
-              ),
-            ],
+          IconButton(
+            tooltip: '更多',
+            onPressed: _openThreadMenu,
+            icon: const Icon(Icons.more_vert_rounded),
           ),
         ],
       ),
       body: SafeArea(
         top: false,
-        child: Column(
+        child: Stack(
           children: [
-            Expanded(child: _buildBody()),
-            _composer(),
-            if (insets > 0) SizedBox(height: insets),
+            // 回复框浮在列表上层：内容从它背后掠过，玻璃才透得出模糊。
+            Positioned.fill(
+              child: Padding(
+                padding: EdgeInsets.only(bottom: _composerReserve + insets),
+                child: _buildBody(),
+              ),
+            ),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: insets,
+              child: _composer(),
+            ),
           ],
+        ),
+      ),
+    );
+  }
+
+  /// 回复框浮在列表上需要预留的高度。
+  ///
+  /// 悬浮布局没法自动测量，按常规高度估一个略偏大的值：估小了最后一条
+  /// 回复会被压在框下面，估大只是尾部多一小段空白。
+  double get _composerReserve {
+    final base = _replyTarget == null ? 64.0 : 100.0;
+    return base + (_showEmoji ? 220 : 0);
+  }
+
+  /// 正文区顶部要空出的高度：状态栏 + 顶栏。
+  ///
+  /// `extendBodyBehindAppBar` 之后 body 从屏幕最顶上开始，不补这一段，
+  /// 标题会被顶栏盖住。
+  double get _topInset => MediaQuery.paddingOf(context).top + kToolbarHeight + 8;
+
+  /// 右上角菜单。
+  ///
+  /// 原来用 PopupMenuButton，它的菜单底板是一块不透明的 Material，
+  /// 没法做玻璃。这里换成自绘浮层：右上角展开的渐变 + 模糊卡片，
+  /// 点击外部仍然关闭（barrier 透明但可点）。
+  Future<void> _openThreadMenu() async {
+    final selected = await showGeneralDialog<String>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: '帖子菜单',
+      barrierColor: Colors.black.withValues(alpha: 0.04),
+      transitionDuration: const Duration(milliseconds: 150),
+      pageBuilder: (_, __, ___) => const SizedBox.shrink(),
+      transitionBuilder: (dialogContext, animation, secondary, child) {
+        final curved = CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
+        return Stack(
+          children: [
+            Positioned(
+              top: MediaQuery.paddingOf(dialogContext).top + kToolbarHeight - 6,
+              right: 8,
+              child: FadeTransition(
+                opacity: curved,
+                child: ScaleTransition(
+                  scale: Tween<double>(begin: 0.92, end: 1).animate(curved),
+                  alignment: Alignment.topRight,
+                  child: _glassMenuCard(dialogContext),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+    if (selected == null || !mounted) return;
+    _handleMenu(selected);
+  }
+
+  /// 菜单项。勾选态跟着页面状态走，和图标的实心/空心保持一致。
+  List<({String value, IconData icon, String label})> _menuEntries() => [
+        (
+          value: 'favorite',
+          icon: _favorited ? Icons.star_rounded : Icons.star_outline_rounded,
+          label: _favorited ? '已收藏' : '收藏主题',
+        ),
+        (
+          value: 'offlineCache',
+          icon: Icons.download_for_offline_outlined,
+          label: '缓存帖子供离线阅读',
+        ),
+        (value: 'copy', icon: Icons.link_rounded, label: '复制链接'),
+        (value: 'browser', icon: Icons.open_in_browser_rounded, label: '在浏览器打开'),
+        (
+          value: 'onlyOp',
+          icon: _onlyOp ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
+          label: '只看楼主',
+        ),
+        (
+          value: 'order',
+          icon: _orderDesc ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
+          label: '倒序浏览',
+        ),
+        (value: 'refresh', icon: Icons.refresh_rounded, label: '刷新'),
+      ];
+
+  Widget _glassMenuCard(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final entries = _menuEntries();
+    return GlassBackdrop(
+      borderRadius: BorderRadius.circular(18),
+      showShadow: true,
+      opacityScale: 1.05,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minWidth: 212, maxWidth: 252),
+        child: Material(
+          color: Colors.transparent,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var i = 0; i < entries.length; i++) ...[
+                if (i > 0)
+                  Divider(
+                    height: 0.6,
+                    thickness: 0.6,
+                    color: scheme.outlineVariant.withValues(alpha: 0.26),
+                  ),
+                InkWell(
+                  onTap: () => Navigator.of(context).pop(entries[i].value),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    child: Row(
+                      children: [
+                        Icon(entries[i].icon, size: 19, color: scheme.onSurfaceVariant),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            entries[i].label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
         ),
       ),
     );
@@ -1065,7 +1165,7 @@ class _ThreadPageState extends State<ThreadPage> {
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
           children: [
-            const SizedBox(height: 80),
+            SizedBox(height: _topInset + 72),
             EmptyView(text: _detail?.notice.isNotEmpty == true ? _detail!.notice : '该帖子暂时没有可显示的内容'),
           ],
         ),
@@ -1074,10 +1174,12 @@ class _ThreadPageState extends State<ThreadPage> {
 
     return RefreshIndicator(
       onRefresh: _refreshKeepPosition,
+      // 顶栏是玻璃、正文从它背后穿过，下拉圆圈要落到顶栏下面才看得见。
+      edgeOffset: _topInset,
       child: ListView.builder(
         controller: _scroll,
         physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+        padding: EdgeInsets.fromLTRB(12, _topInset, 12, 16),
         itemCount: 1 + _posts.length + 1,
         itemBuilder: (context, index) {
           if (index == 0) return _header();
@@ -1919,12 +2021,15 @@ class _ThreadPageState extends State<ThreadPage> {
 
   Widget _composer() {
     final scheme = Theme.of(context).colorScheme;
-    return Container(
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        border: Border(top: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.6))),
-      ),
-      child: Column(
+    return GlassBackdrop(
+      showBorder: false,
+      // 输入区比顶栏再透一点：键盘弹起时它离正文最近，实了会像块板子。
+      opacityScale: 0.92,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border(top: BorderSide(color: ThreadGlass.borderColor(context), width: 0.6)),
+        ),
+        child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           if (_replyTarget != null)
@@ -2010,7 +2115,8 @@ class _ThreadPageState extends State<ThreadPage> {
               height: 220,
               onSelected: (emoji) => insertAtCursor(_replyController, emoji),
             ),
-        ],
+          ],
+        ),
       ),
     );
   }

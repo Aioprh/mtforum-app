@@ -18,6 +18,8 @@ class AppState extends ChangeNotifier {
   static const String _floatingGlassNavBlurKey = 'mt_forum_floating_glass_nav_blur';
   static const String _composeGlassOpacityKey = 'mt_forum_compose_glass_opacity';
   static const String _composeGlassBlurKey = 'mt_forum_compose_glass_blur';
+  static const String _threadGlassOpacityKey = 'mt_forum_thread_glass_opacity';
+  static const String _threadGlassBlurKey = 'mt_forum_thread_glass_blur';
   static const String _autoSignInDateKey = 'mt_forum_auto_signin_date';
   bool _autoSignInRunning = false;
   String? _autoSignInAttemptDate;
@@ -40,6 +42,13 @@ class AppState extends ChangeNotifier {
   /// 发帖悬浮按钮的液态玻璃外观：透明度与背景模糊度。
   double composeGlassOpacity = 0.28;
   double composeGlassBlur = 26.0;
+
+  /// 帖子页顶栏、底部回复框、右上角菜单的液态玻璃外观。
+  ///
+  /// 这三处共用一套参数：它们同处一个页面，观感必须一致，
+  /// 分开调反而容易调出「顶栏很透、回复框很实」的割裂感。
+  double threadGlassOpacity = 0.55;
+  double threadGlassBlur = 22.0;
   UserProfile? profile;
   bool localReady = false;
   bool profileLoading = false;
@@ -63,6 +72,8 @@ class AppState extends ChangeNotifier {
     floatingGlassNavBlur = (prefs.getDouble(_floatingGlassNavBlurKey) ?? 30.0).clamp(0.0, 40.0).toDouble();
     composeGlassOpacity = (prefs.getDouble(_composeGlassOpacityKey) ?? 0.28).clamp(0.05, 0.75).toDouble();
     composeGlassBlur = (prefs.getDouble(_composeGlassBlurKey) ?? 26.0).clamp(0.0, 40.0).toDouble();
+    threadGlassOpacity = (prefs.getDouble(_threadGlassOpacityKey) ?? 0.55).clamp(0.05, 0.85).toDouble();
+    threadGlassBlur = (prefs.getDouble(_threadGlassBlurKey) ?? 22.0).clamp(0.0, 40.0).toDouble();
     _signInDay = prefs.getString(_autoSignInDateKey);
     themeMode = switch (theme) {
       'light' => ThemeMode.light,
@@ -216,6 +227,16 @@ class AppState extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(_composeGlassOpacityKey, composeGlassOpacity);
     await prefs.setDouble(_composeGlassBlurKey, composeGlassBlur);
+  }
+
+  /// 调整帖子页三处玻璃的透明度与模糊度并持久化。
+  Future<void> setThreadGlassAppearance({required double opacity, required double blur}) async {
+    threadGlassOpacity = opacity.clamp(0.05, 0.85).toDouble();
+    threadGlassBlur = blur.clamp(0.0, 40.0).toDouble();
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_threadGlassOpacityKey, threadGlassOpacity);
+    await prefs.setDouble(_threadGlassBlurKey, threadGlassBlur);
   }
 
   Future<void> setThemeSeedColor(Color color) async {
