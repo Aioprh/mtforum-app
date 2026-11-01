@@ -108,237 +108,276 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
     if (mode != null) await AppState.instance.setThemeMode(mode);
   }
 
-  Future<void> _pickFloatingGlassNav() async {
+  /// 「液态玻璃」总入口。
+  ///
+  /// 底栏和发帖按钮用的是同一套材质，只是长在两块地方。原来分成两个入口，
+  /// 想把两处调成一致得来回开关两个面板，这里合成一个：
+  /// 上半节调底栏（带启用开关），下半节调发帖按钮，参数仍然各存各的。
+  Future<void> _pickLiquidGlass() async {
     final appState = AppState.instance;
-    var enabled = appState.floatingGlassNav;
-    var opacity = appState.floatingGlassNavOpacity;
-    var blur = appState.floatingGlassNavBlur;
-    final result = await showModalBottomSheet<({bool enabled, double opacity, double blur})>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (sheetContext) => StatefulBuilder(
-        builder: (context, setSheetState) => SafeArea(
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(
-              20, 4, 20, 22 + MediaQuery.viewInsetsOf(context).bottom,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Center(
-                  child: Text('底栏样式', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '保留当前底栏形状，自定义玻璃背景的透明度和模糊强度。',
-                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
-                ),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('启用液态玻璃悬浮底栏'),
-                  subtitle: const Text('关闭后恢复普通底部导航栏'),
-                  value: enabled,
-                  onChanged: (value) => setSheetState(() => enabled = value),
-                ),
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    const Expanded(child: Text('玻璃透明度', style: TextStyle(fontWeight: FontWeight.w600))),
-                    Text('${(opacity * 100).round()}%'),
-                  ],
-                ),
-                Slider(
-                  value: opacity,
-                  min: 0.05,
-                  max: 0.65,
-                  divisions: 12,
-                  label: '${(opacity * 100).round()}%',
-                  onChanged: (value) => setSheetState(() => opacity = value),
-                ),
-                Row(
-                  children: [
-                    const Expanded(child: Text('背景模糊度', style: TextStyle(fontWeight: FontWeight.w600))),
-                    Text('${blur.round()}'),
-                  ],
-                ),
-                Slider(
-                  value: blur,
-                  min: 0,
-                  max: 40,
-                  divisions: 16,
-                  label: blur.round().toString(),
-                  onChanged: (value) => setSheetState(() => blur = value),
-                ),
-                const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton(
-                    onPressed: () => Navigator.pop(
-                      sheetContext,
-                      (enabled: enabled, opacity: opacity, blur: blur),
-                    ),
-                    child: const Text('保存设置'),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-    if (result != null) {
-      await appState.setFloatingGlassNav(result.enabled);
-      await appState.setFloatingGlassNavAppearance(
-        opacity: result.opacity,
-        blur: result.blur,
-      );
-    }
-  }
-
-  Future<void> _pickComposeGlass() async {
-    final appState = AppState.instance;
-    var opacity = appState.composeGlassOpacity;
-    var blur = appState.composeGlassBlur;
+    var navEnabled = appState.floatingGlassNav;
+    var navOpacity = appState.floatingGlassNavOpacity;
+    var navBlur = appState.floatingGlassNavBlur;
+    var composeOpacity = appState.composeGlassOpacity;
+    var composeBlur = appState.composeGlassBlur;
     final scheme = Theme.of(context).colorScheme;
 
-    final result = await showModalBottomSheet<({double opacity, double blur})>(
+    final result = await showModalBottomSheet<({
+      bool navEnabled,
+      double navOpacity,
+      double navBlur,
+      double composeOpacity,
+      double composeBlur,
+    })>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
       builder: (sheetContext) => StatefulBuilder(
         builder: (context, setSheetState) => SafeArea(
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(20, 4, 20, 22 + MediaQuery.viewInsetsOf(context).bottom),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Center(
-                  child: Text('发帖按钮', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  '右下角发帖按钮使用液态玻璃材质，可调整透明度和背景模糊度，改动即时生效。',
-                  style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant, height: 1.5),
-                ),
-                const SizedBox(height: 14),
-                // 实时预览：玻璃按钮压在色块上，能直观看出模糊强度。
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(20),
-                  child: Container(
-                    height: 116,
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          scheme.primaryContainer,
-                          scheme.tertiaryContainer,
-                          scheme.secondaryContainer,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.86),
+            child: SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(20, 4, 20, 22 + MediaQuery.viewInsetsOf(context).bottom),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Center(
+                    child: Text('液态玻璃', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    '底栏和发帖按钮共用同一套玻璃材质，透明度和模糊度分开调，保存后立即生效。',
+                    style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant, height: 1.5),
+                  ),
+                  const SizedBox(height: 18),
+
+                  _glassSectionHeader(
+                    context,
+                    Icons.blur_on_rounded,
+                    '底部导航栏',
+                    '保持现有底栏形状，只换背景材质',
+                  ),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('启用液态玻璃悬浮底栏'),
+                    subtitle: const Text('关闭后恢复普通底部导航栏'),
+                    value: navEnabled,
+                    onChanged: (value) => setSheetState(() => navEnabled = value),
+                  ),
+                  _glassSlider(
+                    label: '玻璃透明度',
+                    value: navOpacity,
+                    min: 0.05,
+                    max: 0.65,
+                    divisions: 12,
+                    onChanged: (value) => setSheetState(() => navOpacity = value),
+                  ),
+                  _glassSlider(
+                    label: '背景模糊度',
+                    value: navBlur,
+                    min: 0,
+                    max: 40,
+                    divisions: 16,
+                    percent: false,
+                    onChanged: (value) => setSheetState(() => navBlur = value),
+                  ),
+
+                  const SizedBox(height: 18),
+                  Divider(height: 1, color: scheme.outlineVariant.withValues(alpha: 0.4)),
+                  const SizedBox(height: 18),
+
+                  _glassSectionHeader(
+                    context,
+                    Icons.auto_awesome_rounded,
+                    '发帖按钮',
+                    '右下角悬浮按钮的玻璃材质，可边调边看预览',
+                  ),
+                  const SizedBox(height: 12),
+                  // 实时预览：玻璃按钮压在色块上，能直观看出模糊强度。
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: Container(
+                      height: 104,
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            scheme.primaryContainer,
+                            scheme.tertiaryContainer,
+                            scheme.secondaryContainer,
+                          ],
+                        ),
+                      ),
+                      child: Stack(
+                        children: [
+                          Positioned(
+                            left: 18,
+                            top: 18,
+                            child: Container(
+                              width: 96,
+                              height: 11,
+                              decoration: BoxDecoration(
+                                color: scheme.onPrimaryContainer.withValues(alpha: 0.28),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            left: 18,
+                            top: 38,
+                            child: Container(
+                              width: 148,
+                              height: 11,
+                              decoration: BoxDecoration(
+                                color: scheme.onPrimaryContainer.withValues(alpha: 0.18),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            right: 18,
+                            bottom: 18,
+                            child: GlassComposeButton(
+                              opacity: composeOpacity,
+                              blur: composeBlur,
+                              onPressed: () {},
+                            ),
+                          ),
                         ],
                       ),
                     ),
-                    child: Stack(
-                      children: [
-                        Positioned(
-                          left: 18,
-                          top: 20,
-                          child: Container(
-                            width: 96,
-                            height: 12,
-                            decoration: BoxDecoration(
-                              color: scheme.onPrimaryContainer.withValues(alpha: 0.28),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                          ),
-                        ),
-                        Positioned(
-                          left: 18,
-                          top: 42,
-                          child: Container(
-                            width: 148,
-                            height: 12,
-                            decoration: BoxDecoration(
-                              color: scheme.onPrimaryContainer.withValues(alpha: 0.18),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                          ),
-                        ),
-                        Positioned(
-                          right: 20,
-                          bottom: 22,
-                          child: GlassComposeButton(
-                            opacity: opacity,
-                            blur: blur,
-                            onPressed: () {},
-                          ),
-                        ),
-                      ],
+                  ),
+                  const SizedBox(height: 8),
+                  _glassSlider(
+                    label: '玻璃透明度',
+                    value: composeOpacity,
+                    min: 0.05,
+                    max: 0.75,
+                    divisions: 14,
+                    onChanged: (value) => setSheetState(() => composeOpacity = value),
+                  ),
+                  _glassSlider(
+                    label: '背景模糊度',
+                    value: composeBlur,
+                    min: 0,
+                    max: 40,
+                    divisions: 16,
+                    percent: false,
+                    onChanged: (value) => setSheetState(() => composeBlur = value),
+                  ),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: () => setSheetState(() {
+                        composeOpacity = 0.28;
+                        composeBlur = 26;
+                      }),
+                      child: const Text('发帖按钮恢复默认'),
                     ),
                   ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    const Expanded(child: Text('玻璃透明度', style: TextStyle(fontWeight: FontWeight.w600))),
-                    Text('${(opacity * 100).round()}%'),
-                  ],
-                ),
-                Slider(
-                  value: opacity,
-                  min: 0.05,
-                  max: 0.75,
-                  divisions: 14,
-                  label: '${(opacity * 100).round()}%',
-                  onChanged: (value) => setSheetState(() => opacity = value),
-                ),
-                Row(
-                  children: [
-                    const Expanded(child: Text('背景模糊度', style: TextStyle(fontWeight: FontWeight.w600))),
-                    Text('${blur.round()}'),
-                  ],
-                ),
-                Slider(
-                  value: blur,
-                  min: 0,
-                  max: 40,
-                  divisions: 16,
-                  label: blur.round().toString(),
-                  onChanged: (value) => setSheetState(() => blur = value),
-                ),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton(
-                    onPressed: () => setSheetState(() {
-                      opacity = 0.28;
-                      blur = 26;
-                    }),
-                    child: const Text('恢复默认'),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton(
-                    onPressed: () => Navigator.pop(
-                      sheetContext,
-                      (opacity: opacity, blur: blur),
+                  const SizedBox(height: 4),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: () => Navigator.pop(
+                        sheetContext,
+                        (
+                          navEnabled: navEnabled,
+                          navOpacity: navOpacity,
+                          navBlur: navBlur,
+                          composeOpacity: composeOpacity,
+                          composeBlur: composeBlur,
+                        ),
+                      ),
+                      child: const Text('保存设置'),
                     ),
-                    child: const Text('保存设置'),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
       ),
     );
-    if (result != null) {
-      await appState.setComposeGlassAppearance(opacity: result.opacity, blur: result.blur);
-    }
+
+    if (result == null) return;
+    await appState.setFloatingGlassNav(result.navEnabled);
+    await appState.setFloatingGlassNavAppearance(
+      opacity: result.navOpacity,
+      blur: result.navBlur,
+    );
+    await appState.setComposeGlassAppearance(
+      opacity: result.composeOpacity,
+      blur: result.composeBlur,
+    );
+  }
+
+  /// 玻璃面板里的小节标题，图标 + 名称 + 一句解释，比纯文字分组好认。
+  Widget _glassSectionHeader(BuildContext context, IconData icon, String title, String desc) {
+    final scheme = Theme.of(context).colorScheme;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 30,
+          height: 30,
+          decoration: BoxDecoration(
+            color: scheme.primary.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(9),
+          ),
+          child: Icon(icon, size: 17, color: scheme.primary),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 2),
+              Text(desc, style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 一条「名称 + 数值 + 滑杆」，两个玻璃部位各用两条。
+  Widget _glassSlider({
+    required String label,
+    required double value,
+    required double min,
+    required double max,
+    required int divisions,
+    required ValueChanged<double> onChanged,
+    bool percent = true,
+  }) {
+    // 透明度按百分比显示，模糊度直接给数值，两者量纲不一样。
+    final text = percent ? '${(value * 100).round()}%' : value.round().toString();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+            ),
+            Text(text, style: const TextStyle(fontSize: 12.5)),
+          ],
+        ),
+        Slider(
+          value: value,
+          min: min,
+          max: max,
+          divisions: divisions,
+          label: text,
+          onChanged: onChanged,
+        ),
+      ],
+    );
   }
 
   Future<void> _pickThemeColor() async {
@@ -564,8 +603,7 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
                 _menuGroup(scheme, [
                   _MenuItem(Icons.palette_outlined, '主题外观', _pickTheme),
                   _MenuItem(Icons.color_lens_outlined, '主题颜色', _pickThemeColor),
-                  _MenuItem(Icons.blur_on_rounded, '底栏液态玻璃悬浮', _pickFloatingGlassNav),
-                  _MenuItem(Icons.auto_awesome_rounded, '发帖按钮液态玻璃', _pickComposeGlass),
+                  _MenuItem(Icons.blur_on_rounded, '液态玻璃', _pickLiquidGlass),
                   _MenuItem(Icons.info_outline_rounded, '关于本应用', () {
                     Navigator.of(context).push(appRoute(builder: (_) => const AboutPage()));
                   }),
@@ -732,25 +770,30 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.5)),
       ),
-      child: Column(
-        children: [
-          for (var i = 0; i < items.length; i++) ...[
-            if (i > 0) Divider(height: 1, color: scheme.outlineVariant.withValues(alpha: 0.45)),
-            ListTile(
-              leading: Icon(items[i].icon, size: 21, color: items[i].danger ? scheme.error : scheme.onSurfaceVariant),
-              title: Text(
-                items[i].label,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: items[i].danger ? scheme.error : scheme.onSurface,
+      child: Material(
+        // ListTile 的水波纹要画在最近的 Material 上，直接放在带背景色的
+        // DecoratedBox 里会被遮住（框架会因此报断言），垫一层透明的就行。
+        type: MaterialType.transparency,
+        child: Column(
+          children: [
+            for (var i = 0; i < items.length; i++) ...[
+              if (i > 0) Divider(height: 1, color: scheme.outlineVariant.withValues(alpha: 0.45)),
+              ListTile(
+                leading: Icon(items[i].icon, size: 21, color: items[i].danger ? scheme.error : scheme.onSurfaceVariant),
+                title: Text(
+                  items[i].label,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: items[i].danger ? scheme.error : scheme.onSurface,
+                  ),
                 ),
+                trailing: Icon(Icons.chevron_right_rounded, size: 20, color: scheme.outline),
+                onTap: items[i].onTap,
               ),
-              trailing: Icon(Icons.chevron_right_rounded, size: 20, color: scheme.outline),
-              onTap: items[i].onTap,
-            ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
