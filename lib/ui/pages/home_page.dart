@@ -177,53 +177,90 @@ class _HomePageState extends State<HomePage> {
   ///
   /// 单独拎出来交给 ThreadFeed 当吸顶条：往上滑时它贴在屏幕顶部，
   /// 翻到哪一页都能直接切分类，不用先滚回顶上。
+  ///
+  /// 样式是半透明玻璃：自身只铺一层很淡的白色渐变和一道高光描边，
+  /// 真正把帖子「虚化」的是 ThreadFeed 底板那层磨砂（pinnedHeaderFrost）。
   Widget _filterBar(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final dark = theme.brightness == Brightness.dark;
+    // 未选中项在玻璃上用半透明的浅色，太实会显得脏。
+    final idle = dark ? Colors.white.withValues(alpha: 0.62) : scheme.onSurfaceVariant;
+
     return Container(
       margin: const EdgeInsets.only(top: 4, bottom: 6),
-      padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: scheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.45)),
+        borderRadius: BorderRadius.circular(18),
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: dark
+              ? [Colors.white.withValues(alpha: 0.16), Colors.white.withValues(alpha: 0.05)]
+              : [Colors.white.withValues(alpha: 0.60), Colors.white.withValues(alpha: 0.30)],
+        ),
+        border: Border.all(color: Colors.white.withValues(alpha: dark ? 0.18 : 0.72)),
       ),
-      child: Row(
-        children: [
-          for (var i = 0; i < _views.length; i++)
-            Expanded(
-              child: GestureDetector(
-                onTap: () => setState(() => _selected = i),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 220),
-                  curve: Curves.easeOutCubic,
-                  padding: const EdgeInsets.symmetric(vertical: 9),
-                  decoration: BoxDecoration(
-                    color: _selected == i ? scheme.primary : Colors.transparent,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        _views[i].$3,
-                        size: 15,
-                        color: _selected == i ? Colors.white : scheme.onSurfaceVariant,
+      child: Padding(
+        padding: const EdgeInsets.all(4),
+        child: Row(
+          children: [
+            for (var i = 0; i < _views.length; i++)
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => setState(() => _selected = i),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 220),
+                    curve: Curves.easeOutCubic,
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(13),
+                      gradient: _selected == i
+                          ? LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                scheme.primary.withValues(alpha: 0.95),
+                                scheme.primary.withValues(alpha: 0.72),
+                              ],
+                            )
+                          : null,
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: _selected == i ? 0.34 : 0),
                       ),
-                      const SizedBox(width: 4),
-                      Text(
-                        _views[i].$1,
-                        style: TextStyle(
-                          fontSize: 12.5,
-                          fontWeight: _selected == i ? FontWeight.w700 : FontWeight.w600,
-                          color: _selected == i ? Colors.white : scheme.onSurfaceVariant,
+                      boxShadow: _selected == i
+                          ? [
+                              BoxShadow(
+                                color: scheme.primary.withValues(alpha: 0.28),
+                                blurRadius: 10,
+                                offset: const Offset(0, 3),
+                              ),
+                            ]
+                          : null,
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          _views[i].$3,
+                          size: 15,
+                          color: _selected == i ? Colors.white : idle,
                         ),
-                      ),
-                    ],
+                        const SizedBox(width: 4),
+                        Text(
+                          _views[i].$1,
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: _selected == i ? FontWeight.w700 : FontWeight.w600,
+                            color: _selected == i ? Colors.white : idle,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -239,6 +276,7 @@ class _HomePageState extends State<HomePage> {
           header: _header(context),
           pinnedHeader: _filterBar(context),
           pinnedHeaderHeight: 56,
+          pinnedHeaderFrost: 18,
           onRefresh: () => _loadAnnouncements(force: true),
           emptyText: '暂时没有内容，稍后再来看看',
           padding: const EdgeInsets.fromLTRB(14, 0, 14, 88),

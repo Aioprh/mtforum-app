@@ -17,6 +17,7 @@ Future<void> _pump(
   WidgetTester tester, {
   required ScrollController controller,
   VoidCallback? onTap,
+  double frost = 0,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
@@ -35,6 +36,7 @@ Future<void> _pump(
               ),
             ),
             pinnedHeaderHeight: 56,
+            pinnedHeaderFrost: frost,
             padding: const EdgeInsets.fromLTRB(14, 0, 14, 40),
           ),
         ),
@@ -92,5 +94,19 @@ void main() {
     await tester.tap(find.text('筛选条'));
     await tester.pump();
     expect(taps, 1);
+  });
+
+  testWidgets('开启磨砂后底板会做一层高斯模糊，条本身仍然钉住', (tester) async {
+    final controller = ScrollController();
+    addTearDown(controller.dispose);
+    await _pump(tester, controller: controller, frost: 18);
+
+    // 底板那层磨砂：BackdropFilter 只有在 frost > 0 时才挂。
+    expect(find.byType(BackdropFilter), findsOneWidget);
+
+    controller.jumpTo(700);
+    await tester.pumpAndSettle();
+    expect(find.text('筛选条'), findsOneWidget);
+    expect(tester.getTopLeft(find.text('筛选条')).dy, lessThan(56));
   });
 }

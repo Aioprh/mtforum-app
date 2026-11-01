@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 
 import '../../core/http_session.dart';
@@ -16,6 +18,7 @@ class ThreadFeed extends StatefulWidget {
     this.header,
     this.pinnedHeader,
     this.pinnedHeaderHeight = 56,
+    this.pinnedHeaderFrost = 0,
     this.emptyText = '这里还没有内容',
     this.enabled = true,
     this.padding = const EdgeInsets.fromLTRB(14, 8, 14, 24),
@@ -36,6 +39,12 @@ class ThreadFeed extends StatefulWidget {
   /// 吸顶条的高度。SliverPersistentHeader 需要提前知道占位高度，
   /// 所以这里必须是个固定值。
   final double pinnedHeaderHeight;
+
+  /// 吸顶条底板的磨砂强度，0 表示不磨砂（实色底）。
+  ///
+  /// 传正数时整条底板会做一层高斯模糊，帖子从下面滚过时会被虚化，
+  /// 配合吸顶条自己的半透明玻璃容器就是毛玻璃效果。
+  final double pinnedHeaderFrost;
 
   final String emptyText;
   final bool enabled;
@@ -245,6 +254,8 @@ class _ThreadFeedState extends State<ThreadFeed> {
           delegate: _PinnedHeaderDelegate(
             height: widget.pinnedHeaderHeight,
             background: Theme.of(context).scaffoldBackgroundColor,
+            frost: widget.pinnedHeaderFrost,
+            dividerColor: scheme.outlineVariant.withValues(alpha: 0.35),
             child: Padding(
               padding: EdgeInsets.only(
                 left: widget.padding.left,
@@ -324,11 +335,17 @@ class _PinnedHeaderDelegate extends SliverPersistentHeaderDelegate {
     required this.height,
     required this.background,
     required this.child,
+    this.frost = 0,
+    this.dividerColor = const Color(0x00000000),
   });
 
   final double height;
   final Color background;
   final Widget child;
+
+  /// 底板磨砂强度，>0 时底板改成「模糊 + 半透明」，让下面的帖子透上来。
+  final double frost;
+  final Color dividerColor;
 
   @override
   double get minExtent => height;
@@ -338,16 +355,30 @@ class _PinnedHeaderDelegate extends SliverPersistentHeaderDelegate {
 
   @override
   Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
-    return ClipRect(
-      child: ColoredBox(
-        color: background,
-        child: OverflowBox(
-          alignment: Alignment.center,
-          minHeight: 0,
-          maxHeight: 200,
-          child: child,
-        ),
+    final frosted = frost > 0;
+    final content = DecoratedBox(
+      decoration: BoxDecoration(
+        color: frosted ? background.withValues(alpha: 0.62) : background,
+        border: frosted
+            ? Border(bottom: BorderSide(color: dividerColor, width: 0.6))
+            : null,
       ),
+      child: OverflowBox(
+        alignment: Alignment.center,
+        minHeight: 0,
+        maxHeight: 200,
+        child: child,
+      ),
+    );
+    return ClipRect(
+      child: frosted
+          // 先模糊背后的滚动内容，再压一层半透明底色，不然帖子文字会穿过
+          // 筛选条看得清清楚楚。
+          ? BackdropFilter(
+              filter: ui.ImageFilter.blur(sigmaX: frost, sigmaY: frost, tileMode: TileMode.clamp),
+              child: content,
+            )
+          : content,
     );
   }
 
@@ -355,5 +386,7 @@ class _PinnedHeaderDelegate extends SliverPersistentHeaderDelegate {
   bool shouldRebuild(covariant _PinnedHeaderDelegate oldDelegate) =>
       oldDelegate.height != height ||
       oldDelegate.background != background ||
+      oldDelegate.frost != frost ||
+      oldDelegate.dividerColor != dividerColor ||
       oldDelegate.child != child;
 }
