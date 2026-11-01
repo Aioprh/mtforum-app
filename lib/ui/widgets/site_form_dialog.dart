@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'glass_controls.dart';
+
 import '../../data/models.dart';
 
 /// 把站点要求的表单字段渲染成原生输入项，确认后返回提交值。
@@ -119,57 +121,54 @@ class _SiteFormDialogState extends State<_SiteFormDialog> {
     );
   }
 
+  /// 选项值换成显示文案；值不在列表里时原样显示。
+  String _labelOf(MagicFormField field, String value) {
+    for (final option in field.options) {
+      if (option.value == value) return option.label;
+    }
+    return value;
+  }
+
   Widget _fieldInput(MagicFormField field) {
     switch (field.type) {
       case MagicFieldType.text:
         final numeric = field.name.contains('id') || field.name.contains('tid');
-        return TextField(
-          controller: _controllers[field.name],
+        return GlassField(
+          controller: _controllers[field.name]!,
           keyboardType: numeric ? TextInputType.number : TextInputType.text,
           textInputAction: TextInputAction.next,
-          decoration: InputDecoration(
-            isDense: true,
-            hintText: field.label.isEmpty ? field.name : field.label,
-            border: const OutlineInputBorder(),
-          ),
+          hintText: field.label.isEmpty ? field.name : field.label,
         );
       case MagicFieldType.textarea:
-        return TextField(
-          controller: _controllers[field.name],
+        return GlassField(
+          controller: _controllers[field.name]!,
           maxLines: 3,
-          decoration: InputDecoration(
-            isDense: true,
-            hintText: field.label.isEmpty ? field.name : field.label,
-            border: const OutlineInputBorder(),
-          ),
+          hintText: field.label.isEmpty ? field.name : field.label,
         );
       case MagicFieldType.radio:
         final selected = _choices[field.name] ?? field.value;
-        return SegmentedButton<String>(
-          segments: [
-            for (final option in field.options)
-              ButtonSegment(value: option.value, label: Text(option.label)),
-          ],
-          selected: {selected},
-          showSelectedIcon: false,
-          style: const ButtonStyle(
-            visualDensity: VisualDensity.compact,
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          ),
-          onSelectionChanged: (value) => setState(() => _choices[field.name] = value.first),
+        return GlassSegmented<String>(
+          segments: [for (final option in field.options) (option.value, option.label)],
+          value: selected,
+          dense: true,
+          expand: field.options.length <= 3,
+          onChanged: (value) => setState(() => _choices[field.name] = value),
         );
       case MagicFieldType.select:
-        return DropdownButtonFormField<String>(
-          initialValue: _choices[field.name],
-          isDense: true,
-          decoration: const InputDecoration(isDense: true, border: OutlineInputBorder()),
-          items: [
-            for (final option in field.options)
-              DropdownMenuItem(value: option.value, child: Text(option.label)),
-          ],
-          onChanged: (value) {
-            if (value == null) return;
-            setState(() => _choices[field.name] = value);
+        final fallback = field.options.isEmpty ? '' : field.options.first.value;
+        final selected = _choices[field.name] ?? (field.value.isEmpty ? fallback : field.value);
+        return GlassSelectRow(
+          value: _labelOf(field, selected),
+          leading: Icons.list_alt_rounded,
+          onTap: () async {
+            final picked = await showGlassOptionSheet<String>(
+              context,
+              title: field.label.isEmpty ? field.name : field.label,
+              options: [for (final option in field.options) (option.value, option.label)],
+              selected: selected,
+            );
+            if (picked == null || !mounted) return;
+            setState(() => _choices[field.name] = picked);
           },
         );
     }

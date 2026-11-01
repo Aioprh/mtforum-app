@@ -4,6 +4,7 @@ import '../../core/http_session.dart';
 import '../../data/models.dart';
 import '../../state/app_state.dart';
 import '../widgets/glass_app_bar.dart';
+import '../widgets/glass_controls.dart';
 import '../widgets/measure_height.dart';
 import '../widgets/state_views.dart';
 import '../widgets/thread_glass.dart';
@@ -320,22 +321,12 @@ class _PmChatPageState extends State<PmChatPage> {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Expanded(
-                child: TextField(
+                child: GlassField(
                   controller: _input,
                   minLines: 1,
                   maxLines: 4,
                   textInputAction: TextInputAction.newline,
-                  decoration: InputDecoration(
-                    hintText: '输入私信内容…',
-                    isDense: true,
-                    filled: true,
-                    fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.45),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(18),
-                      borderSide: BorderSide.none,
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  ),
+                  hintText: '输入私信内容…',
                 ),
               ),
               const SizedBox(width: 6),

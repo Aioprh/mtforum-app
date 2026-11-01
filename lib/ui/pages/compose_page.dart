@@ -756,7 +756,7 @@ class _ComposePageState extends State<ComposePage> {
 
   List<Widget> _content(ColorScheme scheme) {
     return [
-      _modeTabs(scheme),
+      _modeTabs(),
       const SizedBox(height: 12),
       if (_loadingBoards)
         const Padding(
@@ -903,52 +903,12 @@ class _ComposePageState extends State<ComposePage> {
   }
 
   /// 帖子 / 投票的切换。
-  ///
-  /// 原来是两段带下划线的文字 tab，下方再压一条分割线，看着像网页里的
-  /// 选项卡。改成玻璃分段控件：一整块淡玻璃，选中那段浮起来。
-  Widget _modeTabs(ColorScheme scheme) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    Widget seg(String label, bool active, VoidCallback onTap) {
-      return Expanded(
-        child: Material(
-          color: active
-              ? scheme.primary.withValues(alpha: isDark ? 0.26 : 0.14)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(999),
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            onTap: onTap,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 9),
-              child: Text(
-                label,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 13.5,
-                  fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-                  color: active ? scheme.primary : scheme.onSurfaceVariant,
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: isDark ? 0.07 : 0.36),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: ThreadGlass.borderColor(context)),
-      ),
-      child: Row(
-        children: [
-          seg('发表帖子', !_poll, () => setState(() => _poll = false)),
-          seg('发投票', _poll, () => setState(() => _poll = true)),
-        ],
-      ),
+  Widget _modeTabs() {
+    return GlassSegmented<bool>(
+      segments: const [(false, '发表帖子'), (true, '发投票')],
+      value: _poll,
+      expand: true,
+      onChanged: (value) => setState(() => _poll = value),
     );
   }
 

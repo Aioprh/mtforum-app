@@ -15,6 +15,7 @@ import '../../data/forum_repository.dart';
 import '../../data/models.dart';
 import '../../state/app_state.dart';
 import '../widgets/glass_app_bar.dart';
+import '../widgets/glass_controls.dart';
 import '../widgets/measure_height.dart';
 import '../widgets/emoji_panel.dart';
 import '../widgets/post_html_view.dart';
@@ -2264,18 +2265,14 @@ class _CommentSheetState extends State<_CommentSheet> {
                 ),
               ],
             ),
-            TextField(
+            GlassField(
               controller: _controller,
               autofocus: true,
               minLines: 1,
               maxLines: 4,
               maxLength: 200,
               textInputAction: TextInputAction.newline,
-              decoration: InputDecoration(
-                hintText: widget.hint,
-                isDense: true,
-                border: const OutlineInputBorder(),
-              ),
+              hintText: widget.hint,
             ),
             const SizedBox(height: 4),
             Text(
@@ -2575,35 +2572,13 @@ class _EditPostPageState extends State<_EditPostPage> {
           padding: const EdgeInsets.fromLTRB(18, 10, 18, 20),
           children: [
             if (widget.isOp) ...[
-              Text('主题标题', style: TextStyle(
-                color: scheme.onSurfaceVariant,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              )),
-              const SizedBox(height: 8),
-              TextField(
+              GlassField(
                 controller: _subject,
+                label: '主题标题',
+                hintText: '请输入主题标题',
+                leading: Icons.title_rounded,
                 maxLength: 80,
                 textCapitalization: TextCapitalization.sentences,
-                decoration: InputDecoration(
-                  hintText: '请输入主题标题',
-                  counterText: '',
-                  prefixIcon: const Icon(Icons.title_rounded),
-                  filled: true,
-                  fillColor: scheme.surfaceContainerLow,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(18),
-                    borderSide: BorderSide.none,
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(18),
-                    borderSide: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.55)),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(18),
-                    borderSide: BorderSide(color: scheme.primary, width: 1.4),
-                  ),
-                ),
               ),
               const SizedBox(height: 24),
             ],
@@ -2623,13 +2598,9 @@ class _EditPostPageState extends State<_EditPostPage> {
               ],
             ),
             const SizedBox(height: 8),
-            Container(
-              decoration: BoxDecoration(
-                color: scheme.surfaceContainerLow,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.7)),
-              ),
-              clipBehavior: Clip.antiAlias,
+            GlassCard(
+              radius: 18,
+              color: scheme.surfaceContainerLow,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -2755,8 +2726,14 @@ class _EditPostPageState extends State<_EditPostPage> {
         final friends = _friends.where((f) => key.isEmpty || f.username.toLowerCase().contains(key)).take(12);
         return shell(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
-            Expanded(child: TextField(controller: _mentionController, onChanged: (_) => setState(() {}),
-              decoration: const InputDecoration(hintText: '搜索好友或输入用户名', isDense: true, prefixIcon: Icon(Icons.search), border: OutlineInputBorder()))),
+            Expanded(
+              child: GlassField(
+                controller: _mentionController,
+                hintText: '搜索好友或输入用户名',
+                leading: Icons.search_rounded,
+                onChanged: (_) => setState(() {}),
+              ),
+            ),
             const SizedBox(width: 8),
             FilledButton(
               onPressed: _insertEditMention,
@@ -2813,13 +2790,20 @@ class _EditPostPageState extends State<_EditPostPage> {
           ]),
           if (isLink || isMedia) ...[
             const SizedBox(height: 12),
-            TextField(controller: _insertUrlController, keyboardType: TextInputType.url,
-              decoration: InputDecoration(labelText: isLink ? '链接网址' : '链接 / 媒体地址',
-                hintText: 'https://', isDense: true, border: const OutlineInputBorder())),
+            GlassField(
+              controller: _insertUrlController,
+              label: isLink ? '链接网址' : '链接 / 媒体地址',
+              hintText: 'https://',
+              leading: Icons.link_rounded,
+              keyboardType: TextInputType.url,
+            ),
             if (isLink) ...[
               const SizedBox(height: 10),
-              TextField(controller: _insertLabelController,
-                decoration: const InputDecoration(labelText: '链接文字（可留空）', isDense: true, border: OutlineInputBorder())),
+              GlassField(
+                controller: _insertLabelController,
+                label: '链接文字（可留空）',
+                leading: Icons.title_rounded,
+              ),
             ],
             const SizedBox(height: 10),
             SizedBox(width: double.infinity, child: FilledButton.icon(
@@ -2955,16 +2939,12 @@ class _ReportSheetState extends State<ReportSheet> {
               ),
             ),
           const SizedBox(height: 6),
-          TextField(
+          GlassField(
             controller: _controller,
             minLines: 1,
             maxLines: 3,
             maxLength: 120,
-            decoration: const InputDecoration(
-              hintText: '补充说明（可选）',
-              isDense: true,
-              border: OutlineInputBorder(),
-            ),
+            hintText: '补充说明（可选）',
           ),
           SizedBox(
             width: double.infinity,
@@ -3090,18 +3070,12 @@ class _RateSheetState extends State<_RateSheet> {
             const SizedBox(height: 4),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: TextField(
+              child: GlassField(
                 controller: _reason,
                 minLines: 1,
                 maxLines: 3,
                 maxLength: 100,
-                style: const TextStyle(fontSize: 14),
-                decoration: const InputDecoration(
-                  hintText: '说两句鼓励一下吧…',
-                  counterText: '',
-                  isDense: true,
-                  border: UnderlineInputBorder(),
-                ),
+                hintText: '说两句鼓励一下吧…',
               ),
             ),
             SwitchListTile(
@@ -3160,30 +3134,27 @@ class _RateSheetState extends State<_RateSheet> {
       child: Row(
         children: [
           Text(field.label, style: const TextStyle(fontSize: 14.5)),
-          const SizedBox(width: 10),
-          Expanded(
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<int>(
-                value: value,
-                isDense: true,
-                isExpanded: true,
-                icon: Icon(Icons.keyboard_arrow_down_rounded, size: 20, color: scheme.outline),
-                style: TextStyle(
-                  fontSize: 15,
-                  color: exhausted ? scheme.outline : scheme.onSurface,
-                  fontWeight: FontWeight.w700,
-                ),
-                items: [
-                  for (final score in options)
-                    DropdownMenuItem<int>(value: score, child: Text('$score')),
-                ],
-                onChanged: exhausted
-                    ? null
-                    : (score) => setState(() => _scores[field.id] = score ?? 0),
-              ),
+          const Spacer(),
+          SizedBox(
+            width: 92,
+            child: GlassSelectRow(
+              dense: true,
+              value: exhausted ? '—' : '$value',
+              onTap: exhausted
+                  ? () {}
+                  : () async {
+                      final picked = await showGlassOptionSheet<int>(
+                        context,
+                        title: field.label,
+                        options: [for (final score in options) (score, '$score')],
+                        selected: value,
+                      );
+                      if (picked == null || !mounted) return;
+                      setState(() => _scores[field.id] = picked);
+                    },
             ),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: 8),
           Text(
             exhausted ? '已用完' : '剩 ${field.left}',
             style: TextStyle(

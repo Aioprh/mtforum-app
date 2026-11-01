@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import '../../mcp/keep_alive.dart';
 import '../../mcp/mcp_server.dart';
 import '../widgets/glass_app_bar.dart';
+import '../widgets/glass_controls.dart';
 
 /// MCP 服务控制台：开关、地址、token、客户端配置与调用日志。
 class McpPage extends StatefulWidget {
@@ -52,14 +53,26 @@ class _McpPageState extends State<McpPage> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('服务端口'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          keyboardType: TextInputType.number,
-          decoration: const InputDecoration(
-            hintText: '1024 - 65535',
-            helperText: '换端口后需要重新同步客户端配置',
-          ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            GlassField(
+              controller: controller,
+              autofocus: true,
+              keyboardType: TextInputType.number,
+              hintText: '1024 - 65535',
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '换端口后需要重新同步客户端配置',
+              style: TextStyle(
+                fontSize: 11.5,
+                height: 1.5,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
         ),
         actions: [
           TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('取消')),

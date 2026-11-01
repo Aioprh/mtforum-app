@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/http_session.dart';
 import '../../data/models.dart';
 import '../../state/app_state.dart';
+import '../widgets/glass_controls.dart';
 import 'user_list_page.dart';
 
 /// 当前账号关注的用户列表。
@@ -90,11 +91,12 @@ class FollowingPage extends StatelessWidget {
       context: context,
       builder: (context) => AlertDialog(
         title: Text('备注：${user.username}'),
-        content: TextField(
+        content: GlassField(
           controller: controller,
           autofocus: true,
           maxLength: 30,
-          decoration: const InputDecoration(labelText: '备注名称', hintText: '输入备注'),
+          label: '备注名称',
+          hintText: '输入备注',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),

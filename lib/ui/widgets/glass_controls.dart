@@ -219,6 +219,88 @@ class _GlassSearchFieldState extends State<GlassSearchField> {
   }
 }
 
+/// 玻璃分段控件：二到六段的小切换（全部/热销、道具分类、帖子/投票）。
+///
+/// 原来是 Material 的 `SegmentedButton`：直角块、选中态是一条描边轮廓，
+/// 放在玻璃卡片旁边像两个时代的东西。这里做成「一整块淡玻璃 + 选中那段
+/// 浮起」，和 [GlassPill] 同一套观感。
+class GlassSegmented<T> extends StatelessWidget {
+  const GlassSegmented({
+    super.key,
+    required this.segments,
+    required this.value,
+    required this.onChanged,
+    this.expand = false,
+    this.dense = false,
+  });
+
+  /// 值 + 显示文案，按顺序渲染。
+  final List<(T, String)> segments;
+  final T value;
+
+  /// 传 null 表示整组禁用。
+  final ValueChanged<T>? onChanged;
+
+  /// 每段等分容器宽度；为 false 时整组宽度随内容收缩。
+  final bool expand;
+  final bool dense;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final enabled = onChanged != null;
+    final radius = BorderRadius.circular(999);
+
+    Widget seg(T key, String label) {
+      final active = key == value;
+      final fg = !enabled
+          ? scheme.onSurfaceVariant.withValues(alpha: 0.45)
+          : active
+              ? scheme.primary
+              : scheme.onSurfaceVariant;
+      final body = Material(
+        color: active
+            ? scheme.primary.withValues(alpha: isDark ? 0.26 : 0.14)
+            : Colors.transparent,
+        borderRadius: radius,
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: enabled ? () => onChanged!(key) : null,
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: dense ? 10 : 13, vertical: dense ? 6 : 8),
+            child: Text(
+              label,
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: dense ? 12 : 13.5,
+                fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                color: fg,
+              ),
+            ),
+          ),
+        ),
+      );
+      return expand ? Expanded(child: body) : body;
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: isDark ? 0.07 : 0.36),
+        borderRadius: radius,
+        border: Border.all(color: ThreadGlass.borderColor(context)),
+      ),
+      child: Row(
+        mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
+        children: [for (final s in segments) seg(s.$1, s.$2)],
+      ),
+    );
+  }
+}
+
 /// 玻璃表单输入框：发帖、登录这类表单页的通用输入行。
 ///
 /// 这些页面原来直接用 Material 默认的 [InputDecoration]：底下一道下划线、
@@ -244,6 +326,7 @@ class GlassField extends StatefulWidget {
     this.autofocus = false,
     this.focusNode,
     this.obscureText = false,
+    this.textCapitalization = TextCapitalization.none,
   });
 
   final TextEditingController controller;
@@ -269,6 +352,7 @@ class GlassField extends StatefulWidget {
   final bool autofocus;
   final FocusNode? focusNode;
   final bool obscureText;
+  final TextCapitalization textCapitalization;
 
   @override
   State<GlassField> createState() => _GlassFieldState();
@@ -358,6 +442,7 @@ class _GlassFieldState extends State<GlassField> {
               enabled: widget.enabled,
               autofocus: widget.autofocus,
               obscureText: widget.obscureText,
+              textCapitalization: widget.textCapitalization,
               minLines: widget.minLines,
               maxLines: widget.maxLines,
               maxLength: widget.maxLength,
@@ -433,6 +518,7 @@ class GlassSelectRow extends StatelessWidget {
     this.leading,
     this.placeholder = '未选择',
     this.label,
+    this.dense = false,
   });
 
   final String? value;
@@ -440,6 +526,9 @@ class GlassSelectRow extends StatelessWidget {
   final IconData? leading;
   final String placeholder;
   final String? label;
+
+  /// 压缩上下留白，用在行内（一行里还有别的文字）而不是独立表单行。
+  final bool dense;
 
   @override
   Widget build(BuildContext context) {
@@ -457,13 +546,15 @@ class GlassSelectRow extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(13, 13, 10, 13),
+          padding: dense
+              ? const EdgeInsets.fromLTRB(11, 8, 8, 8)
+              : const EdgeInsets.fromLTRB(13, 13, 10, 13),
           child: Row(
             children: [
               if (leading != null) ...[
                 Icon(
                   leading,
-                  size: 18,
+                  size: dense ? 16 : 18,
                   color: scheme.onSurfaceVariant.withValues(alpha: 0.9),
                 ),
                 const SizedBox(width: 8),
@@ -482,7 +573,7 @@ class GlassSelectRow extends StatelessWidget {
               ),
               Icon(
                 Icons.unfold_more_rounded,
-                size: 18,
+                size: dense ? 16 : 18,
                 color: scheme.onSurfaceVariant.withValues(alpha: 0.75),
               ),
             ],

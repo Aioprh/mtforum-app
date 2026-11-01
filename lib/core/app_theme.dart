@@ -21,6 +21,7 @@ class AppTheme {
   static ThemeData _base(ColorScheme scheme, Color background) {
     final isDark = scheme.brightness == Brightness.dark;
     final surface = isDark ? const Color(0xFF151A21) : Colors.white;
+    final inputStroke = isDark ? const Color(0xFF2A323C) : const Color(0xFFE4E8EC);
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme.copyWith(surface: surface),
@@ -67,20 +68,38 @@ class AppTheme {
               color: states.contains(WidgetState.selected) ? scheme.primary : scheme.onSurfaceVariant,
             )),
       ),
+      // 全局兜底：万一还有没走 GlassField 的输入框，也不至于冒出 Material
+      // 的下划线或方框。数值和 GlassField 对齐（14 圆角、发丝描边、淡白底）。
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: isDark ? const Color(0xFF1B222B) : const Color(0xFFF2F4F7),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: scheme.primary, width: 1.4),
+        fillColor: Colors.white.withValues(alpha: isDark ? 0.08 : 0.44),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: inputStroke, width: 0.9),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: inputStroke, width: 0.9),
+        ),
+        disabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: inputStroke, width: 0.9),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(
+            color: scheme.primary.withValues(alpha: isDark ? 0.55 : 0.42),
+            width: 1.2,
+          ),
+        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          minimumSize: const Size.fromHeight(50),
+          // 宽度随内容：`Size.fromHeight` 的宽是无穷大，会让对话框 actions
+          // 里的按钮各占一行——「取消」单独一行、「确认」撑满下一行。
+          // 需要通栏的页面自己指定 Size.fromHeight。
+          minimumSize: const Size(64, 50),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
         ),

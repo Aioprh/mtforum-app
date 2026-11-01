@@ -188,19 +188,12 @@ class _MagicShopTabState extends State<_MagicShopTab> with AutomaticKeepAliveCli
             children: [
               _sectionTitle(scheme, '道具商店', '${_items.length} 件'),
               const Spacer(),
-              SegmentedButton<bool>(
-                segments: const [
-                  ButtonSegment(value: false, label: Text('全部')),
-                  ButtonSegment(value: true, label: Text('热销')),
-                ],
-                selected: {_hot},
-                showSelectedIcon: false,
-                style: const ButtonStyle(
-                  visualDensity: VisualDensity.compact,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                onSelectionChanged: (value) {
-                  setState(() => _hot = value.first);
+              GlassSegmented<bool>(
+                segments: const [(false, '全部'), (true, '热销')],
+                value: _hot,
+                dense: true,
+                onChanged: (value) {
+                  setState(() => _hot = value);
                   _load();
                 },
               ),
@@ -667,19 +660,12 @@ class _MagicLogTabState extends State<_MagicLogTab> with AutomaticKeepAliveClien
               Expanded(
                 child: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
-                  child: SegmentedButton<String>(
-                    segments: [
-                      for (final entry in _types)
-                        ButtonSegment(value: entry.$1, label: Text(entry.$2)),
-                    ],
-                    selected: {_type},
-                    showSelectedIcon: false,
-                    style: const ButtonStyle(
-                      visualDensity: VisualDensity.compact,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                    onSelectionChanged: (value) {
-                      setState(() => _type = value.first);
+                  child: GlassSegmented<String>(
+                    segments: [for (final entry in _types) (entry.$1, entry.$2)],
+                    value: _type,
+                    dense: true,
+                    onChanged: (value) {
+                      setState(() => _type = value);
                       _load();
                     },
                   ),
@@ -878,26 +864,19 @@ class _MagicActionDialogState extends State<_MagicActionDialog> {
             ),
             if (widget.needUser) ...[
               const SizedBox(height: 10),
-              TextField(
+              GlassField(
                 controller: _userController,
+                label: '接收人用户名',
+                leading: Icons.person_outline_rounded,
                 textInputAction: TextInputAction.next,
-                decoration: const InputDecoration(
-                  labelText: '接收人用户名',
-                  isDense: true,
-                  border: OutlineInputBorder(),
-                ),
               ),
             ],
             if (widget.needMessage) ...[
               const SizedBox(height: 10),
-              TextField(
+              GlassField(
                 controller: _messageController,
+                label: '留言（可选）',
                 maxLines: 2,
-                decoration: const InputDecoration(
-                  labelText: '留言（可选）',
-                  isDense: true,
-                  border: OutlineInputBorder(),
-                ),
               ),
             ],
             if (_error != null) ...[

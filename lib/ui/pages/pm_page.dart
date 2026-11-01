@@ -4,6 +4,7 @@ import '../../core/http_session.dart';
 import '../../data/forum_repository.dart';
 import '../widgets/user_avatar.dart';
 import '../widgets/glass_app_bar.dart';
+import '../widgets/glass_controls.dart';
 
 /// 站内私信：给指定用户发送一条私信。
 class PmPage extends StatefulWidget {
@@ -112,16 +113,12 @@ class _PmPageState extends State<PmPage> {
                 padding: const EdgeInsets.only(bottom: 12),
                 child: Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12.5)),
               ),
-            TextField(
+            GlassField(
               controller: _controller,
               minLines: 6,
               maxLines: 12,
               maxLength: 500,
-              decoration: const InputDecoration(
-                hintText: '输入私信内容…',
-                border: OutlineInputBorder(),
-                alignLabelWithHint: true,
-              ),
+              hintText: '输入私信内容…',
             ),
             const SizedBox(height: 8),
             FilledButton.icon(
