@@ -48,12 +48,11 @@ void main() {
     final bg = container.decoration as BoxDecoration?;
     expect(bg?.border, isNull);
 
-    // 顶部高光要避开描边占的那 1.2，否则又会把线洗白。
-    final glow = tester.widget<Positioned>(
-      find.byWidgetPredicate(
-        (w) => w is Positioned && w.top != null && w.left == 24 && w.right == 24,
-      ),
+    // 描边内侧不能再画一条高光：白色亮边贴在描边下面，浅色模式下就是
+    // 「胶囊里还有一条线」。
+    final glow = find.byWidgetPredicate(
+      (w) => w is Positioned && w.top != null && w.left == 24 && w.right == 24,
     );
-    expect(glow.top!, greaterThanOrEqualTo(fg.border!.top.width));
+    expect(glow, findsNothing);
   });
 }

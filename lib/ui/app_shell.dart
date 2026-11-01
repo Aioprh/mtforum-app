@@ -179,31 +179,6 @@ class _AppShellState extends State<AppShell> {
               ),
               child: Stack(
                 children: [
-                  // 顶部柔和高光，让玻璃边缘更有通透感。
-                  //
-                  // 往下让开 1.2：贴着描边画会把它盖成白色，浅色模式下顶边
-                  // 中间一段就像断了。高光只做描边内侧的一层亮边。
-                  Positioned(
-                    left: 24,
-                    right: 24,
-                    top: 1.2,
-                    child: IgnorePointer(
-                      child: Container(
-                        height: 1,
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [
-                              Colors.transparent,
-                              Colors.white.withValues(
-                                alpha: isDark ? 0.18 : 0.50,
-                              ),
-                              Colors.transparent,
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
                   Padding(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 7,
