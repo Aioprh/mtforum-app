@@ -14,6 +14,8 @@ class ThreadFeed extends StatefulWidget {
     super.key,
     required this.loader,
     this.header,
+    this.pinnedHeader,
+    this.pinnedHeaderHeight = 56,
     this.emptyText = '这里还没有内容',
     this.enabled = true,
     this.padding = const EdgeInsets.fromLTRB(14, 8, 14, 24),
@@ -24,6 +26,17 @@ class ThreadFeed extends StatefulWidget {
 
   final Future<List<ThreadSummary>> Function(int page) loader;
   final Widget? header;
+
+  /// 会吸顶的横条：随列表上滑，滚到顶部后钉住不再消失。
+  ///
+  /// 和 [header] 的区别在于它单独占一个 sliver，滚动到顶端后贴在屏幕上方，
+  /// 适合放「最新 / 热门 / 精华」这类需要随时切换的筛选条。
+  final Widget? pinnedHeader;
+
+  /// 吸顶条的高度。SliverPersistentHeader 需要提前知道占位高度，
+  /// 所以这里必须是个固定值。
+  final double pinnedHeaderHeight;
+
   final String emptyText;
   final bool enabled;
   final EdgeInsets padding;
@@ -166,79 +179,130 @@ class _ThreadFeedState extends State<ThreadFeed> {
         ),
       );
 
+  /// 列表尾部的状态：空、出错、加载中、到底。
+  Widget _tail(ColorScheme scheme, bool showSkeleton) {
+    if (_items.isEmpty && _initialized && _error == null) {
+      return SizedBox(
+        height: 320,
+        child: EmptyView(text: widget.emptyText),
+      );
+    }
+    if (_error != null) {
+      return ErrorView(
+        message: _error!,
+        compact: _items.isNotEmpty,
+        onRetry: () {
+          if (_items.isEmpty) {
+            _loadFirst();
+          } else {
+            _loadMore();
+          }
+        },
+      );
+    }
+    if (_loading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 20),
+        child: Center(
+          child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)),
+        ),
+      );
+    }
+    if (!_hasMore && _items.isNotEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 18),
+        child: Center(
+          child: Text('— 已经到底啦 —', style: TextStyle(fontSize: 11.5, color: scheme.outline)),
+        ),
+      );
+    }
+    return const SizedBox(height: 20);
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final showSkeleton = _loading && _items.isEmpty && _error == null;
 
+    // header 与吸顶条各自占一个 sliver，列表项放进 SliverPadding，
+    // 这样吸顶条能独立钉在顶部，不会跟着帖子一起滚走。
+    final slivers = <Widget>[
+      if (widget.header != null)
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              widget.padding.left,
+              widget.padding.top,
+              widget.padding.right,
+              0,
+            ),
+            child: widget.header,
+          ),
+        ),
+      if (widget.pinnedHeader != null)
+        SliverPersistentHeader(
+          pinned: true,
+          delegate: _PinnedHeaderDelegate(
+            height: widget.pinnedHeaderHeight,
+            background: Theme.of(context).scaffoldBackgroundColor,
+            child: Padding(
+              padding: EdgeInsets.only(
+                left: widget.padding.left,
+                right: widget.padding.right,
+              ),
+              child: widget.pinnedHeader,
+            ),
+          ),
+        ),
+      SliverPadding(
+        padding: EdgeInsets.fromLTRB(
+          widget.padding.left,
+          0,
+          widget.padding.right,
+          widget.padding.bottom,
+        ),
+        sliver: SliverList(
+          delegate: SliverChildBuilderDelegate(
+            (context, index) {
+              if (showSkeleton) {
+                if (index < 5) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _skeletonCard(scheme),
+                  );
+                }
+                return _tail(scheme, showSkeleton);
+              }
+
+              if (index < _items.length) {
+                final thread = _items[index];
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 11),
+                  child: ThreadCard(
+                    thread: thread,
+                    onDoubleTap:
+                        widget.doubleTapToTop && _farFromTop ? () => scrollToTop(_scroll) : null,
+                    onTap: () => Navigator.of(context).push(
+                      appRoute(builder: (_) => ThreadPage(tid: thread.tid, title: thread.title)),
+                    ),
+                  ),
+                );
+              }
+              return _tail(scheme, showSkeleton);
+            },
+            childCount: (showSkeleton ? 5 : _items.length) + 1,
+          ),
+        ),
+      ),
+    ];
+
     final feed = RefreshIndicator(
       onRefresh: _refresh,
       edgeOffset: widget.header == null ? 0 : 8,
-      child: ListView.builder(
+      child: CustomScrollView(
         controller: _scroll,
         physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-        padding: widget.padding,
-        itemCount: 1 + (showSkeleton ? 5 : _items.length) + 1,
-        itemBuilder: (context, index) {
-          if (index == 0) return widget.header ?? const SizedBox.shrink();
-
-          if (showSkeleton) {
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: _skeletonCard(scheme),
-            );
-          }
-
-          final itemIndex = index - 1;
-          if (itemIndex < _items.length) {
-            final thread = _items[itemIndex];
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 11),
-              child: ThreadCard(
-                thread: thread,
-                onDoubleTap: widget.doubleTapToTop && _farFromTop ? () => scrollToTop(_scroll) : null,
-                onTap: () => Navigator.of(context).push(
-                  appRoute(builder: (_) => ThreadPage(tid: thread.tid, title: thread.title)),
-                ),
-              ),
-            );
-          }
-
-          if (_items.isEmpty && _initialized && _error == null) {
-            return SizedBox(
-              height: 320,
-              child: EmptyView(text: widget.emptyText),
-            );
-          }
-          if (_error != null) {
-            return ErrorView(
-              message: _error!,
-              compact: _items.isNotEmpty,
-              onRetry: () {
-                if (_items.isEmpty) {
-                  _loadFirst();
-                } else {
-                  _loadMore();
-                }
-              },
-            );
-          }
-          if (_loading) {
-            return const Padding(
-              padding: EdgeInsets.symmetric(vertical: 20),
-              child: Center(child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))),
-            );
-          }
-          if (!_hasMore && _items.isNotEmpty) {
-            return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 18),
-              child: Center(
-                child: Text('— 已经到底啦 —', style: TextStyle(fontSize: 11.5, color: scheme.outline)),
-              ),
-            );
-          }
-          return const SizedBox(height: 20);
-        },
+        slivers: slivers,
       ),
     );
 
@@ -249,4 +313,47 @@ class _ThreadFeedState extends State<ThreadFeed> {
       child: feed,
     );
   }
+}
+
+/// 固定高度的吸顶条。
+///
+/// 用 OverflowBox 把内容按自然高度居中，超出部分裁掉——系统字体放大时
+/// 筛选条不会报 RenderFlex overflow，只是上下各裁掉一点。
+class _PinnedHeaderDelegate extends SliverPersistentHeaderDelegate {
+  _PinnedHeaderDelegate({
+    required this.height,
+    required this.background,
+    required this.child,
+  });
+
+  final double height;
+  final Color background;
+  final Widget child;
+
+  @override
+  double get minExtent => height;
+
+  @override
+  double get maxExtent => height;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return ClipRect(
+      child: ColoredBox(
+        color: background,
+        child: OverflowBox(
+          alignment: Alignment.center,
+          minHeight: 0,
+          maxHeight: 200,
+          child: child,
+        ),
+      ),
+    );
+  }
+
+  @override
+  bool shouldRebuild(covariant _PinnedHeaderDelegate oldDelegate) =>
+      oldDelegate.height != height ||
+      oldDelegate.background != background ||
+      oldDelegate.child != child;
 }

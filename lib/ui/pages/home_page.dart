@@ -169,54 +169,62 @@ class _HomePageState extends State<HomePage> {
           ),
           const SizedBox(height: 12),
         ],
-        Container(
-          padding: const EdgeInsets.all(4),
-          decoration: BoxDecoration(
-            color: scheme.surface,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.45)),
-          ),
-          child: Row(
-            children: [
-              for (var i = 0; i < _views.length; i++)
-                Expanded(
-                  child: GestureDetector(
-                    onTap: () => setState(() => _selected = i),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 220),
-                      curve: Curves.easeOutCubic,
-                      padding: const EdgeInsets.symmetric(vertical: 9),
-                      decoration: BoxDecoration(
-                        color: _selected == i ? scheme.primary : Colors.transparent,
-                        borderRadius: BorderRadius.circular(12),
+      ],
+    );
+  }
+
+  /// 「最新 / 回复 / 热门 / 精华」筛选条。
+  ///
+  /// 单独拎出来交给 ThreadFeed 当吸顶条：往上滑时它贴在屏幕顶部，
+  /// 翻到哪一页都能直接切分类，不用先滚回顶上。
+  Widget _filterBar(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.only(top: 4, bottom: 6),
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.45)),
+      ),
+      child: Row(
+        children: [
+          for (var i = 0; i < _views.length; i++)
+            Expanded(
+              child: GestureDetector(
+                onTap: () => setState(() => _selected = i),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeOutCubic,
+                  padding: const EdgeInsets.symmetric(vertical: 9),
+                  decoration: BoxDecoration(
+                    color: _selected == i ? scheme.primary : Colors.transparent,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        _views[i].$3,
+                        size: 15,
+                        color: _selected == i ? Colors.white : scheme.onSurfaceVariant,
                       ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            _views[i].$3,
-                            size: 15,
-                            color: _selected == i ? Colors.white : scheme.onSurfaceVariant,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            _views[i].$1,
-                            style: TextStyle(
-                              fontSize: 12.5,
-                              fontWeight: _selected == i ? FontWeight.w700 : FontWeight.w600,
-                              color: _selected == i ? Colors.white : scheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
+                      const SizedBox(width: 4),
+                      Text(
+                        _views[i].$1,
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: _selected == i ? FontWeight.w700 : FontWeight.w600,
+                          color: _selected == i ? Colors.white : scheme.onSurfaceVariant,
+                        ),
                       ),
-                    ),
+                    ],
                   ),
                 ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 6),
-      ],
+              ),
+            ),
+        ],
+      ),
     );
   }
 
@@ -229,6 +237,8 @@ class _HomePageState extends State<HomePage> {
           key: ValueKey(_views[_selected].$2),
           loader: _loader,
           header: _header(context),
+          pinnedHeader: _filterBar(context),
+          pinnedHeaderHeight: 56,
           onRefresh: () => _loadAnnouncements(force: true),
           emptyText: '暂时没有内容，稍后再来看看',
           padding: const EdgeInsets.fromLTRB(14, 0, 14, 88),
