@@ -26,6 +26,7 @@ import 'offline_cache_page.dart';
 import 'user_page.dart';
 import '../navigation/app_routes.dart';
 import '../widgets/glass_dialog.dart';
+import '../widgets/read_palette_sheet.dart';
 
 /// 个人中心：账号信息、我的主题 / 回复 / 收藏、外观与退出。
 class ProfilePage extends StatefulWidget {
@@ -783,6 +784,7 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
                 _menuGroup(scheme, [
                   _MenuItem(Icons.palette_outlined, '主题外观', _pickTheme),
                   _MenuItem(Icons.color_lens_outlined, '主题颜色', _pickThemeColor),
+                  _MenuItem(Icons.format_color_text_rounded, '阅读配色', () => showReadPaletteSheet(context)),
                   _MenuItem(Icons.blur_on_rounded, '液态玻璃', _pickLiquidGlass),
                   _MenuItem(Icons.info_outline_rounded, '关于本应用', () {
                     Navigator.of(context).push(appRoute(builder: (_) => const AboutPage()));

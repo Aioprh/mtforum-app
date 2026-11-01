@@ -8,6 +8,7 @@ import 'package:html/parser.dart' as parser;
 import '../../core/app_config.dart';
 import '../../core/http_session.dart';
 import '../../core/video_link.dart';
+import '../../state/app_state.dart';
 import '../pages/board_threads_page.dart';
 import '../pages/image_viewer_page.dart';
 import '../pages/internal_browser_page.dart';
@@ -46,6 +47,30 @@ class _PostHtmlViewState extends State<PostHtmlView> {
   final List<GestureRecognizer> _recognizers = <GestureRecognizer>[];
   List<Widget>? _cache;
 
+  /// 正文配色改了要重排：[_cache] 里存的是已经带上色的 span。
+  Color? _lastLinkColor;
+  Color? _lastHintColor;
+
+  @override
+  void initState() {
+    super.initState();
+    _lastLinkColor = AppState.instance.readLinkColor;
+    _lastHintColor = AppState.instance.readHintColor;
+    AppState.instance.addListener(_onReadPaletteChanged);
+  }
+
+  void _onReadPaletteChanged() {
+    final state = AppState.instance;
+    if (state.readLinkColor == _lastLinkColor && state.readHintColor == _lastHintColor) return;
+    _lastLinkColor = state.readLinkColor;
+    _lastHintColor = state.readHintColor;
+    if (!mounted) return;
+    setState(() {
+      _disposeRecognizers();
+      _cache = null;
+    });
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -64,9 +89,18 @@ class _PostHtmlViewState extends State<PostHtmlView> {
 
   @override
   void dispose() {
+    AppState.instance.removeListener(_onReadPaletteChanged);
     _disposeRecognizers();
     super.dispose();
   }
+
+  /// 正文链接用的颜色：默认跟随主题色，用户可以在「阅读配色」里改。
+  Color _linkColor(BuildContext context) =>
+      AppState.instance.readLinkColorOf(Theme.of(context).colorScheme);
+
+  /// 「回复可见 / 需要回复」提示用的颜色。
+  Color _hintColor(BuildContext context) =>
+      AppState.instance.readHintColorOf(Theme.of(context).colorScheme);
 
   void _disposeRecognizers() {
     for (final recognizer in _recognizers) {
@@ -288,9 +322,29 @@ class _PostHtmlViewState extends State<PostHtmlView> {
         widgets.add(_videoCard(context, video, title: _videoLabel(line)));
         continue;
       }
+      if (_isReplyHint(line)) {
+        inline.addAll(_linkifyText(
+          context,
+          line,
+          style.copyWith(color: _hintColor(context), fontWeight: FontWeight.w600),
+        ));
+        continue;
+      }
       inline.addAll(_linkifyText(context, line, style));
     }
   }
+
+  /// 「回复可见 / 需要回复」这类提示，各套手机模板的文案都不一样。
+  ///
+  /// 论坛帖子动辄几十上百行，这类提示夹在正文里和普通文字一个颜色，长文
+  /// 很容易划过去。命中就整行换成提示色并加粗，颜色由「阅读配色」决定。
+  static final RegExp _replyHintPattern = RegExp(
+    r'回复可见|需要回复|请回复|回复后|回复才能|回复方可|回复本帖|'
+    r'隐藏内容|隐藏部分|查看本帖隐藏|登录后查看|登录可见',
+    caseSensitive: false,
+  );
+
+  bool _isReplyHint(String line) => _replyHintPattern.hasMatch(line);
 
   Widget _videoCard(BuildContext context, VideoLink video, {String? title}) {
     return VideoCard(
@@ -404,25 +458,28 @@ class _PostHtmlViewState extends State<PostHtmlView> {
     }
 
     if (tag == 'div' && classes.contains('comiis_p10')) {
+      final hint = _hintColor(context);
       return [
         Container(
           margin: const EdgeInsets.only(bottom: 10),
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.07),
+            color: hint.withValues(alpha: 0.10),
             borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: hint.withValues(alpha: 0.28), width: 0.8),
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.lock_outline_rounded, size: 18, color: Theme.of(context).colorScheme.primary),
+              Icon(Icons.lock_outline_rounded, size: 18, color: hint),
               const SizedBox(width: 8),
               Expanded(
                 child: Text.rich(
                   TextSpan(children: _inlineNode(context, element, TextStyle(
                     fontSize: 13.5,
                     height: 1.55,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                    color: hint,
                   ))),
                   style: const TextStyle(fontSize: 13.5, height: 1.55),
                 ),
@@ -899,7 +956,7 @@ class _PostHtmlViewState extends State<PostHtmlView> {
         return [
           TextSpan(
             text: node.text.isEmpty ? url : node.text,
-            style: style.copyWith(color: Theme.of(context).colorScheme.primary, decoration: TextDecoration.underline),
+            style: style.copyWith(color: _linkColor(context), decoration: TextDecoration.underline),
             recognizer: recognizer,
           ),
         ];
@@ -971,7 +1028,7 @@ class _PostHtmlViewState extends State<PostHtmlView> {
         spans.add(TextSpan(
           text: url,
           style: style.copyWith(
-            color: Theme.of(context).colorScheme.primary,
+            color: _linkColor(context),
             decoration: TextDecoration.underline,
           ),
           recognizer: recognizer,

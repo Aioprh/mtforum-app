@@ -13,6 +13,8 @@ class AppState extends ChangeNotifier {
 
   static const String _themeKey = 'mt_forum_theme';
   static const String _themeSeedKey = 'mt_forum_theme_seed';
+  static const String _readLinkColorKey = 'mt_forum_read_link_color';
+  static const String _readHintColorKey = 'mt_forum_read_hint_color';
   static const String _floatingGlassNavKey = 'mt_forum_floating_glass_nav';
   static const String _floatingGlassNavOpacityKey = 'mt_forum_floating_glass_nav_opacity';
   static const String _floatingGlassNavBlurKey = 'mt_forum_floating_glass_nav_blur';
@@ -35,6 +37,13 @@ class AppState extends ChangeNotifier {
 
   ThemeMode themeMode = ThemeMode.system;
   Color themeSeedColor = const Color(0xFF607080);
+
+  /// 正文配色：`null` 表示跟随主题。
+  ///
+  /// 论坛帖子动辄几百行，链接和「回复可见」这类提示混在正文里，默认色和
+  /// 正文太接近，长文里很容易划过去。给色弱用户留一个自己挑颜色的口子。
+  Color? readLinkColor;
+  Color? readHintColor;
   bool floatingGlassNav = false;
   double floatingGlassNavOpacity = 0.25;
   double floatingGlassNavBlur = 30.0;
@@ -73,6 +82,10 @@ class AppState extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     final theme = prefs.getString(_themeKey);
     themeSeedColor = Color(prefs.getInt(_themeSeedKey) ?? 0xFF607080);
+    final linkColor = prefs.getInt(_readLinkColorKey);
+    final hintColor = prefs.getInt(_readHintColorKey);
+    readLinkColor = linkColor == null ? null : Color(linkColor);
+    readHintColor = hintColor == null ? null : Color(hintColor);
     floatingGlassNav = prefs.getBool(_floatingGlassNavKey) ?? false;
     floatingGlassNavOpacity = (prefs.getDouble(_floatingGlassNavOpacityKey) ?? 0.25).clamp(0.05, 0.65).toDouble();
     floatingGlassNavBlur = (prefs.getDouble(_floatingGlassNavBlurKey) ?? 30.0).clamp(0.0, 40.0).toDouble();
@@ -258,6 +271,40 @@ class AppState extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_themeSeedKey, color.toARGB32());
   }
+
+  /// 正文里的链接颜色。传 `null` 恢复跟随主题色。
+  Future<void> setReadLinkColor(Color? color) async {
+    readLinkColor = color;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    if (color == null) {
+      await prefs.remove(_readLinkColorKey);
+    } else {
+      await prefs.setInt(_readLinkColorKey, color.toARGB32());
+    }
+  }
+
+  /// 「回复可见 / 需要回复」这类提示的颜色。传 `null` 恢复默认（琥珀橙）。
+  Future<void> setReadHintColor(Color? color) async {
+    readHintColor = color;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    if (color == null) {
+      await prefs.remove(_readHintColorKey);
+    } else {
+      await prefs.setInt(_readHintColorKey, color.toARGB32());
+    }
+  }
+
+  /// 正文链接实际用的颜色。
+  Color readLinkColorOf(ColorScheme scheme) => readLinkColor ?? scheme.primary;
+
+  /// 正文里「回复可见」提示实际用的颜色。
+  ///
+  /// 深色背景上 #E4711B 会发闷，换成更亮的琥珀色，保证在暗底上仍然跳出来。
+  Color readHintColorOf(ColorScheme scheme) =>
+      readHintColor ??
+      (scheme.brightness == Brightness.dark ? const Color(0xFFFFA24D) : const Color(0xFFD2691E));
 
   /// 直接塞一份版块数据，省掉网络请求。
   ///
