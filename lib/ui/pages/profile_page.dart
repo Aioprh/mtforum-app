@@ -25,6 +25,7 @@ import 'mcp_page.dart';
 import 'offline_cache_page.dart';
 import 'user_page.dart';
 import '../navigation/app_routes.dart';
+import '../widgets/glass_dialog.dart';
 
 /// 个人中心：账号信息、我的主题 / 回复 / 收藏、外观与退出。
 class ProfilePage extends StatefulWidget {
@@ -61,9 +62,9 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
   }
 
   Future<void> _logout() async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showGlassDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => GlassDialog(
         title: const Text('退出登录'),
         content: const Text('退出后将无法发帖、回复与收藏，确定要退出吗？'),
         actions: [

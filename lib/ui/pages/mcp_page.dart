@@ -8,6 +8,7 @@ import '../../mcp/keep_alive.dart';
 import '../../mcp/mcp_server.dart';
 import '../widgets/glass_app_bar.dart';
 import '../widgets/glass_controls.dart';
+import '../widgets/glass_dialog.dart';
 
 /// MCP 服务控制台：开关、地址、token、客户端配置与调用日志。
 class McpPage extends StatefulWidget {
@@ -49,9 +50,9 @@ class _McpPageState extends State<McpPage> {
 
   Future<void> _editPort(McpServer server) async {
     final controller = TextEditingController(text: '${server.port}');
-    final value = await showDialog<int>(
+    final value = await showGlassDialog<int>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => GlassDialog(
         title: const Text('服务端口'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -180,9 +181,9 @@ class _McpPageState extends State<McpPage> {
                   alignment: Alignment.centerRight,
                   child: TextButton.icon(
                     onPressed: () async {
-                      final confirmed = await showDialog<bool>(
+                      final confirmed = await showGlassDialog<bool>(
                         context: context,
-                        builder: (context) => AlertDialog(
+                        builder: (context) => GlassDialog(
                           title: const Text('重置令牌？'),
                           content: const Text('重置后旧的客户端配置会立刻失效，需要重新复制新令牌。'),
                           actions: [

@@ -16,6 +16,7 @@ import '../../data/models.dart';
 import '../../state/app_state.dart';
 import '../widgets/glass_app_bar.dart';
 import '../widgets/glass_controls.dart';
+import '../widgets/glass_menu.dart';
 import '../widgets/measure_height.dart';
 import '../widgets/emoji_panel.dart';
 import '../widgets/post_html_view.dart';
@@ -26,6 +27,7 @@ import 'login_page.dart';
 import 'pm_page.dart';
 import 'user_page.dart';
 import '../navigation/app_routes.dart';
+import '../widgets/glass_dialog.dart';
 
 /// 帖子详情：楼层流 + 分页加载 + 点赞 / 收藏 / 回复 / 楼中楼。
 class ThreadPage extends StatefulWidget {
@@ -611,9 +613,9 @@ class _ThreadPageState extends State<ThreadPage> {
       return;
     }
     if (!mounted) return;
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showGlassDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => GlassDialog(
         title: Text('踢帖（${detail.kickVotes}/${detail.kickLimit}）'),
         content: Text('踢帖人数达到 ${detail.kickLimit} 人后主题会进入审核，恶意踢帖可能被处罚。确定要踢「${detail.title}」吗？'),
         actions: [
@@ -645,9 +647,9 @@ class _ThreadPageState extends State<ThreadPage> {
       return;
     }
     if (!mounted) return;
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showGlassDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => GlassDialog(
         title: Text('$label主题'),
         content: Text('确定要对「${detail.title}」执行$label操作吗？'),
         actions: [
@@ -687,9 +689,9 @@ class _ThreadPageState extends State<ThreadPage> {
     }
     final stick = !post.isPinned;
     if (!mounted) return;
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showGlassDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => GlassDialog(
         title: Text(stick ? '置顶回复' : '取消置顶'),
         content: Text(stick
             ? '把第 ${post.floor} 楼置顶到主题正文下方？'
@@ -859,9 +861,9 @@ class _ThreadPageState extends State<ThreadPage> {
   Future<void> _deletePost(ForumPost post) async {
     final detail = _detail;
     if (detail == null) return;
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showGlassDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => GlassDialog(
         title: const Text('删除确认'),
         content: Text('确定删除${post.isOp ? '整篇主题' : '第 ${post.floor} 楼的回复'}吗？删除后不可恢复。'),
         actions: [
@@ -1002,10 +1004,16 @@ class _ThreadPageState extends State<ThreadPage> {
             onPressed: _share,
             icon: const Icon(Icons.ios_share_rounded),
           ),
-          IconButton(
+          GlassMenuButton<String>(
             tooltip: '更多',
-            onPressed: _openThreadMenu,
-            icon: const Icon(Icons.more_vert_rounded),
+            icon: Icons.more_vert_rounded,
+            iconSize: 24,
+            hitSize: 48,
+            menuWidth: 224,
+            dividers: true,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+            items: _threadMenuItems(),
+            onSelected: _handleMenu,
           ),
         ],
       ),
@@ -1058,118 +1066,35 @@ class _ThreadPageState extends State<ThreadPage> {
   double get _topInset => glassTopInset(context) + 8;
 
   /// 右上角菜单。
-  ///
-  /// 原来用 PopupMenuButton，它的菜单底板是一块不透明的 Material，
-  /// 没法做玻璃。这里换成自绘浮层：右上角展开的渐变 + 模糊卡片，
-  /// 点击外部仍然关闭（barrier 透明但可点）。
-  Future<void> _openThreadMenu() async {
-    final selected = await showGeneralDialog<String>(
-      context: context,
-      barrierDismissible: true,
-      barrierLabel: '帖子菜单',
-      barrierColor: Colors.black.withValues(alpha: 0.04),
-      transitionDuration: const Duration(milliseconds: 150),
-      pageBuilder: (_, __, ___) => const SizedBox.shrink(),
-      transitionBuilder: (dialogContext, animation, secondary, child) {
-        final curved = CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
-        return Stack(
-          children: [
-            Positioned(
-              top: MediaQuery.paddingOf(dialogContext).top + kToolbarHeight - 6,
-              right: 8,
-              child: FadeTransition(
-                opacity: curved,
-                child: ScaleTransition(
-                  scale: Tween<double>(begin: 0.92, end: 1).animate(curved),
-                  alignment: Alignment.topRight,
-                  child: _glassMenuCard(dialogContext),
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-    if (selected == null || !mounted) return;
-    _handleMenu(selected);
-  }
-
-  /// 菜单项。勾选态跟着页面状态走，和图标的实心/空心保持一致。
-  List<({String value, IconData icon, String label})> _menuEntries() => [
-        (
+  List<GlassMenuItem<String>> _threadMenuItems() => [
+        GlassMenuItem(
           value: 'favorite',
           icon: _favorited ? Icons.star_rounded : Icons.star_outline_rounded,
           label: _favorited ? '已收藏' : '收藏主题',
         ),
-        (
+        const GlassMenuItem(
           value: 'offlineCache',
           icon: Icons.download_for_offline_outlined,
           label: '缓存帖子供离线阅读',
         ),
-        (value: 'copy', icon: Icons.link_rounded, label: '复制链接'),
-        (value: 'browser', icon: Icons.open_in_browser_rounded, label: '在浏览器打开'),
-        (
+        const GlassMenuItem(value: 'copy', icon: Icons.link_rounded, label: '复制链接'),
+        const GlassMenuItem(
+          value: 'browser',
+          icon: Icons.open_in_browser_rounded,
+          label: '在浏览器打开',
+        ),
+        GlassMenuItem(
           value: 'onlyOp',
           icon: _onlyOp ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
           label: '只看楼主',
         ),
-        (
+        GlassMenuItem(
           value: 'order',
           icon: _orderDesc ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
           label: '倒序浏览',
         ),
-        (value: 'refresh', icon: Icons.refresh_rounded, label: '刷新'),
+        const GlassMenuItem(value: 'refresh', icon: Icons.refresh_rounded, label: '刷新'),
       ];
-
-  Widget _glassMenuCard(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final entries = _menuEntries();
-    return GlassBackdrop(
-      borderRadius: BorderRadius.circular(18),
-      showShadow: true,
-      opacityScale: 1.05,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minWidth: 212, maxWidth: 252),
-        child: Material(
-          color: Colors.transparent,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              for (var i = 0; i < entries.length; i++) ...[
-                if (i > 0)
-                  Divider(
-                    height: 0.6,
-                    thickness: 0.6,
-                    color: scheme.outlineVariant.withValues(alpha: 0.26),
-                  ),
-                InkWell(
-                  onTap: () => Navigator.of(context).pop(entries[i].value),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    child: Row(
-                      children: [
-                        Icon(entries[i].icon, size: 19, color: scheme.onSurfaceVariant),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            entries[i].label,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 
   /// 评论区标题只属于第一页：它标记的是「主题正文结束、回复开始」。
   ///
@@ -1660,124 +1585,12 @@ class _ThreadPageState extends State<ThreadPage> {
               children: [
                 _floorAction(Icons.reply_rounded, '回复', () => _startReply(post), highlight: targeted),
                 const Spacer(),
-                PopupMenuButton<String>(
+                GlassMenuButton<String>(
                   tooltip: '更多操作',
-                  padding: EdgeInsets.zero,
-                  iconSize: 18,
-                  icon: Icon(Icons.more_horiz_rounded, color: Theme.of(context).colorScheme.outline),
+                  hitSize: 36,
+                  menuWidth: 200,
+                  items: _floorMenuItems(post),
                   onSelected: (value) => _handleFloorMenu(post, value),
-                  itemBuilder: (context) => [
-                    const PopupMenuItem(
-                      value: 'copy',
-                      child: ListTile(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        leading: Icon(Icons.link_rounded, size: 20),
-                        title: Text('复制楼层'),
-                      ),
-                    ),
-                    const PopupMenuItem(
-                      value: 'report',
-                      child: ListTile(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        leading: Icon(Icons.flag_outlined, size: 20),
-                        title: Text('举报'),
-                      ),
-                    ),
-                    const PopupMenuItem(
-                      value: 'source',
-                      child: ListTile(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        leading: Icon(Icons.code_rounded, size: 20),
-                        title: Text('复制本楼源码'),
-                      ),
-                    ),
-                    if (!_isMine(post))
-                      PopupMenuItem(
-                        value: 'rate',
-                        child: ListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(Icons.volunteer_activism_outlined, size: 20),
-                          title: Text(post.isOp ? '赞赏' : '打赏'),
-                        ),
-                      ),
-                    if (!_isMine(post) && post.uid > 0)
-                      const PopupMenuItem(
-                        value: 'pm',
-                        child: ListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(Icons.mail_outline_rounded, size: 20),
-                          title: Text('发消息'),
-                        ),
-                      ),
-                    // 主题作者和版主都能置顶回复；已置顶的楼层给「取消置顶」。
-                    if (!post.isOp && (_isThreadOwner || _isModerator))
-                      PopupMenuItem(
-                        value: 'stick',
-                        child: ListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(
-                            post.isPinned ? Icons.push_pin : Icons.push_pin_outlined,
-                            size: 20,
-                          ),
-                          title: Text(post.isPinned ? '取消置顶' : '置顶回复'),
-                        ),
-                      ),
-                    if (_isModerator) ...[
-                      const PopupMenuItem(
-                        value: 'digest',
-                        child: ListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(Icons.workspace_premium_outlined, size: 20),
-                          title: Text('设精华'),
-                        ),
-                      ),
-                      const PopupMenuItem(
-                        value: 'close',
-                        child: ListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(Icons.lock_outline_rounded, size: 20),
-                          title: Text('关闭主题'),
-                        ),
-                      ),
-                      const PopupMenuItem(
-                        value: 'warn',
-                        child: ListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(Icons.gavel_rounded, size: 20),
-                          title: Text('警告'),
-                        ),
-                      ),
-                    ],
-                    if (_isMine(post)) ...[
-                      const PopupMenuItem(
-                        value: 'edit',
-                        child: ListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(Icons.edit_outlined, size: 20),
-                          title: Text('编辑'),
-                        ),
-                      ),
-                      const PopupMenuItem(
-                        value: 'delete',
-                        child: ListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(Icons.delete_outline_rounded, size: 20),
-                          title: Text('删除'),
-                        ),
-                      ),
-                    ],
-                  ],
                 ),
               ],
             ),
@@ -1786,6 +1599,37 @@ class _ThreadPageState extends State<ThreadPage> {
       ),
     );
   }
+
+  /// 楼层「更多」菜单的项。按身份和权限组合，和原来 PopupMenuItem 的顺序一致。
+  List<GlassMenuItem<String>> _floorMenuItems(ForumPost post) => [
+        const GlassMenuItem(value: 'copy', label: '复制楼层', icon: Icons.link_rounded),
+        const GlassMenuItem(value: 'report', label: '举报', icon: Icons.flag_outlined),
+        const GlassMenuItem(value: 'source', label: '复制本楼源码', icon: Icons.code_rounded),
+        if (!_isMine(post))
+          GlassMenuItem(
+            value: 'rate',
+            label: post.isOp ? '赞赏' : '打赏',
+            icon: Icons.volunteer_activism_outlined,
+          ),
+        if (!_isMine(post) && post.uid > 0)
+          const GlassMenuItem(value: 'pm', label: '发消息', icon: Icons.mail_outline_rounded),
+        // 主题作者和版主都能置顶回复；已置顶的楼层给「取消置顶」。
+        if (!post.isOp && (_isThreadOwner || _isModerator))
+          GlassMenuItem(
+            value: 'stick',
+            label: post.isPinned ? '取消置顶' : '置顶回复',
+            icon: post.isPinned ? Icons.push_pin : Icons.push_pin_outlined,
+          ),
+        if (_isModerator) ...const [
+          GlassMenuItem(value: 'digest', label: '设精华', icon: Icons.workspace_premium_outlined),
+          GlassMenuItem(value: 'close', label: '关闭主题', icon: Icons.lock_outline_rounded),
+          GlassMenuItem(value: 'warn', label: '警告', icon: Icons.gavel_rounded),
+        ],
+        if (_isMine(post)) ...const [
+          GlassMenuItem(value: 'edit', label: '编辑', icon: Icons.edit_outlined),
+          GlassMenuItem(value: 'delete', label: '删除', icon: Icons.delete_outline_rounded, danger: true),
+        ],
+      ];
 
   /// 楼主楼层底部的「赞赏 / 踢帖」按钮，与站点移动模板保持一致。
   Widget _opActions(ForumPost post) {

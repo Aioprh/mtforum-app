@@ -9,6 +9,7 @@ import '../widgets/state_views.dart';
 import '../widgets/user_avatar.dart';
 import 'user_page.dart';
 import '../navigation/app_routes.dart';
+import '../widgets/glass_dialog.dart';
 
 /// 勋章中心：勋章目录 + 最近获得记录。
 class MedalsPage extends StatefulWidget {
@@ -53,9 +54,9 @@ class _MedalsPageState extends State<MedalsPage> {
   }
 
   void _showMedal(MedalItem item) {
-    showDialog<void>(
+    showGlassDialog<void>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => GlassDialog(
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [

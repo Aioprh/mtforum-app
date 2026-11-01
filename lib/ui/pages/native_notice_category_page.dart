@@ -12,6 +12,7 @@ import 'pm_list_page.dart';
 import 'thread_page.dart';
 import 'user_page.dart';
 import '../navigation/app_routes.dart';
+import '../widgets/glass_dialog.dart';
 
 /// 原生提醒列表页。
 ///
@@ -152,9 +153,9 @@ class _NativeNoticeCategoryPageState extends State<NativeNoticeCategoryPage> {
       case NoticeTarget.none:
         // 系统提醒没有落地页，直接把完整正文展示成原生弹窗。
         if (!mounted) return;
-        await showDialog<void>(
+        await showGlassDialog<void>(
           context: context,
-          builder: (context) => AlertDialog(
+          builder: (context) => GlassDialog(
             title: Text(widget.title),
             content: Text(item.title),
             actions: [

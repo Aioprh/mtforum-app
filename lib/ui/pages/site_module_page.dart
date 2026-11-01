@@ -13,6 +13,7 @@ import 'mall_product_page.dart';
 import 'thread_page.dart';
 import 'user_page.dart';
 import '../navigation/app_routes.dart';
+import '../widgets/glass_dialog.dart';
 
 /// 通用站点模块页：原生渲染道具、任务、积分、推广等页面里的条目。
 class SiteModulePage extends StatefulWidget {
@@ -103,9 +104,9 @@ class _SiteModulePageState extends State<SiteModulePage> {
       await launchUrl(Uri.parse(href), mode: LaunchMode.externalApplication);
       return;
     }
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showGlassDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => GlassDialog(
         title: Text(row.title),
         content: const Text('确认执行该操作？'),
         actions: [

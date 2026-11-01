@@ -7,6 +7,7 @@ import '../widgets/state_views.dart';
 import '../widgets/glass_controls.dart';
 import 'thread_page.dart';
 import '../navigation/app_routes.dart';
+import '../widgets/glass_dialog.dart';
 
 /// 浏览历史：按时间倒序列出打开过的帖子，点一下直接回到帖子。
 class BrowseHistoryPage extends StatefulWidget {
@@ -84,9 +85,9 @@ class _BrowseHistoryPageState extends State<BrowseHistoryPage> {
 
   Future<void> _clearAll() async {
     if (_items.isEmpty) return;
-    final ok = await showDialog<bool>(
+    final ok = await showGlassDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => GlassDialog(
         title: const Text('清空浏览历史？'),
         content: const Text('只会删除本机的浏览记录，不影响收藏和离线缓存。'),
         actions: [

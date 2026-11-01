@@ -11,6 +11,7 @@ import '../widgets/glass_app_bar.dart';
 import '../widgets/state_views.dart';
 import 'login_page.dart';
 import '../navigation/app_routes.dart';
+import '../widgets/glass_dialog.dart';
 
 /// 积分商城商品详情（原生，不跳浏览器）。
 class MallProductPage extends StatefulWidget {
@@ -65,9 +66,9 @@ class _MallProductPageState extends State<MallProductPage> {
       if (ok == true) await _buy();
       return;
     }
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showGlassDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => GlassDialog(
         title: const Text('确认抢购'),
         content: Text('${product.title}\n${product.price}，抢购后不支持退换。'),
         actions: [
@@ -111,9 +112,9 @@ class _MallProductPageState extends State<MallProductPage> {
 
   Future<void> _showResult(String text) async {
     if (!mounted) return;
-    await showDialog<void>(
+    await showGlassDialog<void>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => GlassDialog(
         title: const Text('抢购结果'),
         content: SingleChildScrollView(
           child: SelectableText(
@@ -143,9 +144,9 @@ class _MallProductPageState extends State<MallProductPage> {
     try {
       final text = await AppState.instance.repo.fetchPluginText(product.statusHref);
       if (!mounted) return;
-      await showDialog<void>(
+      await showGlassDialog<void>(
         context: context,
-        builder: (dialogContext) => AlertDialog(
+        builder: (dialogContext) => GlassDialog(
           title: const Text('卡密状态'),
           content: SingleChildScrollView(
             child: SelectableText(

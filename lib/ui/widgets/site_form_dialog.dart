@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'glass_controls.dart';
 
 import '../../data/models.dart';
+import 'glass_dialog.dart';
 
 /// 把站点要求的表单字段渲染成原生输入项，确认后返回提交值。
 Future<Map<String, String>?> showSiteFormDialog(
@@ -12,7 +13,7 @@ Future<Map<String, String>?> showSiteFormDialog(
   String description = '',
   String confirmText = '确认',
 }) {
-  return showDialog<Map<String, String>>(
+  return showGlassDialog<Map<String, String>>(
     context: context,
     builder: (_) => _SiteFormDialog(
       title: title,
@@ -81,7 +82,7 @@ class _SiteFormDialogState extends State<_SiteFormDialog> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return AlertDialog(
+    return GlassDialog(
       title: Text(widget.title),
       content: SingleChildScrollView(
         child: Column(

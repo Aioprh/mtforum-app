@@ -10,6 +10,8 @@ import '../../core/http_session.dart';
 import '../../services/download_manager.dart';
 import 'download_manager_page.dart';
 import '../navigation/app_routes.dart';
+import '../widgets/glass_menu.dart';
+import '../widgets/glass_dialog.dart';
 
 class InternalBrowserPage extends StatefulWidget {
   const InternalBrowserPage({super.key, required this.url, this.title = '内部浏览器'});
@@ -38,9 +40,9 @@ class _InternalBrowserPageState extends State<InternalBrowserPage> {
   Future<void> _openExternal() async {
     final uri = Uri.tryParse(_url);
     if (uri == null || !{'http', 'https'}.contains(uri.scheme)) return;
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showGlassDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => GlassDialog(
         title: const Text('打开外部浏览器'),
         content: const Text('将离开 MT论坛，交由系统浏览器打开当前链接。'),
         actions: [
@@ -55,9 +57,9 @@ class _InternalBrowserPageState extends State<InternalBrowserPage> {
   Future<void> _downloadCurrentPage() async {
     final uri = Uri.tryParse(_url);
     if (uri == null || !{'http', 'https'}.contains(uri.scheme)) return;
-    final ok = await showDialog<bool>(
+    final ok = await showGlassDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => GlassDialog(
         title: const Text('下载文件'),
         content: Text('下载当前地址的内容？\n${uri.pathSegments.isEmpty ? _title : uri.pathSegments.last}'),
         actions: [
@@ -137,7 +139,16 @@ class _InternalBrowserPageState extends State<InternalBrowserPage> {
           IconButton(tooltip: '下载当前页面', onPressed: _downloadCurrentPage, icon: const Icon(Icons.download_rounded)),
           IconButton(tooltip: '下载管理', onPressed: () => Navigator.push(context, appRoute(builder: (_) => const DownloadManagerPage())), icon: const Icon(Icons.download_for_offline_outlined)),
           IconButton(tooltip: '外部浏览器打开', onPressed: _openExternal, icon: const Icon(Icons.open_in_browser_rounded)),
-          PopupMenuButton<String>(
+          GlassMenuButton<String>(
+            tooltip: '更多',
+            icon: Icons.more_vert_rounded,
+            iconSize: 22,
+            hitSize: 48,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+            items: const [
+              GlassMenuItem(value: 'refresh', label: '刷新', icon: Icons.refresh_rounded),
+              GlassMenuItem(value: 'copy', label: '复制链接', icon: Icons.link_rounded),
+            ],
             onSelected: (value) async {
               final messenger = ScaffoldMessenger.of(context);
               if (value == 'refresh') await _controller?.reload();
@@ -146,10 +157,6 @@ class _InternalBrowserPageState extends State<InternalBrowserPage> {
                 messenger.showSnackBar(const SnackBar(content: Text('链接已复制')));
               }
             },
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'refresh', child: Text('刷新')),
-              PopupMenuItem(value: 'copy', child: Text('复制链接')),
-            ],
           ),
         ],
       ),

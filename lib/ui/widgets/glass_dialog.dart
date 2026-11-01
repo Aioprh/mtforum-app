@@ -1,0 +1,136 @@
+import 'package:flutter/material.dart';
+
+import 'thread_glass.dart';
+
+/// 玻璃对话框：一块模糊 + 半透明渐变的卡片。
+///
+/// 没有直接包 [AlertDialog]：`AlertDialog` 内部是「全屏 `AnimatedPadding` +
+/// 居中 `Align`」，把它塞进 [GlassBackdrop] 会让玻璃底板被撑满整块屏幕，
+/// 整页糊成一片。这里照 [AlertDialog] 的 M3 尺寸自己排一份：标题 22、正文
+/// 15、底部一排靠右的动作按钮，和系统对话框观感一致。
+class GlassDialog extends StatelessWidget {
+  const GlassDialog({
+    super.key,
+    this.title,
+    this.content,
+    this.actions,
+    this.scrollable = false,
+  });
+
+  final Widget? title;
+  final Widget? content;
+  final List<Widget>? actions;
+
+  /// 内容超长时滚动（默认跟随屏幕高度收缩）。
+  final bool scrollable;
+
+  static const EdgeInsets _inset = EdgeInsets.symmetric(horizontal: 34, vertical: 24);
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final hasActions = actions != null && actions!.isNotEmpty;
+
+    Widget column = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (title != null)
+          DefaultTextStyle.merge(
+            style: TextStyle(
+              fontSize: 17.5,
+              fontWeight: FontWeight.w700,
+              height: 1.35,
+              color: scheme.onSurface,
+            ),
+            child: title!,
+          ),
+        if (title != null && content != null) const SizedBox(height: 12),
+        if (content != null)
+          DefaultTextStyle.merge(
+            style: TextStyle(
+              fontSize: 13.5,
+              height: 1.6,
+              color: scheme.onSurfaceVariant,
+            ),
+            child: content!,
+          ),
+        if (hasActions) ...[
+          const SizedBox(height: 16),
+          OverflowBar(
+            alignment: MainAxisAlignment.end,
+            overflowAlignment: OverflowBarAlignment.end,
+            spacing: 8,
+            overflowSpacing: 6,
+            children: actions!,
+          ),
+        ],
+      ],
+    );
+
+    if (scrollable) {
+      column = SingleChildScrollView(child: column);
+    }
+
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      surfaceTintColor: Colors.transparent,
+      shadowColor: Colors.transparent,
+      elevation: 0,
+      insetPadding: _inset,
+      child: GlassBackdrop(
+        borderRadius: BorderRadius.circular(22),
+        showShadow: true,
+        opacityScale: 1.12,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            minWidth: 268,
+            maxWidth: MediaQuery.sizeOf(context).width - _inset.horizontal,
+            maxHeight: MediaQuery.sizeOf(context).height - _inset.vertical,
+          ),
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(22, 21, 22, hasActions ? 12 : 21),
+            child: column,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 弹出玻璃对话框。[builder] 里通常返回 [GlassDialog]。
+///
+/// 和 `showDialog` 的调用方式一致，只是遮罩更淡（玻璃要看得到背后的内容）、
+/// 进场是淡入 + 轻微放大。
+Future<T?> showGlassDialog<T>({
+  required BuildContext context,
+  required WidgetBuilder builder,
+  bool barrierDismissible = true,
+  Color? barrierColor,
+  String? barrierLabel,
+  bool useRootNavigator = true,
+  RouteSettings? routeSettings,
+  Offset? anchorPoint,
+}) {
+  return showGeneralDialog<T>(
+    context: context,
+    barrierDismissible: barrierDismissible,
+    barrierLabel: barrierLabel ?? '关闭对话框',
+    barrierColor: barrierColor ?? Colors.black.withValues(alpha: 0.34),
+    transitionDuration: const Duration(milliseconds: 180),
+    useRootNavigator: useRootNavigator,
+    routeSettings: routeSettings,
+    pageBuilder: (dialogContext, _, __) => builder(dialogContext),
+    transitionBuilder: (dialogContext, animation, _, child) {
+      final curved = CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
+      return FadeTransition(
+        opacity: curved,
+        child: ScaleTransition(
+          scale: Tween<double>(begin: 0.96, end: 1).animate(curved),
+          child: child,
+        ),
+      );
+    },
+  );
+}

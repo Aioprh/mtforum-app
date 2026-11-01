@@ -5,7 +5,9 @@ import 'package:flutter/services.dart';
 
 import '../../services/download_manager.dart';
 import '../widgets/glass_app_bar.dart';
+import '../widgets/glass_menu.dart';
 import '../widgets/state_views.dart';
+import '../widgets/glass_dialog.dart';
 
 class DownloadManagerPage extends StatefulWidget {
   const DownloadManagerPage({super.key});
@@ -151,16 +153,35 @@ class _DownloadManagerPageState extends State<DownloadManagerPage> {
                     ],
                   ),
                   onTap: () => _openDownloadedFile(record),
-                  trailing: PopupMenuButton<String>(
+                  trailing: GlassMenuButton<String>(
+                    tooltip: '更多',
+                    icon: Icons.more_vert_rounded,
+                    hitSize: 44,
+                    menuWidth: 210,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    items: const [
+                      GlassMenuItem(
+                        value: 'open',
+                        label: '用其他应用打开',
+                        icon: Icons.open_in_new_rounded,
+                      ),
+                      GlassMenuItem(value: 'copy', label: '复制文件路径', icon: Icons.link_rounded),
+                      GlassMenuItem(
+                        value: 'delete',
+                        label: '删除记录/文件',
+                        icon: Icons.delete_outline_rounded,
+                        danger: true,
+                      ),
+                    ],
                     onSelected: (value) async {
                       final messenger = ScaffoldMessenger.of(context);
                       if (value == 'copy') {
                         await Clipboard.setData(ClipboardData(text: record.path));
                         messenger.showSnackBar(const SnackBar(content: Text('文件路径已复制')));
                       } else if (value == 'delete') {
-                        final yes = await showDialog<bool>(
+                        final yes = await showGlassDialog<bool>(
                           context: context,
-                          builder: (context) => AlertDialog(
+                          builder: (context) => GlassDialog(
                             title: const Text('删除下载记录'),
                             content: const Text('同时删除本地文件？'),
                             actions: [
@@ -176,11 +197,6 @@ class _DownloadManagerPageState extends State<DownloadManagerPage> {
                         await _openDownloadedFile(record);
                       }
                     },
-                    itemBuilder: (_) => const [
-                      PopupMenuItem(value: 'open', child: Text('用其他应用打开')),
-                      PopupMenuItem(value: 'copy', child: Text('复制文件路径')),
-                      PopupMenuItem(value: 'delete', child: Text('删除记录/文件')),
-                    ],
                   ),
                 ),
               );

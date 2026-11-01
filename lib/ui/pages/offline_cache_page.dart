@@ -4,6 +4,7 @@ import '../widgets/glass_app_bar.dart';
 import '../widgets/state_views.dart';
 import '../widgets/post_html_view.dart';
 import '../navigation/app_routes.dart';
+import '../widgets/glass_dialog.dart';
 
 class OfflineCachePage extends StatefulWidget {
   const OfflineCachePage({super.key});
@@ -19,14 +20,14 @@ class _OfflineCachePageState extends State<OfflineCachePage> {
   }
   Future<void> _delete(Map<String, dynamic> item) async {
     final tid = int.tryParse('${item['tid']}'); if (tid == null) return;
-    final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
+    final ok = await showGlassDialog<bool>(context: context, builder: (c) => GlassDialog(
       title: const Text('删除离线缓存？'), content: Text('「${item['title'] ?? '帖子'}」将从本机删除。'),
       actions: [TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('取消')), FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('删除'))]));
     if (ok == true) { await OfflineThreadCache.instance.delete(tid); await _refresh(); }
   }
   Future<void> _clearAll() async {
     if (_items.isEmpty) return;
-    final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
+    final ok = await showGlassDialog<bool>(context: context, builder: (c) => GlassDialog(
       title: const Text('清理全部离线缓存？'), content: const Text('将删除本机保存的所有帖子缓存，且无法撤销。'),
       actions: [TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('取消')), FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('全部清理'))]));
     if (ok == true) { await OfflineThreadCache.instance.clear(); await _refresh(); }

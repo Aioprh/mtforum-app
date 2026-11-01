@@ -8,6 +8,7 @@ import '../widgets/glass_controls.dart';
 import '../widgets/site_form_dialog.dart';
 import '../widgets/smart_image.dart';
 import '../widgets/state_views.dart';
+import '../widgets/glass_dialog.dart';
 
 /// 道具中心：商店 / 我的道具 / 记录，全部原生实现。
 class MagicPage extends StatelessWidget {
@@ -122,7 +123,7 @@ class _MagicShopTabState extends State<_MagicShopTab> with AutomaticKeepAliveCli
   }
 
   Future<void> _buy(MagicItem item) async {
-    final request = await showDialog<_MagicActionRequest>(
+    final request = await showGlassDialog<_MagicActionRequest>(
       context: context,
       builder: (_) => _MagicActionDialog(
         title: '购买 ${item.name}',
@@ -144,7 +145,7 @@ class _MagicShopTabState extends State<_MagicShopTab> with AutomaticKeepAliveCli
   }
 
   Future<void> _gift(MagicItem item) async {
-    final request = await showDialog<_MagicActionRequest>(
+    final request = await showGlassDialog<_MagicActionRequest>(
       context: context,
       builder: (_) => _MagicActionDialog(
         title: '赠送 ${item.name}',
@@ -346,7 +347,7 @@ class _MagicBoxTabState extends State<_MagicBoxTab> with AutomaticKeepAliveClien
   Future<void> _use(MyMagic item) async {
     final navigator = Navigator.of(context, rootNavigator: true);
     var loading = true;
-    showDialog<void>(
+    showGlassDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (_) => const _BusyDialog(text: '正在读取道具信息…'),
@@ -385,7 +386,7 @@ class _MagicBoxTabState extends State<_MagicBoxTab> with AutomaticKeepAliveClien
   }
 
   Future<void> _give(MyMagic item) async {
-    final request = await showDialog<_MagicActionRequest>(
+    final request = await showGlassDialog<_MagicActionRequest>(
       context: context,
       builder: (_) => _MagicActionDialog(
         title: '赠送 ${item.name}',
@@ -414,7 +415,7 @@ class _MagicBoxTabState extends State<_MagicBoxTab> with AutomaticKeepAliveClien
   }
 
   Future<void> _sell(MyMagic item) async {
-    final request = await showDialog<_MagicActionRequest>(
+    final request = await showGlassDialog<_MagicActionRequest>(
       context: context,
       builder: (_) => _MagicActionDialog(
         title: '出售 ${item.name}',
@@ -437,7 +438,7 @@ class _MagicBoxTabState extends State<_MagicBoxTab> with AutomaticKeepAliveClien
   }
 
   Future<void> _drop(MyMagic item) async {
-    final request = await showDialog<_MagicActionRequest>(
+    final request = await showGlassDialog<_MagicActionRequest>(
       context: context,
       builder: (_) => _MagicActionDialog(
         title: '丢弃 ${item.name}',
@@ -824,7 +825,7 @@ class _MagicActionDialogState extends State<_MagicActionDialog> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return AlertDialog(
+    return GlassDialog(
       title: Text(widget.title),
       content: SingleChildScrollView(
         child: Column(

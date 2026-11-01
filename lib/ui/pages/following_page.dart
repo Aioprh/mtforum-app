@@ -5,6 +5,7 @@ import '../../data/models.dart';
 import '../../state/app_state.dart';
 import '../widgets/glass_controls.dart';
 import 'user_list_page.dart';
+import '../widgets/glass_dialog.dart';
 
 /// 当前账号关注的用户列表。
 ///
@@ -59,9 +60,9 @@ class FollowingPage extends StatelessWidget {
   }
 
   Future<void> _cancelFollowing(BuildContext context, FriendItem user, UserListHandle handle) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showGlassDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => GlassDialog(
         title: const Text('取消关注'),
         content: Text('确定不再关注「${user.username}」吗？'),
         actions: [
@@ -87,9 +88,9 @@ class FollowingPage extends StatelessWidget {
 
   Future<void> _editNote(BuildContext context, FriendItem user, UserListHandle handle) async {
     final controller = TextEditingController(text: user.note);
-    final value = await showDialog<String>(
+    final value = await showGlassDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => GlassDialog(
         title: Text('备注：${user.username}'),
         content: GlassField(
           controller: controller,
