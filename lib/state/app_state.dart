@@ -39,6 +39,12 @@ class AppState extends ChangeNotifier {
   double floatingGlassNavOpacity = 0.25;
   double floatingGlassNavBlur = 30.0;
 
+  /// 悬浮玻璃底栏实测占用的屏幕高度（含底部安全区），由 AppShell 量出来。
+  ///
+  /// 各页面的列表末尾都要补这么高。写死常数会被系统字号带偏：字号调大，
+  /// 胶囊跟着变高，补少了最后一张卡片就被压进玻璃里。
+  double floatingNavHeight = 0;
+
   /// 发帖悬浮按钮的液态玻璃外观：透明度与背景模糊度。
   double composeGlassOpacity = 0.28;
   double composeGlassBlur = 26.0;
@@ -201,6 +207,13 @@ class AppState extends ChangeNotifier {
       ThemeMode.dark => 'dark',
       ThemeMode.system => 'system',
     });
+  }
+
+  /// 记录底栏高度。值没变就不通知，避免测量和重建互相触发。
+  void setFloatingNavHeight(double height) {
+    if (height <= 0 || (height - floatingNavHeight).abs() < 0.5) return;
+    floatingNavHeight = height;
+    notifyListeners();
   }
 
   Future<void> setFloatingGlassNav(bool enabled) async {

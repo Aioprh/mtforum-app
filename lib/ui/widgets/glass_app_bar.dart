@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../state/app_state.dart';
 import 'back_to_top.dart';
 import 'thread_glass.dart';
 
@@ -79,3 +80,24 @@ class GlassAppBar extends StatelessWidget implements PreferredSizeWidget {
 /// 玻璃顶栏下正文需要空出的高度：状态栏 + 顶栏（含 [TabBar] 这类 bottom）。
 double glassTopInset(BuildContext context, {double bottomHeight = 0}) =>
     MediaQuery.paddingOf(context).top + kToolbarHeight + bottomHeight;
+
+/// 悬浮玻璃底栏占掉的屏幕高度，列表末尾要补这么多。
+///
+/// 底栏走 `Scaffold.extendBody`，浮在内容之上并不占位。补少了，最后一张卡片
+/// 会被压进底栏里面：白色卡片和卡片外浅灰背景的分界横穿胶囊，玻璃背后是白，
+/// 模糊完还是白，那块看起来就像「没有玻璃」；补多了又会在胶囊顶边上方露出
+/// 一条背景色的缝。
+///
+/// 高度优先取 AppShell 实测值（[AppState.floatingNavHeight]），量不到时
+/// 退回「胶囊 66 + 底部安全区，SafeArea 的 minimum 是 10」。末尾再减几个
+/// 像素，让最后一项略微延续到玻璃背后：宁可被压住一点，也不要在胶囊顶边
+/// 上方留一条背景色的缝。
+double floatingNavSpace(BuildContext context) {
+  if (!AppState.instance.floatingGlassNav) return 0;
+  // 优先用 AppShell 量出来的真实高度：系统字号调大时胶囊会变高，
+  // 任何写死的常数都会偏。
+  final measured = AppState.instance.floatingNavHeight;
+  if (measured > 0) return measured - 2;
+  final safe = MediaQuery.paddingOf(context).bottom;
+  return 66 + (safe > 10 ? safe : 10) - 6;
+}

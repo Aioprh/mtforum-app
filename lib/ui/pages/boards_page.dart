@@ -88,7 +88,12 @@ class _BoardsPageState extends State<BoardsPage> with AutomaticKeepAliveClientMi
                   child: ListView.builder(
                     controller: _scroll,
                     physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-                    padding: EdgeInsets.fromLTRB(14, topInset + 8, 14, 88),
+                    padding: EdgeInsets.fromLTRB(
+                      14,
+                      topInset + 8,
+                      14,
+                      8 + floatingNavSpace(context),
+                    ),
                     itemCount: _categories.length + 1,
                     itemBuilder: (context, index) {
                       if (index == _categories.length) {

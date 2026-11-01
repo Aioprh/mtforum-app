@@ -268,7 +268,7 @@ class _SearchPageState extends State<SearchPage> with AutomaticKeepAliveClientMi
   Widget _resultArea(ColorScheme scheme, double topPadding) {
     // 悬浮玻璃底栏浮在页面之上（Scaffold.extendBody），列表末尾要多留一段，
     // 否则最后一条结果被压在底栏下面。88 与首页、版块页保持一致。
-    final bottomPad = AppState.instance.floatingGlassNav ? 88.0 : 26.0;
+    final bottomPad = 26 + floatingNavSpace(context);
 
     if (!_searched) {
       return ListView(

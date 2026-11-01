@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../data/models.dart';
 import '../../state/app_state.dart';
 import '../pages/thread_page.dart';
+import '../widgets/glass_app_bar.dart';
 import '../widgets/thread_feed.dart';
 import 'notifications_page.dart';
 import '../navigation/app_routes.dart';
@@ -279,7 +280,8 @@ class _HomePageState extends State<HomePage> {
           pinnedHeaderFrost: 18,
           onRefresh: () => _loadAnnouncements(force: true),
           emptyText: '暂时没有内容，稍后再来看看',
-          padding: const EdgeInsets.fromLTRB(14, 0, 14, 88),
+          // 底部补上悬浮底栏占掉的高度，最后一张卡片才不会被压进胶囊里。
+          padding: EdgeInsets.fromLTRB(14, 0, 14, 8 + floatingNavSpace(context)),
           doubleTapToTop: true,
         ),
       ),

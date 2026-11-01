@@ -683,7 +683,7 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
                 16,
                 topInset + 6,
                 16,
-                state.floatingGlassNav ? 88 : 30,
+                30 + floatingNavSpace(context),
               ),
               children: [
                 if (state.isLoggedIn) ...[
