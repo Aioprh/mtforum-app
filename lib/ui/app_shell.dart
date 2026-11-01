@@ -135,6 +135,9 @@ class _AppShellState extends State<AppShell> {
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: glassBlur, sigmaY: glassBlur),
             child: Container(
+              // 描边画在 foregroundDecoration 上：它叠在内容之上，顶部高光、按压反馈都压不住，胶囊边缘才不会出现「中间一段没有线」。
+              // 外层补 1.2 的内边距，把描边占的位置还回来，内容不会顶到圆角。
+              padding: const EdgeInsets.all(1.2),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(30),
                 gradient: LinearGradient(
@@ -153,11 +156,8 @@ class _AppShellState extends State<AppShell> {
                               .withValues(alpha: glassOpacity * 0.64),
                         ],
                 ),
-                border: Border.all(
-                  color: (isDark ? Colors.white : scheme.outlineVariant)
-                      .withValues(alpha: isDark ? 0.16 : 0.30),
-                  width: 1,
-                ),
+                // 外侧只留投影。早先还叠了一层 1px 白色内高光，它在浅色下
+                // 会把描边洗白成和背景一样，顶边看着就断了。
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: isDark ? 0.28 : 0.10),
@@ -165,29 +165,37 @@ class _AppShellState extends State<AppShell> {
                     spreadRadius: 0,
                     offset: const Offset(0, 12),
                   ),
-                  BoxShadow(
-                    color: Colors.white.withValues(alpha: isDark ? 0.06 : 0.62),
-                    blurRadius: 1,
-                    offset: const Offset(0, 1),
-                  ),
                 ],
+              ),
+              foregroundDecoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(30),
+                border: Border.all(
+                  // 半透明描边叠在白色卡片和浅灰背景上深浅不一，本身就
+                  // 「不是一条线」；alpha 提上来，整条边才均匀。
+                  color: (isDark ? Colors.white : scheme.outlineVariant)
+                      .withValues(alpha: isDark ? 0.18 : 0.55),
+                  width: 1.2,
+                ),
               ),
               child: Stack(
                 children: [
                   // 顶部柔和高光，让玻璃边缘更有通透感。
+                  //
+                  // 往下让开 1.2：贴着描边画会把它盖成白色，浅色模式下顶边
+                  // 中间一段就像断了。高光只做描边内侧的一层亮边。
                   Positioned(
                     left: 24,
                     right: 24,
-                    top: 0,
+                    top: 1.2,
                     child: IgnorePointer(
                       child: Container(
-                        height: 1.2,
+                        height: 1,
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
                             colors: [
                               Colors.transparent,
                               Colors.white.withValues(
-                                alpha: isDark ? 0.20 : 0.72,
+                                alpha: isDark ? 0.18 : 0.50,
                               ),
                               Colors.transparent,
                             ],

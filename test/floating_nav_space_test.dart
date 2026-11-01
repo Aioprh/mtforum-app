@@ -50,10 +50,11 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
-    // 胶囊 66 + 测试环境的底部安全区 0 与 minimum 10 取大者。
-    expect(AppState.instance.floatingNavHeight, 76);
+    // 胶囊 66 + 1.2 描边占位，加上测试环境的底部安全区 0 与 minimum 10
+    // 取大者。描边宽度可能微调，这里给 0.5 的容差。
+    expect(AppState.instance.floatingNavHeight, closeTo(76.4, 0.5));
     // 量到之后优先用它，减 2 让最后一项略微延续到玻璃背后。
-    expect(await spaceWith(tester, bottomInset: 34), 74);
+    expect(await spaceWith(tester, bottomInset: 34), closeTo(74.4, 0.5));
   });
 
   testWidgets('底栏开着按胶囊高度加安全区算', (tester) async {
