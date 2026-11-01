@@ -9,7 +9,7 @@ import '../widgets/site_form_dialog.dart';
 import '../widgets/smart_image.dart';
 import '../widgets/state_views.dart';
 import 'login_page.dart';
-import '../navigation/swipe_navigation.dart';
+import '../navigation/app_routes.dart';
 
 /// 积分商城商品详情（原生，不跳浏览器）。
 class MallProductPage extends StatefulWidget {

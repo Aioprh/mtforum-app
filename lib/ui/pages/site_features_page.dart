@@ -7,7 +7,7 @@ import 'login_page.dart';
 import 'magic_page.dart';
 import 'medals_page.dart';
 import 'site_module_page.dart';
-import '../navigation/swipe_navigation.dart';
+import '../navigation/app_routes.dart';
 
 /// 站点功能导航：全部在 App 内原生呈现，不再跳浏览器。
 class SiteFeaturesPage extends StatelessWidget {

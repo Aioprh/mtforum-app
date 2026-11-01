@@ -10,7 +10,7 @@ import 'pm_chat_page.dart';
 import 'pm_list_page.dart';
 import 'thread_page.dart';
 import 'user_page.dart';
-import '../navigation/swipe_navigation.dart';
+import '../navigation/app_routes.dart';
 
 /// 原生提醒列表页。
 ///

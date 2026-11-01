@@ -21,7 +21,7 @@ import '../widgets/user_avatar.dart';
 import 'login_page.dart';
 import 'pm_page.dart';
 import 'user_page.dart';
-import '../navigation/swipe_navigation.dart';
+import '../navigation/app_routes.dart';
 
 /// 帖子详情：楼层流 + 分页加载 + 点赞 / 收藏 / 回复 / 楼中楼。
 class ThreadPage extends StatefulWidget {

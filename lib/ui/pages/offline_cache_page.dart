@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../services/offline_thread_cache.dart';
 import '../widgets/post_html_view.dart';
-import '../navigation/swipe_navigation.dart';
+import '../navigation/app_routes.dart';
 
 class OfflineCachePage extends StatefulWidget {
   const OfflineCachePage({super.key});

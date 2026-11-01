@@ -7,7 +7,7 @@ import '../widgets/state_views.dart';
 import '../widgets/thread_card.dart';
 import 'login_page.dart';
 import 'thread_page.dart';
-import '../navigation/swipe_navigation.dart';
+import '../navigation/app_routes.dart';
 
 /// 站内搜索（Discuz 原生搜索流程）。
 class SearchPage extends StatefulWidget {

@@ -7,7 +7,7 @@ import '../widgets/state_views.dart';
 import '../widgets/user_avatar.dart';
 import 'login_page.dart';
 import 'user_page.dart';
-import '../navigation/swipe_navigation.dart';
+import '../navigation/app_routes.dart';
 
 /// 我的粉丝：站点 `home.php?mod=follow&do=follower` 的原生列表。
 ///

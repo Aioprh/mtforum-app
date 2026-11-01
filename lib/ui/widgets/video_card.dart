@@ -6,7 +6,7 @@ import '../../core/video_link.dart';
 import '../pages/video_player_page.dart';
 import 'inline_video_player.dart';
 import 'smart_image.dart';
-import '../navigation/swipe_navigation.dart';
+import '../navigation/app_routes.dart';
 
 /// 正文里的视频播放区域。
 ///

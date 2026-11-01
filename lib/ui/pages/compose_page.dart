@@ -12,7 +12,7 @@ import '../../data/models.dart';
 import '../../state/app_state.dart';
 import '../widgets/emoji_panel.dart';
 import 'login_page.dart';
-import '../navigation/swipe_navigation.dart';
+import '../navigation/app_routes.dart';
 
 /// 发布新主题：标题 / 正文 / 表情 / 图片 / @ / 插入 / 附件 / 高级选项 / 草稿。
 class ComposePage extends StatefulWidget {

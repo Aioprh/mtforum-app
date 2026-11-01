@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../services/browse_history.dart';
 import '../widgets/smart_image.dart';
 import 'thread_page.dart';
-import '../navigation/swipe_navigation.dart';
+import '../navigation/app_routes.dart';
 
 /// 浏览历史：按时间倒序列出打开过的帖子，点一下直接回到帖子。
 class BrowseHistoryPage extends StatefulWidget {

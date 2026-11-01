@@ -6,7 +6,7 @@ import '../../state/app_state.dart';
 import '../widgets/state_views.dart';
 import '../widgets/user_avatar.dart';
 import 'user_page.dart';
-import '../navigation/swipe_navigation.dart';
+import '../navigation/app_routes.dart';
 
 /// 勋章中心：勋章目录 + 最近获得记录。
 class MedalsPage extends StatefulWidget {

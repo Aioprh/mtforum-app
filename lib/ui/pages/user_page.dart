@@ -11,7 +11,7 @@ import '../widgets/thread_feed.dart';
 import '../widgets/user_avatar.dart';
 import 'login_page.dart';
 import 'pm_chat_page.dart';
-import '../navigation/swipe_navigation.dart';
+import '../navigation/app_routes.dart';
 
 /// 他人主页：资料、关注、私信与 TA 的主题 / 回复。
 class UserPage extends StatefulWidget {

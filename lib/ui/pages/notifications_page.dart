@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'followers_page.dart';
 import 'native_notice_category_page.dart';
 import 'pm_list_page.dart';
-import '../navigation/swipe_navigation.dart';
+import '../navigation/app_routes.dart';
 
 /// 消息通知：私信、粉丝与各类提醒。全部为原生页面。
 class NotificationsPage extends StatefulWidget {

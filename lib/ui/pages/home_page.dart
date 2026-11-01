@@ -5,7 +5,7 @@ import '../../state/app_state.dart';
 import '../pages/thread_page.dart';
 import '../widgets/thread_feed.dart';
 import 'notifications_page.dart';
-import '../navigation/swipe_navigation.dart';
+import '../navigation/app_routes.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key, this.onOpenSearch});

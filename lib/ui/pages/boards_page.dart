@@ -6,7 +6,7 @@ import '../pages/board_threads_page.dart';
 import '../widgets/back_to_top.dart';
 import '../widgets/smart_image.dart';
 import '../widgets/state_views.dart';
-import '../navigation/swipe_navigation.dart';
+import '../navigation/app_routes.dart';
 
 class BoardsPage extends StatefulWidget {
   const BoardsPage({super.key});

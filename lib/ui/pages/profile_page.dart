@@ -22,7 +22,7 @@ import 'download_manager_page.dart';
 import 'mcp_page.dart';
 import 'offline_cache_page.dart';
 import 'user_page.dart';
-import '../navigation/swipe_navigation.dart';
+import '../navigation/app_routes.dart';
 
 /// 个人中心：账号信息、我的主题 / 回复 / 收藏、外观与退出。
 class ProfilePage extends StatefulWidget {

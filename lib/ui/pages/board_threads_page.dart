@@ -5,7 +5,7 @@ import '../../state/app_state.dart';
 import '../widgets/back_to_top.dart';
 import '../widgets/thread_feed.dart';
 import 'compose_page.dart';
-import '../navigation/swipe_navigation.dart';
+import '../navigation/app_routes.dart';
 
 /// 单个版块的主题列表。
 class BoardThreadsPage extends StatefulWidget {

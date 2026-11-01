@@ -5,7 +5,7 @@ import '../../data/models.dart';
 import '../../state/app_state.dart';
 import '../widgets/state_views.dart';
 import 'user_page.dart';
-import '../navigation/swipe_navigation.dart';
+import '../navigation/app_routes.dart';
 
 /// 小黑屋：站点公示的违规用户列表（forum.php?mod=misc&action=showdarkroom）。
 class BlackHousePage extends StatefulWidget {

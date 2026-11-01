@@ -11,7 +11,7 @@ import '../widgets/state_views.dart';
 import 'mall_product_page.dart';
 import 'thread_page.dart';
 import 'user_page.dart';
-import '../navigation/swipe_navigation.dart';
+import '../navigation/app_routes.dart';
 
 /// 通用站点模块页：原生渲染道具、任务、积分、推广等页面里的条目。
 class SiteModulePage extends StatefulWidget {

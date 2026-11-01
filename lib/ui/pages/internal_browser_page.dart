@@ -9,7 +9,7 @@ import '../../core/app_config.dart';
 import '../../core/http_session.dart';
 import '../../services/download_manager.dart';
 import 'download_manager_page.dart';
-import '../navigation/swipe_navigation.dart';
+import '../navigation/app_routes.dart';
 
 class InternalBrowserPage extends StatefulWidget {
   const InternalBrowserPage({super.key, required this.url, this.title = '内部浏览器'});
@@ -28,54 +28,11 @@ class _InternalBrowserPageState extends State<InternalBrowserPage> {
   bool _loading = true;
   final Set<String> _activeDownloads = <String>{};
 
-  // 网页历史状态。手势判定是同步的，不能等 canGoBack() 这个异步调用，
-  // 所以每次加载完成、前进后退之后都刷新一份缓存。
-  bool _canGoBack = false;
-  bool _canGoForward = false;
-  SwipeBackInterceptor? _swipeInterceptor;
-
   @override
   void initState() {
     super.initState();
     _url = widget.url;
     _title = widget.title;
-    // 右滑：网页能退就退网页，退到头才关掉整个页面。
-    _swipeInterceptor = SwipeBackInterceptor(
-      canGoBack: () => _canGoBack,
-      goBack: _goBackInPage,
-      canGoForward: () => _canGoForward,
-      goForward: _goForwardInPage,
-    );
-    SwipeNavigator.instance.registerInterceptor(_swipeInterceptor!);
-  }
-
-  @override
-  void dispose() {
-    final interceptor = _swipeInterceptor;
-    if (interceptor != null) {
-      SwipeNavigator.instance.unregisterInterceptor(interceptor);
-    }
-    super.dispose();
-  }
-
-  Future<void> _syncHistoryState() async {
-    final controller = _controller;
-    if (controller == null) return;
-    final back = await controller.canGoBack();
-    final forward = await controller.canGoForward();
-    if (!mounted) return;
-    _canGoBack = back;
-    _canGoForward = forward;
-  }
-
-  Future<void> _goBackInPage() async {
-    await _controller?.goBack();
-    await _syncHistoryState();
-  }
-
-  Future<void> _goForwardInPage() async {
-    await _controller?.goForward();
-    await _syncHistoryState();
   }
 
   Future<void> _openExternal() async {
@@ -218,7 +175,6 @@ class _InternalBrowserPageState extends State<InternalBrowserPage> {
             ),
             onWebViewCreated: (controller) {
               _controller = controller;
-              unawaited(_syncHistoryState());
             },
             onProgressChanged: (controller, progress) {
               if (mounted) {
@@ -247,7 +203,6 @@ class _InternalBrowserPageState extends State<InternalBrowserPage> {
                   _progress = 100;
                 });
               }
-              unawaited(_syncHistoryState());
             },
             onDownloadStarting: (controller, request) async {
               unawaited(_startDownload(

@@ -8,7 +8,7 @@ import '../pages/thread_page.dart';
 import 'back_to_top.dart';
 import 'state_views.dart';
 import 'thread_card.dart';
-import '../navigation/swipe_navigation.dart';
+import '../navigation/app_routes.dart';
 
 /// 通用主题流：首屏加载、下拉刷新、触底加载更多。
 class ThreadFeed extends StatefulWidget {

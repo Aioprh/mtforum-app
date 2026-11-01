@@ -12,7 +12,7 @@ import 'pages/home_page.dart';
 import 'pages/profile_page.dart';
 import 'pages/search_page.dart';
 import 'widgets/glass_compose_button.dart';
-import 'navigation/swipe_navigation.dart';
+import 'navigation/app_routes.dart';
 
 /// 主框架：底部四栏 + 发帖入口。
 class AppShell extends StatefulWidget {

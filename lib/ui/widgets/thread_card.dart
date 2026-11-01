@@ -4,7 +4,7 @@ import '../../data/models.dart';
 import '../pages/user_page.dart';
 import 'smart_image.dart';
 import 'user_avatar.dart';
-import '../navigation/swipe_navigation.dart';
+import '../navigation/app_routes.dart';
 
 class ThreadCard extends StatelessWidget {
   const ThreadCard({super.key, required this.thread, required this.onTap, this.onDoubleTap});

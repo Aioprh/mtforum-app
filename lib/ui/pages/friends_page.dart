@@ -8,7 +8,7 @@ import '../widgets/user_avatar.dart';
 import 'login_page.dart';
 import 'pm_chat_page.dart';
 import 'user_page.dart';
-import '../navigation/swipe_navigation.dart';
+import '../navigation/app_routes.dart';
 
 /// 我的好友：好友列表，可进入主页或直接私聊。
 class FriendsPage extends StatefulWidget {
