@@ -15,6 +15,7 @@ import '../pages/internal_browser_page.dart';
 import '../pages/thread_page.dart';
 import '../pages/user_page.dart';
 import '../pages/video_player_page.dart';
+import 'code_highlight.dart';
 import 'smart_image.dart';
 import 'video_card.dart';
 import '../navigation/app_routes.dart';
@@ -387,7 +388,12 @@ class _PostHtmlViewState extends State<PostHtmlView> {
     if (tag == 'pre' || classes.contains('blockcode')) {
       final text = element.text.trim();
       if (text.isEmpty) return const [];
-      return [_codeBlock(context, text)];
+      return [
+        _codeBlock(context, text, <String>[
+          ...classes,
+          ...?element.querySelector('code')?.classes,
+        ]),
+      ];
     }
 
     if (tag == 'ul' || tag == 'ol') {
@@ -722,8 +728,18 @@ class _PostHtmlViewState extends State<PostHtmlView> {
     return buffer.toString();
   }
 
-  Widget _codeBlock(BuildContext context, String text) {
+  /// 代码块：左上角标语言和行数，左侧行号，右侧横向滚动的高亮正文。
+  ///
+  /// 行号列和正文共用 [CodeHighlight.codeStyle]，也共用同一个 `textScaler`：
+  /// 少一样，用户把系统字体调大之后两列就会逐行错开，越往下错得越离谱。
+  Widget _codeBlock(BuildContext context, String text, Iterable<String> classes) {
     final scheme = Theme.of(context).colorScheme;
+    final language = CodeHighlight.detect(text, classes: classes);
+    final lineCount = '\n'.allMatches(text).length + 1;
+    final textScaler = MediaQuery.textScalerOf(context);
+    // 等宽字体 12.5 号，一个数字大约 7.5 宽；再加 4 的余量，别贴边。
+    final gutterWidth =
+        (4 + 7.6 * '$lineCount'.length) * (textScaler.scale(12.5) / 12.5);
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
@@ -737,7 +753,10 @@ class _PostHtmlViewState extends State<PostHtmlView> {
             padding: const EdgeInsets.fromLTRB(12, 8, 6, 0),
             child: Row(
               children: [
-                const Text('代码', style: TextStyle(color: Colors.white54, fontSize: 11)),
+                Text(
+                  '${language.label} · $lineCount 行',
+                  style: const TextStyle(color: Colors.white54, fontSize: 11),
+                ),
                 const Spacer(),
                 TextButton(
                   onPressed: () {
@@ -756,12 +775,29 @@ class _PostHtmlViewState extends State<PostHtmlView> {
               ],
             ),
           ),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
+          Padding(
             padding: const EdgeInsets.fromLTRB(12, 2, 12, 12),
-            child: Text(
-              text,
-              style: const TextStyle(color: Color(0xFFE6EDF3), fontSize: 12.5, height: 1.55, fontFamily: 'monospace'),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: gutterWidth,
+                  child: Text(
+                    CodeHighlight.lineNumbers(lineCount),
+                    textAlign: TextAlign.right,
+                    style: CodeHighlight.codeStyle.copyWith(color: CodeHighlight.gutterColor),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    // 用 Text.rich 而不是裸 RichText：后者不参与外层的
+                    // SelectionArea，正文能长按选，代码块却选不了。
+                    child: Text.rich(CodeHighlight.span(text, language)),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
