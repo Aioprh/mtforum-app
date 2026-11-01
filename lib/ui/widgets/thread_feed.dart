@@ -287,7 +287,11 @@ class _ThreadFeedState extends State<ThreadFeed> {
       SliverPadding(
         padding: EdgeInsets.fromLTRB(
           widget.padding.left,
-          0,
+          // 没有 header 的页面（我的主题 / 我的回复 / 我的收藏、标签下的帖子）
+          // 顶栏留白只能由列表自己撑：以前这里恒为 0，第一条帖子就直接顶到
+          // 玻璃顶栏背后，头像和用户名被糊掉半行。有 header 时留白由 header
+          // 那块 SliverToBoxAdapter 负责，这里再补一次会空出双重间距。
+          widget.header == null && widget.pinnedHeader == null ? widget.padding.top : 0,
           widget.padding.right,
           widget.padding.bottom,
         ),
