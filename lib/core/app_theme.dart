@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -103,6 +104,22 @@ class AppTheme {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
         ),
+      ),
+      // 页面转场：Android 默认是 PredictiveBack（不支持系统预测返回时退化成
+      // Zoom）。两者的退场都是「旧页缩成圆角卡片 + 垫一层 surface 遮罩」，
+      // 入场再把新页从 0.85 缩放淡入——转场半程整屏发白，前后两页同时半透明
+      // 地叠在一起，浅色主题里像糊了一层毛玻璃，深色主题里是一团灰雾。
+      // 换成 Cupertino 的横向滑动：新页始终不透明，旧页只做视差后退，
+      // 没有遮罩、没有淡入，也就不会出现叠影。
+      pageTransitionsTheme: const PageTransitionsTheme(
+        builders: <TargetPlatform, PageTransitionsBuilder>{
+          TargetPlatform.android: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.linux: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.windows: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.fuchsia: CupertinoPageTransitionsBuilder(),
+        },
       ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
