@@ -1,6 +1,8 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
+import 'text_selection_guard.dart';
+
 /// 手势导航基础设施。
 ///
 /// 三件事：
@@ -303,6 +305,14 @@ class _SwipeGestureRegionState extends State<SwipeGestureRegion> {
   }
 
   void _onUpdate(DragUpdateDetails details) {
+    // 拖到一半才开始选字（长按刚判定），把已经跟手的页面弹回去。
+    if (_mode == _DragMode.back && TextSelectionGuard.selecting) {
+      _backRoute?.settleTo(1);
+      _backRoute = null;
+      _backInterceptor = null;
+      _mode = _DragMode.ignored;
+      return;
+    }
     _dx += details.primaryDelta ?? 0;
     if (_mode == _DragMode.idle) {
       // 方向还没定之前先不接管，避免一按下就把页面挪几像素。
@@ -342,6 +352,11 @@ class _SwipeGestureRegionState extends State<SwipeGestureRegion> {
 
   /// 方向确定后决定这一次拖动归谁。
   void _decide(bool toRight) {
+    // 正在选文本：手指横移是拉选，不是翻页，这一趟整个让出去。
+    if (TextSelectionGuard.selecting) {
+      _mode = _DragMode.ignored;
+      return;
+    }
     final nav = SwipeNavigator.instance;
     final navigator = nav.navigatorState;
     if (navigator == null) {

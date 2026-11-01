@@ -17,6 +17,7 @@ import '../pages/video_player_page.dart';
 import 'smart_image.dart';
 import 'video_card.dart';
 import '../navigation/swipe_navigation.dart';
+import '../navigation/text_selection_guard.dart';
 
 /// 将论坛帖子的 HTML 内容解析为原生 Flutter 组件。
 class PostHtmlView extends StatefulWidget {
@@ -64,6 +65,7 @@ class _PostHtmlViewState extends State<PostHtmlView> {
 
   @override
   void dispose() {
+    TextSelectionGuard.release(this);
     _disposeRecognizers();
     super.dispose();
   }
@@ -1092,7 +1094,12 @@ class _PostHtmlViewState extends State<PostHtmlView> {
       return Text('该楼层暂无内容', style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant));
     }
     final content = Column(crossAxisAlignment: CrossAxisAlignment.start, children: cache);
-    return widget.selectable ? SelectionArea(child: content) : content;
+    if (!widget.selectable) return content;
+    // 选字时手指横移和「右拖后退」是同一个动作，选中期间要让手势层停手。
+    return SelectionArea(
+      onSelectionChanged: (selected) => TextSelectionGuard.setSelecting(this, selected != null),
+      child: content,
+    );
   }
 }
 
