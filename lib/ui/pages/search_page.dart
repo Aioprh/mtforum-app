@@ -266,9 +266,13 @@ class _SearchPageState extends State<SearchPage> with AutomaticKeepAliveClientMi
   }
 
   Widget _resultArea(ColorScheme scheme, double topPadding) {
+    // 悬浮玻璃底栏浮在页面之上（Scaffold.extendBody），列表末尾要多留一段，
+    // 否则最后一条结果被压在底栏下面。88 与首页、版块页保持一致。
+    final bottomPad = AppState.instance.floatingGlassNav ? 88.0 : 26.0;
+
     if (!_searched) {
       return ListView(
-        padding: EdgeInsets.fromLTRB(20, topPadding + 26, 20, 20),
+        padding: EdgeInsets.fromLTRB(20, topPadding + 26, 20, bottomPad),
         children: [
           Icon(Icons.travel_explore_rounded, size: 54, color: scheme.outline.withValues(alpha: 0.55)),
           const SizedBox(height: 14),
@@ -328,7 +332,7 @@ class _SearchPageState extends State<SearchPage> with AutomaticKeepAliveClientMi
       );
     }
     return ListView.separated(
-      padding: EdgeInsets.fromLTRB(14, topPadding + 4, 14, 26),
+      padding: EdgeInsets.fromLTRB(14, topPadding + 4, 14, bottomPad),
       physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
       itemCount: _results.length + 1,
       separatorBuilder: (_, __) => const SizedBox(height: 11),

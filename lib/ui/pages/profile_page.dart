@@ -678,7 +678,13 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
             edgeOffset: topInset,
             child: ListView(
               physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-              padding: EdgeInsets.fromLTRB(16, topInset + 6, 16, 30),
+              // 悬浮玻璃底栏浮在页面之上，末尾多留一段，否则最后一项被压住。
+              padding: EdgeInsets.fromLTRB(
+                16,
+                topInset + 6,
+                16,
+                state.floatingGlassNav ? 88 : 30,
+              ),
               children: [
                 if (state.isLoggedIn) ...[
                   GestureDetector(
