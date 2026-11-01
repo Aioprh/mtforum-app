@@ -4,6 +4,7 @@ import '../../core/http_session.dart';
 import '../../data/models.dart';
 import '../../state/app_state.dart';
 import '../widgets/glass_app_bar.dart';
+import '../widgets/glass_controls.dart';
 import '../widgets/measure_height.dart';
 import '../widgets/state_views.dart';
 import '../widgets/thread_glass.dart';
@@ -27,10 +28,6 @@ class _SearchPageState extends State<SearchPage> with AutomaticKeepAliveClientMi
 
   late final TextEditingController _keyword = TextEditingController(text: widget.initialKeyword);
 
-  /// 输入框聚焦时给玻璃边缘加一圈主色，让人知道现在能打字。
-  final FocusNode _focus = FocusNode();
-  bool _focused = false;
-
   List<ForumCategory> _categories = const [];
   List<ThreadSummary> _results = const [];
   bool _loading = false;
@@ -50,7 +47,6 @@ class _SearchPageState extends State<SearchPage> with AutomaticKeepAliveClientMi
   @override
   void initState() {
     super.initState();
-    _focus.addListener(_onFocusChanged);
     _loadBoards();
     if (widget.initialKeyword.isNotEmpty) _search();
   }
@@ -58,8 +54,6 @@ class _SearchPageState extends State<SearchPage> with AutomaticKeepAliveClientMi
   @override
   void dispose() {
     _keyword.dispose();
-    _focus.removeListener(_onFocusChanged);
-    _focus.dispose();
     super.dispose();
   }
 
@@ -136,11 +130,6 @@ class _SearchPageState extends State<SearchPage> with AutomaticKeepAliveClientMi
     }
   }
 
-  void _onFocusChanged() {
-    if (_focused == _focus.hasFocus) return;
-    setState(() => _focused = _focus.hasFocus);
-  }
-
   void _toast(String message) {
     ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(message)));
   }
@@ -200,7 +189,6 @@ class _SearchPageState extends State<SearchPage> with AutomaticKeepAliveClientMi
   }
 
   Widget _searchBar(ColorScheme scheme) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 6, 14, 10),
       child: Column(
@@ -209,14 +197,14 @@ class _SearchPageState extends State<SearchPage> with AutomaticKeepAliveClientMi
         children: [
           Row(
             children: [
-              Expanded(child: _searchField(scheme, isDark)),
+              Expanded(child: _searchField()),
               const SizedBox(width: 9),
               _SearchBead(loading: _loading, onTap: _loading ? null : _search),
             ],
           ),
           if (_categories.isNotEmpty) ...[
             const SizedBox(height: 9),
-            _GlassPill(
+            GlassPill(
               label: _filterLabel,
               icon: Icons.tune_rounded,
               trailing: Icons.keyboard_arrow_down_rounded,
@@ -229,65 +217,11 @@ class _SearchPageState extends State<SearchPage> with AutomaticKeepAliveClientMi
     );
   }
 
-  /// 输入框自己就是一粒玻璃：不铺底色，只留一圈发丝描边和极淡的填充，
-  /// 让背后顶栏的模糊透上来，和底栏、回复框是同一块玻璃。
-  Widget _searchField(ColorScheme scheme, bool isDark) {
-    final accent = scheme.primary.withValues(alpha: isDark ? 0.55 : 0.42);
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
-      curve: Curves.easeOut,
-      height: 46,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(23),
-        color: Colors.white.withValues(alpha: isDark ? 0.10 : 0.46),
-        border: Border.all(color: _focused ? accent : ThreadGlass.borderColor(context), width: _focused ? 1.2 : 0.9),
-        boxShadow: _focused
-            ? [BoxShadow(color: scheme.primary.withValues(alpha: isDark ? 0.28 : 0.18), blurRadius: 14, spreadRadius: 0.5)]
-            : null,
-      ),
-      child: Row(
-        children: [
-          const SizedBox(width: 14),
-          Icon(Icons.search_rounded, size: 19, color: scheme.onSurfaceVariant),
-          const SizedBox(width: 8),
-          Expanded(
-            child: TextField(
-              controller: _keyword,
-              focusNode: _focus,
-              textInputAction: TextInputAction.search,
-              onSubmitted: (_) => _search(),
-              cursorHeight: 18,
-              style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w500),
-              decoration: InputDecoration(
-                isDense: true,
-                filled: false,
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                hintText: '搜索帖子、教程或资源…',
-                hintStyle: TextStyle(fontSize: 14, color: scheme.onSurfaceVariant.withValues(alpha: 0.72)),
-              ),
-            ),
-          ),
-          ValueListenableBuilder(
-            valueListenable: _keyword,
-            builder: (context, value, _) => value.text.isEmpty
-                ? const SizedBox(width: 12)
-                : Padding(
-                    padding: const EdgeInsets.only(right: 6),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(14),
-                      onTap: () => setState(() => _keyword.clear()),
-                      child: Padding(
-                        padding: const EdgeInsets.all(4),
-                        child: Icon(Icons.cancel_rounded, size: 17, color: scheme.onSurfaceVariant.withValues(alpha: 0.7)),
-                      ),
-                    ),
-                  ),
-          ),
-        ],
-      ),
+  Widget _searchField() {
+    return GlassSearchField(
+      controller: _keyword,
+      hintText: '搜索帖子、教程或资源…',
+      onSubmitted: (_) => _search(),
     );
   }
 
@@ -344,7 +278,7 @@ class _SearchPageState extends State<SearchPage> with AutomaticKeepAliveClientMi
             runSpacing: 8,
             children: [
               for (final word in _suggestions)
-                _GlassPill(
+                GlassPill(
                   label: word,
                   onTap: () {
                     _keyword.text = word;
@@ -497,71 +431,6 @@ class _SearchBeadState extends State<_SearchBead> {
   }
 }
 
-/// 小玻璃胶囊：筛选、联想词都用它，选中态换成主色淡底。
-class _GlassPill extends StatelessWidget {
-  const _GlassPill({
-    required this.label,
-    required this.onTap,
-    this.icon,
-    this.trailing,
-    this.selected = false,
-    this.fontSize = 12.5,
-    this.padding = const EdgeInsets.fromLTRB(12, 7, 12, 7),
-  });
-
-  final String label;
-  final VoidCallback onTap;
-  final IconData? icon;
-  final IconData? trailing;
-  final bool selected;
-  final double fontSize;
-  final EdgeInsets padding;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final fg = selected ? scheme.primary : scheme.onSurfaceVariant;
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeOut,
-        padding: padding,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(18),
-          color: selected
-              ? scheme.primary.withValues(alpha: isDark ? 0.22 : 0.13)
-              : Colors.white.withValues(alpha: isDark ? 0.09 : 0.44),
-          border: Border.all(
-            color: selected
-                ? scheme.primary.withValues(alpha: isDark ? 0.45 : 0.34)
-                : ThreadGlass.borderColor(context),
-            width: 0.9,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (icon != null) ...[
-              Icon(icon, size: 14, color: fg),
-              const SizedBox(width: 6),
-            ],
-            Text(
-              label,
-              style: TextStyle(fontSize: fontSize, fontWeight: FontWeight.w600, color: fg),
-            ),
-            if (trailing != null) ...[
-              const SizedBox(width: 2),
-              Icon(trailing, size: 16, color: fg.withValues(alpha: 0.8)),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 /// 版块筛选浮层：按分区列出全部版块，选中即回传 fid。
 ///
 /// 原来的下拉菜单一展开就是一张铺满屏幕的灰板，十几个版块挤成
@@ -641,7 +510,7 @@ class BoardPickerSheet extends StatelessWidget {
                       runSpacing: 8,
                       children: [
                         for (final board in category.boards)
-                          _GlassPill(
+                          GlassPill(
                             label: board.name,
                             selected: board.fid == selected,
                             fontSize: 13,

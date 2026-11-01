@@ -151,6 +151,16 @@ class FriendItem {
   final int followers;
   final int following;
   final bool isStarred;
+
+  FriendItem copyWith({String? note, bool? isStarred}) => FriendItem(
+        uid: uid,
+        username: username,
+        avatar: avatar,
+        note: note ?? this.note,
+        followers: followers,
+        following: following,
+        isStarred: isStarred ?? this.isStarred,
+      );
 }
 
 /// 私信会话摘要。

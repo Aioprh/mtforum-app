@@ -4,6 +4,7 @@ import '../../core/http_session.dart';
 import '../../data/models.dart';
 import '../../state/app_state.dart';
 import '../widgets/glass_app_bar.dart';
+import '../widgets/glass_controls.dart';
 import '../widgets/state_views.dart';
 
 /// 积分：余额摘要与交易记录（原生渲染）。
@@ -97,7 +98,7 @@ class _CreditPageState extends State<CreditPage> {
       body: SafeArea(
         top: false,
         child: _loading
-            ? const Center(child: CircularProgressIndicator())
+            ? SkeletonView(kind: SkeletonKind.row, topInset: glassTopInset(context))
             : _error != null
                 ? ErrorView(message: _error!, onRetry: _load)
                 : RefreshIndicator(
@@ -150,12 +151,8 @@ class _CreditPageState extends State<CreditPage> {
 
   Widget _balanceCard(ColorScheme scheme) {
     final items = _summary.items;
-    return Container(
+    return GlassCard(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest.withValues(alpha: 0.35),
-        borderRadius: BorderRadius.circular(16),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -238,12 +235,9 @@ class _CreditPageState extends State<CreditPage> {
         : change.startsWith('+')
             ? scheme.primary
             : scheme.onSurfaceVariant;
-    return Container(
+    return GlassCard(
+      radius: 16,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest.withValues(alpha: 0.35),
-        borderRadius: BorderRadius.circular(14),
-      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

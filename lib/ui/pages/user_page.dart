@@ -141,7 +141,7 @@ class _UserPageState extends State<UserPage> {
           ],
         ),
         body: _loading
-            ? const Center(child: CircularProgressIndicator())
+            ? SkeletonView(kind: SkeletonKind.card, topInset: glassTopInset(context))
             : _error != null
                 ? ErrorView(message: _error!, onRetry: _load)
                 : TabBarView(

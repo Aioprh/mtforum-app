@@ -199,7 +199,7 @@ class _NativeNoticeCategoryPageState extends State<NativeNoticeCategoryPage> {
         child: !AppState.instance.isLoggedIn
             ? _loginHint(scheme)
             : _loading
-                ? const Center(child: CircularProgressIndicator())
+                ? SkeletonView(kind: SkeletonKind.row, topInset: glassTopInset(context))
                 : _error != null
                     ? ErrorView(message: _error!, onRetry: _load)
                     : RefreshIndicator(

@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../../services/download_manager.dart';
 import '../widgets/glass_app_bar.dart';
+import '../widgets/state_views.dart';
 
 class DownloadManagerPage extends StatefulWidget {
   const DownloadManagerPage({super.key});
@@ -95,7 +96,7 @@ class _DownloadManagerPageState extends State<DownloadManagerPage> {
         animation: DownloadManager.instance,
         builder: (context, _) {
           final records = DownloadManager.instance.records;
-          if (_loading) return const Center(child: CircularProgressIndicator());
+          if (_loading) return SkeletonView(kind: SkeletonKind.row, topInset: glassTopInset(context));
           if (records.isEmpty) {
             return const Center(
               child: Column(

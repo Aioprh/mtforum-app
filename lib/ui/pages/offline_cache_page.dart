@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../services/offline_thread_cache.dart';
 import '../widgets/glass_app_bar.dart';
+import '../widgets/state_views.dart';
 import '../widgets/post_html_view.dart';
 import '../navigation/app_routes.dart';
 
@@ -34,7 +35,7 @@ class _OfflineCachePageState extends State<OfflineCachePage> {
   @override Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(extendBodyBehindAppBar: true, appBar: GlassAppBar(title: const Text('离线缓存'), actions: [IconButton(tooltip: '清理全部缓存', onPressed: _items.isEmpty ? null : _clearAll, icon: const Icon(Icons.delete_sweep_outlined))]),
-      body: _loading ? const Center(child: CircularProgressIndicator()) : _items.isEmpty
+      body: _loading ? SkeletonView(kind: SkeletonKind.row, topInset: glassTopInset(context)) : _items.isEmpty
         ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.offline_pin_outlined, size: 52, color: scheme.onSurfaceVariant), const SizedBox(height: 12), const Text('还没有离线缓存'), const SizedBox(height: 6), Text('打开帖子，选择「缓存帖子供离线阅读」', style: TextStyle(color: scheme.onSurfaceVariant))]))
         : RefreshIndicator(onRefresh: _refresh, child: ListView.separated(padding: glassPagePadding(context, top: 2), itemCount: _items.length, separatorBuilder: (_, __) => const SizedBox(height: 8), itemBuilder: (context, i) {
           final item = _items[i]; final date = DateTime.tryParse('${item['cachedAt'] ?? ''}')?.toLocal();

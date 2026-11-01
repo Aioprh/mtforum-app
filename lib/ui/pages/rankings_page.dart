@@ -111,8 +111,9 @@ class _RankingsPageState extends State<RankingsPage> {
               ),
             ),
             Expanded(
+              // 上方三段切换器已经让过顶栏，这里不再重复让位。
               child: _loading
-                  ? const Center(child: CircularProgressIndicator())
+                  ? const SkeletonView(kind: SkeletonKind.row)
                   : _error != null
                       ? ErrorView(message: _error!, onRetry: _load)
                       : RefreshIndicator(

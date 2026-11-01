@@ -4,6 +4,7 @@ import '../../core/http_session.dart';
 import '../../data/models.dart';
 import '../../state/app_state.dart';
 import '../widgets/glass_app_bar.dart';
+import '../widgets/glass_controls.dart';
 import '../widgets/state_views.dart';
 import '../widgets/user_avatar.dart';
 import 'user_page.dart';
@@ -93,7 +94,7 @@ class _MedalsPageState extends State<MedalsPage> {
       body: SafeArea(
         top: false,
         child: _loading
-            ? const Center(child: CircularProgressIndicator())
+            ? SkeletonView(kind: SkeletonKind.grid, topInset: glassTopInset(context))
             : _error != null
                 ? ErrorView(message: _error!, onRetry: _load)
                 : RefreshIndicator(
@@ -107,51 +108,22 @@ class _MedalsPageState extends State<MedalsPage> {
                         if (_medals.isEmpty)
                           EmptyView(text: '站点暂未开放勋章', icon: Icons.military_tech_outlined)
                         else
-                          Container(
+                          GlassCard(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-                            decoration: BoxDecoration(
-                              color: scheme.surfaceContainerHighest.withValues(alpha: 0.35),
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: Wrap(
-                              spacing: 4,
-                              runSpacing: 12,
-                              children: [
-                                for (final item in _medals)
-                                  SizedBox(
-                                    width: (MediaQuery.sizeOf(context).width - 44) / 4,
-                                    child: InkWell(
-                                      borderRadius: BorderRadius.circular(10),
-                                      onTap: () => _showMedal(item),
-                                      child: Column(
-                                        children: [
-                                          if (item.image.isNotEmpty)
-                                            Image.network(
-                                              item.image,
-                                              width: 38,
-                                              height: 38,
-                                              fit: BoxFit.contain,
-                                              errorBuilder: (_, __, ___) => Icon(
-                                                Icons.military_tech_outlined,
-                                                size: 34,
-                                                color: scheme.primary,
-                                              ),
-                                            )
-                                          else
-                                            Icon(Icons.military_tech_outlined, size: 34, color: scheme.primary),
-                                          const SizedBox(height: 6),
-                                          Text(
-                                            item.name,
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            textAlign: TextAlign.center,
-                                            style: const TextStyle(fontSize: 10.5),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                              ],
+                            child: GridView.builder(
+                              shrinkWrap: true,
+                              // 不写 padding 时网格会继承 MediaQuery 的安全区，
+                              // 这一页开了 extendBodyBehindAppBar，会凭空多出顶栏那 100dp。
+                              padding: EdgeInsets.zero,
+                              physics: const NeverScrollableScrollPhysics(),
+                              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 4,
+                                mainAxisExtent: 70,
+                                mainAxisSpacing: 12,
+                                crossAxisSpacing: 4,
+                              ),
+                              itemCount: _medals.length,
+                              itemBuilder: (context, index) => _medalTile(scheme, _medals[index]),
                             ),
                           ),
                         const SizedBox(height: 20),
@@ -167,6 +139,41 @@ class _MedalsPageState extends State<MedalsPage> {
                       ],
                     ),
                   ),
+      ),
+    );
+  }
+
+  /// 单枚勋章：图标 + 名字，点开看详情。
+  Widget _medalTile(ColorScheme scheme, MedalItem item) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: () => _showMedal(item),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          if (item.image.isNotEmpty)
+            Image.network(
+              item.image,
+              width: 38,
+              height: 38,
+              fit: BoxFit.contain,
+              errorBuilder: (_, __, ___) => Icon(
+                Icons.military_tech_outlined,
+                size: 34,
+                color: scheme.primary,
+              ),
+            )
+          else
+            Icon(Icons.military_tech_outlined, size: 34, color: scheme.primary),
+          const SizedBox(height: 6),
+          Text(
+            item.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 10.5),
+          ),
+        ],
       ),
     );
   }

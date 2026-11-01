@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../services/browse_history.dart';
 import '../widgets/smart_image.dart';
 import '../widgets/glass_app_bar.dart';
+import '../widgets/state_views.dart';
+import '../widgets/glass_controls.dart';
 import 'thread_page.dart';
 import '../navigation/app_routes.dart';
 
@@ -117,38 +119,17 @@ class _BrowseHistoryPageState extends State<BrowseHistoryPage> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? SkeletonView(kind: SkeletonKind.row, topInset: glassTopInset(context))
           : _items.isEmpty
               ? _emptyState(scheme)
               : Column(
                   children: [
                     Padding(
                       padding: EdgeInsets.fromLTRB(kPageGutter, glassTopInset(context) + 10, kPageGutter, 6),
-                      child: TextField(
+                      child: GlassSearchField(
                         controller: _search,
+                        hintText: '搜索标题、作者或版块',
                         onChanged: (value) => setState(() => _query = value),
-                        textInputAction: TextInputAction.search,
-                        decoration: InputDecoration(
-                          isDense: true,
-                          hintText: '搜索标题、作者或版块',
-                          prefixIcon: const Icon(Icons.search_rounded, size: 20),
-                          suffixIcon: _query.isEmpty
-                              ? null
-                              : IconButton(
-                                  tooltip: '清除',
-                                  icon: const Icon(Icons.close_rounded, size: 18),
-                                  onPressed: () {
-                                    _search.clear();
-                                    setState(() => _query = '');
-                                  },
-                                ),
-                          filled: true,
-                          fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                            borderSide: BorderSide.none,
-                          ),
-                        ),
                       ),
                     ),
                     Expanded(
@@ -205,7 +186,7 @@ class _BrowseHistoryPageState extends State<BrowseHistoryPage> {
     }
     return ListView.builder(
       physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+      padding: const EdgeInsets.fromLTRB(kPageGutter, 4, kPageGutter, 24),
       itemCount: rows.length,
       itemBuilder: (context, index) {
         final row = rows[index];
@@ -247,13 +228,12 @@ class _BrowseHistoryPageState extends State<BrowseHistoryPage> {
         child: Icon(Icons.delete_outline_rounded, color: scheme.onErrorContainer),
       ),
       onDismissed: (_) => _remove(entry),
-      child: Card(
-        margin: const EdgeInsets.only(bottom: 10),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: GlassCard(
+          radius: 16,
           onTap: () => _open(entry),
-          child: Padding(
-            padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(12),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -302,7 +282,6 @@ class _BrowseHistoryPageState extends State<BrowseHistoryPage> {
                 ),
               ],
             ),
-          ),
         ),
       ),
     );

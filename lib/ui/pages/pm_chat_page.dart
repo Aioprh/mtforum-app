@@ -210,7 +210,7 @@ class _PmChatPageState extends State<PmChatPage> {
     if (_loading) {
       return Padding(
         padding: EdgeInsets.only(top: topInset),
-        child: const Center(child: CircularProgressIndicator()),
+        child: const SkeletonView(kind: SkeletonKind.row),
       );
     }
     if (_error != null) {

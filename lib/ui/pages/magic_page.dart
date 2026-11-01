@@ -4,6 +4,7 @@ import '../../core/http_session.dart';
 import '../../data/models.dart';
 import '../../state/app_state.dart';
 import '../widgets/glass_app_bar.dart';
+import '../widgets/glass_controls.dart';
 import '../widgets/site_form_dialog.dart';
 import '../widgets/smart_image.dart';
 import '../widgets/state_views.dart';
@@ -58,13 +59,11 @@ Widget _sectionTitle(ColorScheme scheme, String title, [String trailing = '']) {
   );
 }
 
+/// 道具中心通用卡片：统一走玻璃底 + 描边，和其它页面的卡片刻度一致。
 Widget _card(ColorScheme scheme, Widget child) {
-  return Container(
-    padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
-    decoration: BoxDecoration(
-      color: scheme.surfaceContainerHighest.withValues(alpha: 0.35),
-      borderRadius: BorderRadius.circular(14),
-    ),
+  return GlassCard(
+    radius: 16,
+    padding: const EdgeInsets.all(12),
     child: child,
   );
 }
@@ -177,7 +176,7 @@ class _MagicShopTabState extends State<_MagicShopTab> with AutomaticKeepAliveCli
   Widget build(BuildContext context) {
     super.build(context);
     final scheme = Theme.of(context).colorScheme;
-    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_loading) return SkeletonView(kind: SkeletonKind.row, topInset: glassTopInset(context));
     if (_error != null) return ErrorView(message: _error!, onRetry: _load);
     return RefreshIndicator(
       onRefresh: _load,
@@ -471,7 +470,7 @@ class _MagicBoxTabState extends State<_MagicBoxTab> with AutomaticKeepAliveClien
   Widget build(BuildContext context) {
     super.build(context);
     final scheme = Theme.of(context).colorScheme;
-    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_loading) return SkeletonView(kind: SkeletonKind.row, topInset: glassTopInset(context));
     if (_error != null) return ErrorView(message: _error!, onRetry: _load);
     return RefreshIndicator(
       onRefresh: _load,
@@ -690,8 +689,9 @@ class _MagicLogTabState extends State<_MagicLogTab> with AutomaticKeepAliveClien
           ),
         ),
         Expanded(
+          // 上面那行筛选器已经让过顶栏了，骨架不用再让一次。
           child: _loading
-              ? const Center(child: CircularProgressIndicator())
+              ? const SkeletonView(kind: SkeletonKind.row)
               : _error != null
                   ? ErrorView(message: _error!, onRetry: _load)
                   : RefreshIndicator(

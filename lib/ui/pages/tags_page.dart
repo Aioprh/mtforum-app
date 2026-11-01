@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/http_session.dart';
 import '../../state/app_state.dart';
 import '../widgets/glass_app_bar.dart';
+import '../widgets/glass_controls.dart';
 import '../widgets/state_views.dart';
 import '../widgets/thread_feed.dart';
 import '../navigation/app_routes.dart';
@@ -51,7 +52,6 @@ class _TagsPageState extends State<TagsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: GlassAppBar(
@@ -67,7 +67,7 @@ class _TagsPageState extends State<TagsPage> {
       body: SafeArea(
         top: false,
         child: _loading
-            ? const Center(child: CircularProgressIndicator())
+            ? SkeletonView(kind: SkeletonKind.row, topInset: glassTopInset(context))
             : _error != null
                 ? ErrorView(message: _error!, onRetry: _load)
                 : RefreshIndicator(
@@ -89,28 +89,16 @@ class _TagsPageState extends State<TagsPage> {
                                 spacing: 8,
                                 runSpacing: 8,
                                 children: [
+                                  // 和搜索页的筛选胶囊同一套玻璃：标签本身是「被强调的对象」，
+                                  // 所以用 accent 语义色，而不是中性白玻璃。
                                   for (final tag in _tags)
-                                    InkWell(
-                                      borderRadius: BorderRadius.circular(20),
+                                    GlassPill(
+                                      label: tag.$1,
+                                      tone: GlassPillTone.accent,
+                                      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
                                       onTap: () => Navigator.of(context).push(
                                         appRoute(
                                           builder: (_) => _TagThreadsPage(id: tag.$2, name: tag.$1),
-                                        ),
-                                      ),
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
-                                        decoration: BoxDecoration(
-                                          color: scheme.primary.withValues(alpha: 0.08),
-                                          borderRadius: BorderRadius.circular(20),
-                                          border: Border.all(color: scheme.primary.withValues(alpha: 0.18)),
-                                        ),
-                                        child: Text(
-                                          tag.$1,
-                                          style: TextStyle(
-                                            fontSize: 12.5,
-                                            fontWeight: FontWeight.w600,
-                                            color: scheme.primary,
-                                          ),
                                         ),
                                       ),
                                     ),

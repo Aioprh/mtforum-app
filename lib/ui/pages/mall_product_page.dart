@@ -184,7 +184,7 @@ class _MallProductPageState extends State<MallProductPage> {
       body: SafeArea(
         top: false,
         child: _loading
-            ? const Center(child: CircularProgressIndicator())
+            ? SkeletonView(kind: SkeletonKind.card, topInset: glassTopInset(context))
             : _error != null
                 ? ErrorView(message: _error!, onRetry: _load)
                 : RefreshIndicator(

@@ -63,17 +63,45 @@ class EmptyView extends StatelessWidget {
   }
 }
 
+/// 骨架屏的形状：帖子卡片、列表行、网格方块。
+enum SkeletonKind { card, row, grid }
+
 /// 首屏骨架屏，避免空白等待。
-class FeedSkeleton extends StatefulWidget {
+///
+/// 之前帖子列表用骨架、其余十几个页面用转圈，慢网下有的页面淡入占位、有的
+/// 干等一个圆圈，观感割裂。[SkeletonView] 把三种常见形状收在一起，
+/// [FeedSkeleton] 只是它的帖子卡片形态。
+class FeedSkeleton extends StatelessWidget {
   const FeedSkeleton({super.key, this.count = 5});
 
   final int count;
 
   @override
-  State<FeedSkeleton> createState() => _FeedSkeletonState();
+  Widget build(BuildContext context) =>
+      SkeletonView(kind: SkeletonKind.card, count: count, gutter: 16);
 }
 
-class _FeedSkeletonState extends State<FeedSkeleton> with SingleTickerProviderStateMixin {
+class SkeletonView extends StatefulWidget {
+  const SkeletonView({
+    super.key,
+    this.kind = SkeletonKind.card,
+    this.count,
+    this.topInset = 0,
+    this.gutter = 14,
+  });
+
+  final SkeletonKind kind;
+  final int? count;
+
+  /// 玻璃顶栏占掉的高度，骨架从它下面开始，不要压到玻璃上。
+  final double topInset;
+  final double gutter;
+
+  @override
+  State<SkeletonView> createState() => _SkeletonViewState();
+}
+
+class _SkeletonViewState extends State<SkeletonView> with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 900),
@@ -101,38 +129,86 @@ class _FeedSkeletonState extends State<FeedSkeleton> with SingleTickerProviderSt
                 borderRadius: BorderRadius.circular(radius),
               ),
             );
-        return ListView.separated(
-          physics: const NeverScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
-          itemCount: widget.count,
-          separatorBuilder: (_, __) => const SizedBox(height: 12),
-          itemBuilder: (_, __) => Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: scheme.surface,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.35)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+        final padding = EdgeInsets.fromLTRB(widget.gutter, widget.topInset + 10, widget.gutter, 24);
+        switch (widget.kind) {
+          case SkeletonKind.grid:
+            return GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              // 显式 padding：不写的话网格会继承 MediaQuery 的安全区，
+              // 开了 extendBodyBehindAppBar 的页面会凭空多出一整块空白。
+              padding: padding,
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 4,
+                mainAxisExtent: 70,
+                mainAxisSpacing: 12,
+                crossAxisSpacing: 8,
+              ),
+              itemCount: widget.count ?? 8,
+              itemBuilder: (_, __) => Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [bar(38, 38, radius: 19), const SizedBox(height: 8), bar(46, 8)],
+              ),
+            );
+          case SkeletonKind.row:
+            return ListView.separated(
+              physics: const NeverScrollableScrollPhysics(),
+              padding: padding,
+              itemCount: widget.count ?? 8,
+              separatorBuilder: (_, __) => const SizedBox(height: 6),
+              itemBuilder: (_, __) => Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Row(
                   children: [
-                    bar(32, 32, radius: 16),
-                    const SizedBox(width: 10),
-                    Column(crossAxisAlignment: CrossAxisAlignment.start, children: [bar(80, 11), const SizedBox(height: 6), bar(50, 9)]),
+                    bar(44, 44, radius: 22),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [bar(96, 12), const SizedBox(height: 8), bar(140, 9)],
+                      ),
+                    ),
                   ],
                 ),
-                const SizedBox(height: 14),
-                bar(double.infinity, 14),
-                const SizedBox(height: 8),
-                bar(double.infinity, 14),
-                const SizedBox(height: 12),
-                bar(210, 10),
-              ],
-            ),
-          ),
-        );
+              ),
+            );
+          case SkeletonKind.card:
+            return ListView.separated(
+              physics: const NeverScrollableScrollPhysics(),
+              padding: padding,
+              itemCount: widget.count ?? 5,
+              separatorBuilder: (_, __) => const SizedBox(height: 12),
+              itemBuilder: (_, __) => Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: scheme.surface,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.35)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        bar(32, 32, radius: 16),
+                        const SizedBox(width: 10),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [bar(80, 11), const SizedBox(height: 6), bar(50, 9)],
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    bar(double.infinity, 14),
+                    const SizedBox(height: 8),
+                    bar(double.infinity, 14),
+                    const SizedBox(height: 12),
+                    bar(210, 10),
+                  ],
+                ),
+              ),
+            );
+        }
       },
     );
   }
