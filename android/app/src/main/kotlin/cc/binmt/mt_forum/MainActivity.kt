@@ -8,6 +8,8 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.os.PowerManager
 import android.provider.MediaStore
 import android.provider.Settings
@@ -66,8 +68,17 @@ class MainActivity : FlutterActivity() {
                 // ---- MCP 后台保活 ----
                 "mcpKeepAliveStart" -> {
                     val port = call.argument<Int>("port") ?: 8642
-                    val ok = runCatching { McpKeepAliveService.start(this, port) }.isSuccess
-                    result.success(ok)
+                    val accepted = runCatching { McpKeepAliveService.start(this, port) }.isSuccess
+                    if (!accepted) {
+                        result.success(false)
+                    } else {
+                        // startForegroundService 只是把 Intent 递过去，服务有没有
+                        // 真的挂上前台要等 onStartCommand 跑完才知道。这里等一小会
+                        // 再回话，Dart 侧的「保活已生效」才是真的，而不是「已发出」。
+                        Handler(Looper.getMainLooper()).postDelayed({
+                            runCatching { result.success(McpKeepAliveService.running) }
+                        }, 400)
+                    }
                 }
                 "mcpKeepAliveStop" -> {
                     runCatching { McpKeepAliveService.stop(this) }

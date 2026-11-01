@@ -119,4 +119,26 @@ void main() {
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getBool('mt_forum_mcp_keep_alive'), isTrue);
   });
+
+  test('监听被后台收掉后，回到前台能自己补回来', () async {
+    final port = await freePort();
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'mt_forum_mcp_port': port,
+      'mt_forum_mcp_enabled': true,
+      'mt_forum_mcp_keep_alive': true,
+    });
+    await McpServer.instance.load();
+    expect(McpServer.instance.running, isTrue);
+
+    // 模拟后台被系统冻结/回收：socket 已经没了，但开关还停在「开着」。
+    await McpServer.instance.stop();
+    expect(McpServer.instance.running, isFalse);
+    calls.clear();
+
+    await McpServer.instance.syncKeepAlive();
+
+    expect(McpServer.instance.running, isTrue, reason: '回到前台要自己把监听重新绑上');
+    expect(McpServer.instance.keepAliveActive, isTrue);
+    expect(calls.any((call) => call.method == 'mcpKeepAliveStart'), isTrue);
+  });
 }

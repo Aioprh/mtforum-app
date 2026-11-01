@@ -26,8 +26,34 @@ Future<void> main() async {
   });
 }
 
-class MtForumApp extends StatelessWidget {
+class MtForumApp extends StatefulWidget {
   const MtForumApp({super.key});
+
+  @override
+  State<MtForumApp> createState() => _MtForumAppState();
+}
+
+class _MtForumAppState extends State<MtForumApp> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// 回到前台补一次对齐：后台期间监听可能被系统收掉、前台服务也可能被杀过，
+  /// 这时界面上还写着「运行中」，实际已经连不上。重建比等用户重开页面靠谱。
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(McpServer.instance.syncKeepAlive());
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -40,7 +66,7 @@ class MtForumApp extends StatelessWidget {
         darkTheme: AppTheme.dark(AppState.instance.themeSeedColor),
         themeMode: AppState.instance.themeMode,
         locale: const Locale('zh', 'CN'),
-        supportedLocales: const [Locale('zh', 'CN'), Locale('en', 'US')],
+        supportedLocales: const <Locale>[Locale('zh', 'CN'), Locale('en', 'US')],
         localizationsDelegates: const [
           GlobalMaterialLocalizations.delegate,
           GlobalWidgetsLocalizations.delegate,

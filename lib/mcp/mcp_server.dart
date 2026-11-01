@@ -180,10 +180,14 @@ class McpServer extends ChangeNotifier {
     await _syncKeepAlive();
   }
 
-  /// App 首帧后再对齐一次：main 里的 [load] 可能早于 Activity 挂上原生通道，
-  /// 那一次 start 会静默失败，这里补一刀。
+  /// App 回到前台时对齐一次保活状态。
+  ///
+  /// 两件事：监听可能在后台被系统悄悄收掉（进程被冻结后 socket 半死、
+  /// 或者服务被 ROM 杀过一次），先按配置重建；再把前台服务拉起来。
+  /// 只在 [load] 之后、确实开着服务的时候动手，避免把用户关掉的开关又打开。
   Future<void> syncKeepAlive() async {
     if (!_loaded) return;
+    if (_enabled && !running) await start();
     await _syncKeepAlive();
   }
 
