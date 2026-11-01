@@ -200,7 +200,9 @@ void main() {
     expect(field.decoration?.border, InputBorder.none);
     expect(field.decoration?.enabledBorder, InputBorder.none);
     expect(field.decoration?.focusedBorder, InputBorder.none);
-    expect(field.decoration?.filled ?? false, isFalse, reason: '输入框自己也不能铺底色');
+    // 这里必须断言「等于 false」而不是「不是 true」：`filled` 留空会从
+    // `InputDecorationTheme` 继承 true，写 `?? false` 会白白放过那个方块。
+    expect(field.decoration?.filled, isFalse, reason: '输入框自己也不能铺底色，主题里的 filled 会被继承');
     expect(field.maxLines, 5);
 
     // 整条回复栏里会动的那层底只剩发送键一颗；再冒出一个，就是方框又回来了。

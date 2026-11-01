@@ -9,9 +9,7 @@ import 'thread_glass.dart';
 /// ```
 /// ╭───────────────────────────────────╮
 /// │ ▎回复 Binary_涛 · 3楼          ✕ │  引用条（只在回复某楼时出现）
-/// │ ┌─────────────────────────────┐   │
-/// │ │ 写下你的回复…               │ 😊│  输入区（聚焦时描边变主题色）
-/// │ └─────────────────────────────┘   │
+/// │ 写下你的回复…                  😊 │  输入区（直接写在玻璃上，没有底框）
 /// ╰───────────────────────────────────╯
 /// ```
 ///
@@ -228,6 +226,11 @@ class _ReplyComposerState extends State<ReplyComposer> {
         hintText: '写下你的回复…',
         isDense: true,
         contentPadding: EdgeInsets.fromLTRB(8, 10, 8, 10),
+        // 只关掉三处边框还不够：`InputDecorationTheme` 里全局 `filled: true`，
+        // `filled` 留空就会继承过来，用 `getOuterPath` 在文字区铺一块淡白底——
+        // 描边没了，方块还在，看着就是玻璃上贴了一张白纸。这里连底色一起关掉。
+        filled: false,
+        fillColor: Colors.transparent,
         // 不写 border 时用的是主题里的下划线，玻璃上会横着一条细线，
         // 看着像表单输入格。这里彻底去掉，让人只看到玻璃。
         border: InputBorder.none,
