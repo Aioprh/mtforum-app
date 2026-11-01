@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mt_forum/data/models.dart';
 import 'package:mt_forum/ui/pages/search_page.dart';
+import 'package:mt_forum/ui/widgets/board_picker_sheet.dart';
 import 'package:mt_forum/ui/widgets/thread_glass.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 

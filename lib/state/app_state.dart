@@ -259,6 +259,15 @@ class AppState extends ChangeNotifier {
     await prefs.setInt(_themeSeedKey, color.toARGB32());
   }
 
+  /// 直接塞一份版块数据，省掉网络请求。
+  ///
+  /// 发帖、搜索这类页面的测试只关心表单本身，不需要真去拉一遍版块。
+  @visibleForTesting
+  void debugSetBoards(List<ForumCategory> value) {
+    _boards = value;
+    notifyListeners();
+  }
+
   Future<List<ForumCategory>> boards({bool force = false}) async {
     if (!force && _boards != null) return _boards!;
     final value = await repo.fetchBoards();

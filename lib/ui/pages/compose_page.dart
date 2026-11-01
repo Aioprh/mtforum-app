@@ -11,7 +11,9 @@ import '../../core/pending_upload.dart';
 import '../../data/models.dart';
 import '../../state/app_state.dart';
 import '../widgets/emoji_panel.dart';
+import '../widgets/board_picker_sheet.dart';
 import '../widgets/glass_app_bar.dart';
+import '../widgets/glass_controls.dart';
 import '../widgets/measure_height.dart';
 import '../widgets/thread_glass.dart';
 import 'login_page.dart';
@@ -253,10 +255,32 @@ class _ComposePageState extends State<ComposePage> {
     }
   }
 
-  void _onBoardChanged(int? value) {
-    if (value == null) return;
+  /// 当前所选版块的展示名（含分区），没选时为空。
+  String? get _boardLabel {
+    final fid = _fid;
+    if (fid == null) return null;
+    for (final category in _categories) {
+      for (final board in category.boards) {
+        if (board.fid == fid) return '${category.name} / ${board.name}';
+      }
+    }
+    return null;
+  }
+
+  Future<void> _openBoardPicker() async {
+    if (_categories.isEmpty) {
+      _toast('版块列表还没加载好，稍后再试');
+      return;
+    }
+    final picked = await BoardPickerSheet.show(
+      context,
+      categories: _categories,
+      selected: _fid ?? 0,
+      showAll: false,
+    );
+    if (!mounted || picked == null || picked == _fid) return;
     setState(() {
-      _fid = value;
+      _fid = picked;
       _info = null;
     });
   }
@@ -615,18 +639,9 @@ class _ComposePageState extends State<ComposePage> {
               : '发帖 · ${widget.initialBoardName}',
         ),
         actions: [
-          TextButton(
-            onPressed: _submitting ? null : _submit,
-            child: _submitting
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text(
-                    '发布',
-                    style: TextStyle(fontWeight: FontWeight.w700),
-                  ),
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: _publishButton(scheme),
           ),
         ],
       ),
@@ -676,6 +691,51 @@ class _ComposePageState extends State<ComposePage> {
     setState(() => _bottomBarHeight = height);
   }
 
+  /// 顶栏右上角的发布按钮。
+  ///
+  /// 原来是 AppBar actions 里的 TextButton，动作区被压到只剩二十来像素，
+  /// 「发布」两个字被折成两行。改成一个宽度随内容的主色胶囊，既不会被挤，
+  /// 也和页面里的玻璃控件对得上。
+  Widget _publishButton(ColorScheme scheme) {
+    final busy = _submitting;
+    return Opacity(
+      opacity: busy ? 0.6 : 1,
+      child: Material(
+        color: scheme.primary,
+        borderRadius: BorderRadius.circular(999),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: busy ? null : _submit,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (busy)
+                  const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  )
+                else
+                  const Icon(Icons.send_rounded, size: 15, color: Colors.white),
+                const SizedBox(width: 5),
+                Text(
+                  busy ? '发布中' : '发布',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _bottomBar(ColorScheme scheme) {
     return GlassBackdrop(
       showBorder: false,
@@ -710,63 +770,44 @@ class _ComposePageState extends State<ComposePage> {
           ),
         )
       else if (_options.isNotEmpty)
-        DropdownButtonFormField<int>(
-          initialValue: _fid,
-          decoration: const InputDecoration(
-            labelText: '发布到',
-            prefixIcon: Icon(Icons.dashboard_outlined),
-          ),
-          items: [
-            for (final option in _options)
-              DropdownMenuItem(
-                value: option.$2,
-                child: Text(
-                  option.$1,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-          ],
-          onChanged: _onBoardChanged,
+        GlassSelectRow(
+          label: '发布到',
+          value: _boardLabel,
+          placeholder: '选择一个版块',
+          leading: Icons.dashboard_outlined,
+          onTap: _openBoardPicker,
         ),
       const SizedBox(height: 14),
-      TextField(
+      GlassField(
         controller: _subject,
-        textInputAction: TextInputAction.next,
+        label: '标题',
+        hintText: '一句话说明你的主题',
+        leading: Icons.title_rounded,
         maxLength: 80,
-        decoration: const InputDecoration(
-          labelText: '标题（必填）',
-          hintText: '一句话说明你的主题',
-          counterText: '',
-          prefixIcon: Icon(Icons.title_rounded),
-        ),
+        textInputAction: TextInputAction.next,
       ),
       const SizedBox(height: 14),
-      TextField(
+      GlassField(
         controller: _tags,
+        label: '主题标签（可选）',
+        hintText: '多个标签用空格分隔',
+        leading: Icons.sell_outlined,
         maxLength: 60,
-        decoration: const InputDecoration(
-          labelText: '主题标签（可选）',
-          hintText: '多个标签用空格分隔',
-          counterText: '',
-          prefixIcon: Icon(Icons.sell_outlined),
-        ),
       ),
       const SizedBox(height: 14),
       if (_poll) ...[_pollEditor(scheme), const SizedBox(height: 14)],
-      TextField(
+      KeyedSubtree(
         key: _messageKey,
-        controller: _message,
-        focusNode: _messageFocus,
-        minLines: _poll ? 3 : 8,
-        maxLines: null,
-        keyboardType: TextInputType.multiline,
-        textInputAction: TextInputAction.newline,
-        decoration: InputDecoration(
+        child: GlassField(
+          controller: _message,
+          focusNode: _messageFocus,
+          minLines: _poll ? 3 : 8,
+          maxLines: null,
+          keyboardType: TextInputType.multiline,
+          textInputAction: TextInputAction.newline,
           hintText: _poll
               ? '投票说明（可选）'
               : '想和大家分享点什么…\n\n支持 Discuz 常用 BBCode，可在下方工具栏插入表情、图片与链接。',
-          alignLabelWithHint: true,
         ),
       ),
       if (_attachments.isNotEmpty) ...[
@@ -801,16 +842,56 @@ class _ComposePageState extends State<ComposePage> {
         ),
       ],
       const SizedBox(height: 18),
-      FilledButton.icon(
-        onPressed: _submitting ? null : _submit,
-        icon: const Icon(Icons.send_rounded, size: 18),
-        label: Text(_submitting ? '正在发布…' : '发表'),
-      ),
-      const SizedBox(height: 10),
-      FilledButton.tonalIcon(
-        onPressed: _submitting ? null : _saveDraft,
-        icon: const Icon(Icons.save_outlined, size: 18),
-        label: const Text('保存草稿'),
+      Row(
+        children: [
+          Expanded(
+            flex: 3,
+            child: FilledButton.icon(
+              onPressed: _submitting ? null : _submit,
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(48),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+              icon: _submitting
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Icon(Icons.send_rounded, size: 18),
+              label: Text(
+                _submitting ? '正在发布…' : '发表',
+                style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            flex: 2,
+            child: GlassCard(
+              radius: 14,
+              onTap: _submitting ? null : _saveDraft,
+              child: SizedBox(
+                height: 48,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.save_outlined, size: 17, color: scheme.onSurfaceVariant),
+                    const SizedBox(width: 6),
+                    Text(
+                      '草稿',
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w600,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
       const SizedBox(height: 14),
       Text(
@@ -821,33 +902,34 @@ class _ComposePageState extends State<ComposePage> {
     ];
   }
 
+  /// 帖子 / 投票的切换。
+  ///
+  /// 原来是两段带下划线的文字 tab，下方再压一条分割线，看着像网页里的
+  /// 选项卡。改成玻璃分段控件：一整块淡玻璃，选中那段浮起来。
   Widget _modeTabs(ColorScheme scheme) {
-    Widget tab(String label, bool active, VoidCallback onTap) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    Widget seg(String label, bool active, VoidCallback onTap) {
       return Expanded(
-        child: InkWell(
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 9),
-            child: Column(
-              children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-                    color: active ? scheme.onSurface : scheme.onSurfaceVariant,
-                  ),
+        child: Material(
+          color: active
+              ? scheme.primary.withValues(alpha: isDark ? 0.26 : 0.14)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(999),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 9),
+              child: Text(
+                label,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                  color: active ? scheme.primary : scheme.onSurfaceVariant,
                 ),
-                const SizedBox(height: 5),
-                Container(
-                  width: 20,
-                  height: 2.5,
-                  decoration: BoxDecoration(
-                    color: active ? scheme.primary : Colors.transparent,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         ),
@@ -855,30 +937,25 @@ class _ComposePageState extends State<ComposePage> {
     }
 
     return Container(
+      padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(
-            color: scheme.outlineVariant.withValues(alpha: 0.55),
-          ),
-        ),
+        color: Colors.white.withValues(alpha: isDark ? 0.07 : 0.36),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: ThreadGlass.borderColor(context)),
       ),
       child: Row(
         children: [
-          tab('发表帖子', !_poll, () => setState(() => _poll = false)),
-          tab('发投票', _poll, () => setState(() => _poll = true)),
+          seg('发表帖子', !_poll, () => setState(() => _poll = false)),
+          seg('发投票', _poll, () => setState(() => _poll = true)),
         ],
       ),
     );
   }
 
   Widget _pollEditor(ColorScheme scheme) {
-    return Container(
+    return GlassCard(
+      radius: 16,
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest.withValues(alpha: 0.4),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.7)),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -904,16 +981,11 @@ class _ComposePageState extends State<ComposePage> {
               child: Row(
                 children: [
                   Expanded(
-                    child: TextField(
+                    child: GlassField(
                       controller: _pollOptions[i],
+                      hintText: '选项 ${i + 1}',
                       maxLength: 40,
                       textInputAction: TextInputAction.next,
-                      decoration: InputDecoration(
-                        hintText: '选项 ${i + 1}',
-                        counterText: '',
-                        isDense: true,
-                        border: const OutlineInputBorder(),
-                      ),
                     ),
                   ),
                   if (_pollOptions.length > 2)
@@ -928,6 +1000,14 @@ class _ComposePageState extends State<ComposePage> {
             ),
           TextButton.icon(
             onPressed: _addPollOption,
+            // 默认的水平 padding 让「+ 添加选项」比选项框缩进一大截，
+            // 压平后和上面的输入框左边缘对齐。
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 1),
+              minimumSize: const Size(0, 36),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              alignment: Alignment.centerLeft,
+            ),
             icon: const Icon(Icons.add_rounded, size: 18),
             label: const Text('添加选项'),
           ),
@@ -1176,17 +1256,13 @@ class _ComposePageState extends State<ComposePage> {
           Row(
             children: [
               Expanded(
-                child: TextField(
+                child: GlassField(
                   controller: _mention,
+                  hintText: '搜索好友或输入用户名',
+                  leading: Icons.search_rounded,
                   textInputAction: TextInputAction.done,
                   onChanged: (_) => setState(() {}),
                   onSubmitted: (_) => _insertMention(),
-                  decoration: const InputDecoration(
-                    hintText: '搜索好友或输入用户名',
-                    prefixIcon: Icon(Icons.search, size: 20),
-                    isDense: true,
-                    border: OutlineInputBorder(),
-                  ),
                 ),
               ),
               const SizedBox(width: 8),
@@ -1373,36 +1449,27 @@ class _ComposePageState extends State<ComposePage> {
           ),
           if (_insertKind == 'link') ...[
             const SizedBox(height: 12),
-            TextField(
+            GlassField(
               controller: _linkUrl,
+              hintText: '链接网址',
+              leading: Icons.link_rounded,
               keyboardType: TextInputType.url,
-              decoration: const InputDecoration(
-                labelText: '链接网址',
-                isDense: true,
-                border: OutlineInputBorder(),
-              ),
             ),
             const SizedBox(height: 10),
-            TextField(
+            GlassField(
               controller: _linkText,
-              decoration: const InputDecoration(
-                labelText: '链接文字（可留空）',
-                isDense: true,
-                border: OutlineInputBorder(),
-              ),
+              hintText: '链接文字（可留空）',
+              leading: Icons.title_rounded,
             ),
             const SizedBox(height: 10),
             FilledButton(onPressed: _insertLink, child: const Text('插入')),
           ] else if (_insertKind != null) ...[
             const SizedBox(height: 12),
-            TextField(
+            GlassField(
               controller: _mediaUrl,
+              hintText: '链接地址',
+              leading: Icons.link_rounded,
               keyboardType: TextInputType.url,
-              decoration: const InputDecoration(
-                labelText: '链接地址',
-                isDense: true,
-                border: OutlineInputBorder(),
-              ),
             ),
             const SizedBox(height: 10),
             FilledButton(
@@ -1532,28 +1599,20 @@ class _ComposePageState extends State<ComposePage> {
             child: Row(
               children: [
                 Expanded(
-                  child: TextField(
+                  child: GlassField(
                     controller: _readPerm,
+                    label: '阅读权限',
+                    hintText: '0 为不限制',
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: '阅读权限',
-                      hintText: '0 为不限制',
-                      isDense: true,
-                      border: OutlineInputBorder(),
-                    ),
                   ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: TextField(
+                  child: GlassField(
                     controller: _price,
+                    label: '售价（金币）',
+                    hintText: '0 为免费',
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: '售价（金币）',
-                      hintText: '0 为免费',
-                      isDense: true,
-                      border: OutlineInputBorder(),
-                    ),
                   ),
                 ),
               ],

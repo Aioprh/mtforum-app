@@ -219,6 +219,399 @@ class _GlassSearchFieldState extends State<GlassSearchField> {
   }
 }
 
+/// 玻璃表单输入框：发帖、登录这类表单页的通用输入行。
+///
+/// 这些页面原来直接用 Material 默认的 [InputDecoration]：底下一道下划线、
+/// 聚焦时标签上浮、错误时整行变红，跟全站的玻璃卡片是两套语言。统一到
+/// 这里：一层极淡的白玻璃、一圈发丝描边，聚焦时描边转主色并带一圈微光，
+/// 和 [GlassSearchField] 用同一套反馈。
+class GlassField extends StatefulWidget {
+  const GlassField({
+    super.key,
+    required this.controller,
+    this.label,
+    this.hintText,
+    this.leading,
+    this.trailing,
+    this.minLines = 1,
+    this.maxLines = 1,
+    this.maxLength,
+    this.keyboardType,
+    this.textInputAction,
+    this.onChanged,
+    this.onSubmitted,
+    this.enabled = true,
+    this.autofocus = false,
+    this.focusNode,
+    this.obscureText = false,
+  });
+
+  final TextEditingController controller;
+
+  /// 输入框上方的小标题。原标题是 Material 的浮动 label，聚焦时会跳到边框上，
+  /// 玻璃上没有边框可跳，改成常驻的小字更稳。
+  final String? label;
+  final String? hintText;
+  final IconData? leading;
+
+  /// 尾部附加物，比如字数统计、单位。
+  final Widget? trailing;
+  final int minLines;
+
+  /// 传 null 表示不限行数（正文那种长输入）。
+  final int? maxLines;
+  final int? maxLength;
+  final TextInputType? keyboardType;
+  final TextInputAction? textInputAction;
+  final ValueChanged<String>? onChanged;
+  final ValueChanged<String>? onSubmitted;
+  final bool enabled;
+  final bool autofocus;
+  final FocusNode? focusNode;
+  final bool obscureText;
+
+  @override
+  State<GlassField> createState() => _GlassFieldState();
+}
+
+class _GlassFieldState extends State<GlassField> {
+  FocusNode? _ownFocus;
+  late bool _focused = widget.focusNode?.hasFocus ?? false;
+
+  FocusNode get _focus => widget.focusNode ?? (_ownFocus ??= FocusNode());
+
+  @override
+  void initState() {
+    super.initState();
+    _focus.addListener(_onFocusChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant GlassField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.focusNode != widget.focusNode) {
+      (oldWidget.focusNode ?? _ownFocus)?.removeListener(_onFocusChanged);
+      _focus.addListener(_onFocusChanged);
+    }
+  }
+
+  @override
+  void dispose() {
+    _focus.removeListener(_onFocusChanged);
+    _ownFocus?.dispose();
+    super.dispose();
+  }
+
+  void _onFocusChanged() {
+    if (_focused == _focus.hasFocus) return;
+    setState(() => _focused = _focus.hasFocus);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final accent = scheme.primary.withValues(alpha: isDark ? 0.55 : 0.42);
+    final multiline = widget.maxLines != 1;
+
+    final box = AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOut,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
+        color: Colors.white.withValues(alpha: isDark ? 0.08 : 0.44),
+        border: Border.all(
+          color: _focused ? accent : ThreadGlass.borderColor(context),
+          width: _focused ? 1.2 : 0.9,
+        ),
+        boxShadow: _focused
+            ? [
+                BoxShadow(
+                  color: scheme.primary.withValues(alpha: isDark ? 0.26 : 0.16),
+                  blurRadius: 14,
+                  spreadRadius: 0.5,
+                ),
+              ]
+            : null,
+      ),
+      child: Row(
+        crossAxisAlignment:
+            multiline ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+        children: [
+          if (widget.leading != null) ...[
+            SizedBox(width: 13),
+            Padding(
+              padding: EdgeInsets.only(top: multiline ? 15 : 0),
+              child: Icon(
+                widget.leading,
+                size: 18,
+                color: scheme.onSurfaceVariant.withValues(alpha: 0.9),
+              ),
+            ),
+            const SizedBox(width: 8),
+          ] else
+            const SizedBox(width: 14),
+          Expanded(
+            child: TextField(
+              controller: widget.controller,
+              focusNode: _focus,
+              enabled: widget.enabled,
+              autofocus: widget.autofocus,
+              obscureText: widget.obscureText,
+              minLines: widget.minLines,
+              maxLines: widget.maxLines,
+              maxLength: widget.maxLength,
+              keyboardType: widget.keyboardType,
+              textInputAction: widget.textInputAction,
+              onChanged: widget.onChanged,
+              onSubmitted: widget.onSubmitted,
+              cursorHeight: multiline ? null : 18,
+              style: TextStyle(
+                fontSize: 14.5,
+                height: multiline ? 1.55 : 1.2,
+                fontWeight: FontWeight.w500,
+              ),
+              decoration: InputDecoration(
+                isDense: true,
+                filled: false,
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                disabledBorder: InputBorder.none,
+                counterText: '',
+                contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                hintText: widget.hintText,
+                hintStyle: TextStyle(
+                  fontSize: multiline ? 13.5 : 14,
+                  height: multiline ? 1.55 : 1.2,
+                  color: scheme.onSurfaceVariant.withValues(alpha: 0.7),
+                ),
+              ),
+            ),
+          ),
+          if (widget.trailing != null)
+            Padding(
+              padding: EdgeInsets.only(right: 10, top: multiline ? 14 : 0),
+              child: widget.trailing,
+            )
+          else
+            const SizedBox(width: 12),
+        ],
+      ),
+    );
+
+    if (widget.label == null) return box;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 7),
+          child: Text(
+            widget.label!,
+            style: TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+              color: scheme.onSurfaceVariant.withValues(alpha: 0.9),
+            ),
+          ),
+        ),
+        box,
+      ],
+    );
+  }
+}
+
+/// 玻璃选择行：点开一层浮层挑一个值（版块、分类）。
+///
+/// 原来这种地方用 `DropdownButtonFormField`，展开是一张灰色菜单，和全站
+/// 的玻璃浮层不搭；外观上还带下划线和浮动标签，看着像网页表单。
+class GlassSelectRow extends StatelessWidget {
+  const GlassSelectRow({
+    super.key,
+    required this.value,
+    required this.onTap,
+    this.leading,
+    this.placeholder = '未选择',
+    this.label,
+  });
+
+  final String? value;
+  final VoidCallback onTap;
+  final IconData? leading;
+  final String placeholder;
+  final String? label;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final empty = value == null || value!.isEmpty;
+
+    final row = Material(
+      color: Colors.white.withValues(alpha: isDark ? 0.08 : 0.44),
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: ThreadGlass.borderColor(context)),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(13, 13, 10, 13),
+          child: Row(
+            children: [
+              if (leading != null) ...[
+                Icon(
+                  leading,
+                  size: 18,
+                  color: scheme.onSurfaceVariant.withValues(alpha: 0.9),
+                ),
+                const SizedBox(width: 8),
+              ],
+              Expanded(
+                child: Text(
+                  empty ? placeholder : value!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w500,
+                    color: empty ? scheme.onSurfaceVariant.withValues(alpha: 0.7) : scheme.onSurface,
+                  ),
+                ),
+              ),
+              Icon(
+                Icons.unfold_more_rounded,
+                size: 18,
+                color: scheme.onSurfaceVariant.withValues(alpha: 0.75),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (label == null) return row;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 7),
+          child: Text(
+            label!,
+            style: TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+              color: scheme.onSurfaceVariant.withValues(alpha: 0.9),
+            ),
+          ),
+        ),
+        row,
+      ],
+    );
+  }
+}
+
+/// 通用单选浮层：给 [GlassSelectRow] 配的「点开挑一个」。
+///
+/// 版块这种带分区的列表结构太特殊，仍旧用 `BoardPickerSheet`；这里是给
+/// 安全提问这类平铺选项准备的，二十行以内的清单都适用。
+Future<T?> showGlassOptionSheet<T>(
+  BuildContext context, {
+  required String title,
+  required List<(T, String)> options,
+  required T selected,
+}) {
+  return showModalBottomSheet<T>(
+    context: context,
+    backgroundColor: Colors.transparent,
+    barrierColor: Colors.black.withValues(alpha: 0.26),
+    isScrollControlled: true,
+    useSafeArea: true,
+    builder: (context) {
+      final scheme = Theme.of(context).colorScheme;
+      return ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.68),
+        child: GlassBackdrop(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          opacityScale: 1.06,
+          showShadow: true,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 9),
+              Container(
+                width: 38,
+                height: 4.5,
+                decoration: BoxDecoration(
+                  color: scheme.onSurfaceVariant.withValues(alpha: 0.32),
+                  borderRadius: BorderRadius.circular(3),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 8, 4),
+                child: Row(
+                  children: [
+                    Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                    const Spacer(),
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close_rounded, size: 20),
+                      visualDensity: VisualDensity.compact,
+                      tooltip: '关闭',
+                    ),
+                  ],
+                ),
+              ),
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.fromLTRB(14, 4, 14, 16),
+                  children: [
+                    for (final option in options)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: GlassCard(
+                          radius: 14,
+                          color: option.$1 == selected
+                              ? scheme.primary.withValues(
+                                  alpha: Theme.of(context).brightness == Brightness.dark ? 0.22 : 0.13,
+                                )
+                              : null,
+                          onTap: () => Navigator.of(context).pop(option.$1),
+                          padding: const EdgeInsets.fromLTRB(14, 13, 12, 13),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  option.$2,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight:
+                                        option.$1 == selected ? FontWeight.w700 : FontWeight.w500,
+                                    color: option.$1 == selected
+                                        ? scheme.primary
+                                        : scheme.onSurface,
+                                  ),
+                                ),
+                              ),
+                              if (option.$1 == selected)
+                                Icon(Icons.check_rounded, size: 18, color: scheme.primary),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+}
+
 /// 统一的圆角卡片：底色交给 [Material] 铺，水波纹才不会被外层容器挡住。
 ///
 /// 之前关于页、MCP 页都把 `ListTile` 套在带底色的 `Container` 里，点击时
