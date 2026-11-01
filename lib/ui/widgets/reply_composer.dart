@@ -65,15 +65,12 @@ class ReplyComposer extends StatefulWidget {
 
 class _ReplyComposerState extends State<ReplyComposer> {
   bool _hasText = false;
-  bool _focused = false;
 
   @override
   void initState() {
     super.initState();
     _hasText = widget.controller.text.trim().isNotEmpty;
-    _focused = widget.focusNode.hasFocus;
     widget.controller.addListener(_onTextChanged);
-    widget.focusNode.addListener(_onFocusChanged);
   }
 
   @override
@@ -84,17 +81,11 @@ class _ReplyComposerState extends State<ReplyComposer> {
       widget.controller.addListener(_onTextChanged);
       _onTextChanged();
     }
-    if (oldWidget.focusNode != widget.focusNode) {
-      oldWidget.focusNode.removeListener(_onFocusChanged);
-      widget.focusNode.addListener(_onFocusChanged);
-      _onFocusChanged();
-    }
   }
 
   @override
   void dispose() {
     widget.controller.removeListener(_onTextChanged);
-    widget.focusNode.removeListener(_onFocusChanged);
     super.dispose();
   }
 
@@ -102,11 +93,6 @@ class _ReplyComposerState extends State<ReplyComposer> {
   void _onTextChanged() {
     final hasText = widget.controller.text.trim().isNotEmpty;
     if (hasText != _hasText) setState(() => _hasText = hasText);
-  }
-
-  void _onFocusChanged() {
-    if (widget.focusNode.hasFocus == _focused) return;
-    setState(() => _focused = widget.focusNode.hasFocus);
   }
 
   bool get _replying => widget.replyToAuthor != null;
@@ -140,7 +126,7 @@ class _ReplyComposerState extends State<ReplyComposer> {
                 children: <Widget>[
                   _emojiButton(scheme),
                   const SizedBox(width: 2),
-                  Expanded(child: _inputWell(scheme)),
+                  Expanded(child: _inputField()),
                   const SizedBox(width: 2),
                   _attachButton(scheme),
                   const SizedBox(width: 2),
@@ -226,42 +212,27 @@ class _ReplyComposerState extends State<ReplyComposer> {
     );
   }
 
-  /// 输入区：浅色内胆，聚焦时描边浮出主题色。
+  /// 输入区：直接写在玻璃上，不再套一层浅色方框。
   ///
-  /// `TextField` 自己还是无边框的——外框画在内胆这层 `AnimatedContainer` 上，
-  /// 描边色才跟着焦点做过渡。
-  Widget _inputWell(ColorScheme scheme) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
-      curve: Curves.easeOut,
-      decoration: BoxDecoration(
-        color: (isDark ? Colors.white : Colors.black).withValues(alpha: isDark ? 0.06 : 0.035),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          width: 1,
-          color: _focused
-              ? scheme.primary.withValues(alpha: 0.45)
-              : ThreadGlass.borderColor(context),
-        ),
-      ),
-      child: TextField(
-        controller: widget.controller,
-        focusNode: widget.focusNode,
-        minLines: 1,
-        maxLines: 5,
-        textInputAction: TextInputAction.newline,
-        style: const TextStyle(fontSize: 14.5, height: 1.35),
-        decoration: const InputDecoration(
-          hintText: '写下你的回复…',
-          isDense: true,
-          contentPadding: EdgeInsets.fromLTRB(14, 11, 10, 11),
-          // 不写 border 时用的是主题里的下划线，玻璃上会横着一条细线，
-          // 看着像表单输入格。这里彻底去掉，让人只看到内胆的圆角。
-          border: InputBorder.none,
-          enabledBorder: InputBorder.none,
-          focusedBorder: InputBorder.none,
-        ),
+  /// 上下各留 10，单行时正好和两侧那两颗 40 高的圆角键齐平；多行时自己往上长，
+  /// 两边的键贴底对齐。
+  Widget _inputField() {
+    return TextField(
+      controller: widget.controller,
+      focusNode: widget.focusNode,
+      minLines: 1,
+      maxLines: 5,
+      textInputAction: TextInputAction.newline,
+      style: const TextStyle(fontSize: 14.5, height: 1.35),
+      decoration: const InputDecoration(
+        hintText: '写下你的回复…',
+        isDense: true,
+        contentPadding: EdgeInsets.fromLTRB(8, 10, 8, 10),
+        // 不写 border 时用的是主题里的下划线，玻璃上会横着一条细线，
+        // 看着像表单输入格。这里彻底去掉，让人只看到玻璃。
+        border: InputBorder.none,
+        enabledBorder: InputBorder.none,
+        focusedBorder: InputBorder.none,
       ),
     );
   }
@@ -271,13 +242,13 @@ class _ReplyComposerState extends State<ReplyComposer> {
       tooltip: widget.showEmoji ? '收起表情' : '表情',
       onPressed: widget.onToggleEmoji,
       padding: EdgeInsets.zero,
-      visualDensity: VisualDensity.compact,
       constraints: const BoxConstraints.tightFor(width: 40, height: 40),
       style: IconButton.styleFrom(
         backgroundColor: widget.showEmoji
             ? scheme.primary.withValues(alpha: 0.12)
             : Colors.transparent,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),
       icon: Icon(
         widget.showEmoji ? Icons.keyboard_alt_outlined : Icons.sentiment_satisfied_alt_rounded,
@@ -292,10 +263,10 @@ class _ReplyComposerState extends State<ReplyComposer> {
       tooltip: '插入图片',
       onPressed: widget.uploading ? null : widget.onAttach,
       padding: EdgeInsets.zero,
-      visualDensity: VisualDensity.compact,
       constraints: const BoxConstraints.tightFor(width: 40, height: 40),
       style: IconButton.styleFrom(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),
       icon: widget.uploading
           ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))

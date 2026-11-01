@@ -190,7 +190,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('用主题自带的输入框边框会漏出下划线，必须关掉', (tester) async {
+  testWidgets('输入区直接写在玻璃上，不再套一层浅色方框', (tester) async {
     useSurface(tester, 390);
     final controller = TextEditingController();
     await tester.pumpWidget(host(controller: controller));
@@ -200,7 +200,27 @@ void main() {
     expect(field.decoration?.border, InputBorder.none);
     expect(field.decoration?.enabledBorder, InputBorder.none);
     expect(field.decoration?.focusedBorder, InputBorder.none);
+    expect(field.decoration?.filled ?? false, isFalse, reason: '输入框自己也不能铺底色');
     expect(field.maxLines, 5);
+
+    // 整条回复栏里会动的那层底只剩发送键一颗；再冒出一个，就是方框又回来了。
+    expect(find.byType(AnimatedContainer), findsOneWidget);
+  });
+
+  testWidgets('单行时输入框和两边的键一样高，看着是一条横线', (tester) async {
+    useSurface(tester, 390);
+    final controller = TextEditingController();
+    await tester.pumpWidget(host(controller: controller));
+    await tester.pumpAndSettle();
+
+    final field = tester.getRect(find.byType(TextField));
+    final emoji = tester.getRect(find.byTooltip('表情'));
+    final send = tester.getRect(find.byType(AnimatedContainer));
+    expect(field.height, closeTo(emoji.height, 0.5));
+    expect(send.height, closeTo(field.height, 0.5));
+
+    // 三颗键的底线也要齐：多行时输入框往上长，键贴着底走。
+    expect(emoji.bottom, closeTo(send.bottom, 0.5));
   });
 
   testWidgets('320 窄屏也放得下，文字区还有可用的宽度', (tester) async {
