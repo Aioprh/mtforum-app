@@ -6,6 +6,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'keep_alive.dart';
 import 'mcp_tools.dart';
 
 /// 一条工具调用记录，给控制台看。
@@ -44,6 +45,7 @@ class McpServer extends ChangeNotifier {
   static const String _keyToken = 'mt_forum_mcp_token';
   static const String _keyWrite = 'mt_forum_mcp_write';
   static const String _keyRequireToken = 'mt_forum_mcp_require_token';
+  static const String _keyKeepAlive = 'mt_forum_mcp_keep_alive';
 
   static const String serverName = 'mtforum';
   static const String serverVersion = '1.0.0';
@@ -67,6 +69,12 @@ class McpServer extends ChangeNotifier {
   /// 是否校验令牌。关掉之后同一网络里任何客户端都能直接调用，
   /// 适合临时用本机调试；默认开着。
   bool requireToken = true;
+
+  /// 后台保活：开一个前台服务把进程按住，切后台 / 锁屏后仍能被连上。
+  bool keepAlive = false;
+
+  /// 前台服务是否确实在跑（真机确认过，不是只读了配置）。
+  bool keepAliveActive = false;
 
   int port = 8642;
   String token = '';
@@ -102,6 +110,7 @@ class McpServer extends ChangeNotifier {
     allowLan = prefs.getBool(_keyLan) ?? true;
     allowWrite = prefs.getBool(_keyWrite) ?? true;
     requireToken = prefs.getBool(_keyRequireToken) ?? true;
+    keepAlive = prefs.getBool(_keyKeepAlive) ?? false;
     port = prefs.getInt(_keyPort) ?? 8642;
     token = prefs.getString(_keyToken) ?? '';
     if (token.isEmpty) {
@@ -162,6 +171,39 @@ class McpServer extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 开关后台保活。服务没在跑时只记住偏好，等下次 [start] 再拉起前台服务。
+  Future<void> setKeepAlive(bool value) async {
+    if (keepAlive == value) return;
+    keepAlive = value;
+    await _persist();
+    notifyListeners();
+    await _syncKeepAlive();
+  }
+
+  /// App 首帧后再对齐一次：main 里的 [load] 可能早于 Activity 挂上原生通道，
+  /// 那一次 start 会静默失败，这里补一刀。
+  Future<void> syncKeepAlive() async {
+    if (!_loaded) return;
+    await _syncKeepAlive();
+  }
+
+  Future<void> _syncKeepAlive() async {
+    if (keepAlive && running) {
+      final ok = await McpKeepAlive.start(port: port);
+      if (ok != keepAliveActive) {
+        keepAliveActive = ok;
+        notifyListeners();
+      }
+    } else {
+      // 服务没开或者用户关了保活，都不该继续挂一条「运行中」的通知。
+      await McpKeepAlive.stop();
+      if (keepAliveActive) {
+        keepAliveActive = false;
+        notifyListeners();
+      }
+    }
+  }
+
   Future<String> regenerateToken() async {
     token = _newToken();
     await _persist();
@@ -195,6 +237,7 @@ class McpServer extends ChangeNotifier {
       await _persist();
     }
     notifyListeners();
+    if (_server != null) await _syncKeepAlive();
   }
 
   Future<void> stop() async {
@@ -203,6 +246,10 @@ class McpServer extends ChangeNotifier {
     _startedAt = null;
     if (server != null) {
       await server.close(force: true);
+    }
+    if (keepAliveActive) {
+      await McpKeepAlive.stop();
+      keepAliveActive = false;
     }
     notifyListeners();
   }
@@ -516,6 +563,7 @@ class McpServer extends ChangeNotifier {
     await prefs.setBool(_keyLan, allowLan);
     await prefs.setBool(_keyWrite, allowWrite);
     await prefs.setBool(_keyRequireToken, requireToken);
+    await prefs.setBool(_keyKeepAlive, keepAlive);
     await prefs.setInt(_keyPort, port);
     await prefs.setString(_keyToken, token);
   }
@@ -544,6 +592,8 @@ class McpServer extends ChangeNotifier {
     _enabled = false;
     _loaded = false;
     _startedAt = null;
+    keepAlive = false;
+    keepAliveActive = false;
   }
 
   /// 测试用：直接喂一条 JSON-RPC 消息，绕开 HTTP 层。

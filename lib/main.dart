@@ -20,6 +20,11 @@ Future<void> main() async {
   // 上次开着 MCP 服务的话，开机自动恢复监听；关着就只读一下配置。
   unawaited(McpServer.instance.load());
   runApp(const MtForumApp());
+  // 首帧之后 Activity 才把原生通道挂上，这时补一次保活对齐——
+  // main 里那一次 start 可能因为通道还没就绪而静默失败。
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    unawaited(McpServer.instance.syncKeepAlive());
+  });
 }
 
 class MtForumApp extends StatelessWidget {

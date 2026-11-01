@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../mcp/keep_alive.dart';
 import '../../mcp/mcp_server.dart';
 
 /// MCP 服务控制台：开关、地址、token、客户端配置与调用日志。
@@ -15,10 +16,21 @@ class McpPage extends StatefulWidget {
 }
 
 class _McpPageState extends State<McpPage> {
+  /// 是否已加入电池优化白名单，null 表示还没问过系统。
+  bool? _batteryExempt;
+
   @override
   void initState() {
     super.initState();
     unawaited(McpServer.instance.load());
+    unawaited(_loadNativeFlags());
+  }
+
+  Future<void> _loadNativeFlags() async {
+    if (!McpKeepAlive.supported) return;
+    final exempt = await McpKeepAlive.isIgnoringBatteryOptimizations();
+    if (!mounted) return;
+    setState(() => _batteryExempt = exempt);
   }
 
   void _toast(String text) {
@@ -100,6 +112,8 @@ class _McpPageState extends State<McpPage> {
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
             children: [
               _statusCard(context, server, scheme),
+              const SizedBox(height: 12),
+              _keepAliveCard(server, scheme),
               const SizedBox(height: 12),
               _section('连接地址', [
                 for (final url in server.urls)
@@ -291,6 +305,68 @@ class _McpPageState extends State<McpPage> {
         ],
       ),
     );
+  }
+
+  /// 「后台运行」：保活开关 + 电池优化白名单。
+  ///
+  /// 保活是靠一个前台服务把进程按住，通知栏会常驻一条低优先级通知；
+  /// 不开的话切后台没多久系统就可能把进程回收，电脑那头的连接直接断。
+  Widget _keepAliveCard(McpServer server, ColorScheme scheme) {
+    final on = server.keepAlive;
+    final active = server.keepAliveActive;
+    return _section('后台运行', [
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        value: on,
+        onChanged: (value) async {
+          await server.setKeepAlive(value);
+          if (!value) return;
+          if (!server.running) {
+            _toast('服务未开启，保活会在开启服务后生效');
+            return;
+          }
+          if (!await McpKeepAlive.hasNotificationPermission()) {
+            final granted = await McpKeepAlive.requestNotificationPermission();
+            if (!granted) _toast('没给通知权限：服务照常运行，但通知栏看不到');
+          }
+        },
+        title: const Text('后台保活', style: TextStyle(fontSize: 13.5)),
+        subtitle: Text(
+          !on
+              ? '开启后切到后台、锁屏也能被 AI 客户端连上'
+              : active
+                  ? '前台服务运行中，通知栏常驻一条低优先级通知'
+                  : '已记录，开启服务后自动生效',
+          style: TextStyle(
+            fontSize: 11.5,
+            height: 1.45,
+            color: on && active ? const Color(0xFF2E9E5B) : scheme.outline,
+          ),
+        ),
+      ),
+      if (McpKeepAlive.supported)
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('忽略电池优化', style: TextStyle(fontSize: 13.5)),
+          subtitle: Text(
+            _batteryExempt == true
+                ? '已加入白名单，后台更稳'
+                : '部分机型锁屏后会掐断网络，建议加入白名单',
+            style: TextStyle(fontSize: 11.5, color: scheme.outline),
+          ),
+          trailing: Text(
+            _batteryExempt == true ? '已开启' : '去设置',
+            style: TextStyle(fontSize: 12, color: scheme.primary),
+          ),
+          onTap: () async {
+            await McpKeepAlive.requestIgnoreBatteryOptimizations();
+            final exempt = await McpKeepAlive.isIgnoringBatteryOptimizations();
+            if (!mounted) return;
+            setState(() => _batteryExempt = exempt);
+            _toast(exempt ? '已在电池优化白名单里' : '还没加入白名单');
+          },
+        ),
+    ], scheme);
   }
 
   Widget _section(String title, List<Widget> children, ColorScheme scheme) {

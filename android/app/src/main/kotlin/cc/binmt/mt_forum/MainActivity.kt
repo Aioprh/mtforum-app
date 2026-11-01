@@ -1,11 +1,16 @@
 package cc.binmt.mt_forum
 
+import android.Manifest
 import android.content.ContentValues
+import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import android.os.PowerManager
 import android.provider.MediaStore
+import android.provider.Settings
 import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -15,6 +20,9 @@ import java.util.concurrent.Executors
 
 class MainActivity : FlutterActivity() {
     private val channelName = "cc.binmt.mt_forum/native"
+
+    /** 通知权限是异步回调，先把 Result 存下来等系统回话。 */
+    private var notificationPermissionResult: MethodChannel.Result? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -55,13 +63,80 @@ class MainActivity : FlutterActivity() {
                             }
                     }
                 }
+                // ---- MCP 后台保活 ----
+                "mcpKeepAliveStart" -> {
+                    val port = call.argument<Int>("port") ?: 8642
+                    val ok = runCatching { McpKeepAliveService.start(this, port) }.isSuccess
+                    result.success(ok)
+                }
+                "mcpKeepAliveStop" -> {
+                    runCatching { McpKeepAliveService.stop(this) }
+                    result.success(true)
+                }
+                "mcpKeepAliveRunning" -> result.success(McpKeepAliveService.running)
+                "notificationPermission" -> result.success(hasNotificationPermission())
+                "requestNotificationPermission" -> requestNotificationPermission(result)
+                "isIgnoringBatteryOptimizations" -> result.success(isIgnoringBatteryOptimizations())
+                "requestIgnoreBatteryOptimizations" -> {
+                    requestIgnoreBatteryOptimizations()
+                    result.success(true)
+                }
                 else -> result.notImplemented()
             }
         }
     }
 
-    private fun openDownloadedFile(path: String, name: String) {
-        val source = File(path)
+    // ---------------------------------------------------------- MCP 保活
+
+    private fun hasNotificationPermission(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return true
+        return checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun requestNotificationPermission(result: MethodChannel.Result) {
+        if (hasNotificationPermission() || Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            result.success(true)
+            return
+        }
+        // 上一次还没回话就先按拒绝收尾，避免 Result 泄漏。
+        notificationPermissionResult?.success(false)
+        notificationPermissionResult = result
+        requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1201)
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != 1201) return
+        val granted = grantResults.isNotEmpty() &&
+            grantResults[0] == PackageManager.PERMISSION_GRANTED
+        notificationPermissionResult?.success(granted)
+        notificationPermissionResult = null
+    }
+
+    private fun isIgnoringBatteryOptimizations(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return true
+        val power = getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return true
+        return power.isIgnoringBatteryOptimizations(packageName)
+    }
+
+    private fun requestIgnoreBatteryOptimizations() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || isIgnoringBatteryOptimizations()) return
+        // 有的 ROM 不认直接弹窗的 action，那就退到电池优化列表让用户自己勾。
+        val direct = Intent(
+            Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+            Uri.parse("package:$packageName")
+        )
+        runCatching { startActivity(direct) }.onFailure {
+            runCatching { startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }
+        }
+    }
+
+    private fun openDownloadedFile(path: String, name: String) {        val source = File(path)
         if (!source.isFile) throw IllegalArgumentException("文件不存在")
         // FileProvider only exposes a temporary copy under cache/opened_downloads.
         val openDir = File(cacheDir, "opened_downloads").apply { mkdirs() }
