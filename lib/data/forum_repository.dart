@@ -165,12 +165,15 @@ class ForumRepository {
     int page = 1,
     int? authorId,
     bool orderDesc = false,
+    int? pid,
   }) async {
     final query = <String, String>{
       'mod': 'viewthread',
       'tid': '$tid',
       'mobile': '2',
-      'page': '$page',
+      // 带 pid 时服务端会 302 到该楼所在的页，page 传了反而可能把它顶掉，
+      // 所以两者只留一个：定位单楼优先级高于翻页。
+      if (pid != null && pid > 0) 'pid': '$pid' else 'page': '$page',
     };
     if (authorId != null && authorId > 0) query['authorid'] = '$authorId';
     if (orderDesc) query['ordertype'] = '1';
@@ -869,6 +872,61 @@ class ForumRepository {
     final msg = _pageMessage(parser.parse(response.body));
     if (msg != null && _looksLikeError(msg)) throw SiteException(msg);
     return msg ?? '投票成功';
+  }
+
+  /// 打开「编辑本帖」表单，取回原标题与正文原文。
+  ///
+  /// 编辑是整篇覆盖：`message` 交了什么都原样存进去，缺了就把整楼清空。
+  /// 所以改写之前必须先读一遍原文，而正文在帖子页里已经是渲染后的 HTML，
+  /// BBCode 回不去，只能来这里拿 textarea 里的原稿。
+  ///
+  /// 手机模板个别主题不渲染编辑表单，回落到桌面版再试一次；
+  /// 两次都拿不到就认为没有编辑权限（或帖子已关闭编辑）。
+  Future<({String subject, String message, String formhash})> fetchEditDraft({
+    required int tid,
+    required int pid,
+    required int fid,
+  }) async {
+    String? lastMessage;
+    for (final query in <Map<String, String>>[
+      {
+        'mod': 'post',
+        'action': 'edit',
+        'fid': '$fid',
+        'tid': '$tid',
+        'pid': '$pid',
+        'mobile': '2',
+      },
+      {
+        'mod': 'post',
+        'action': 'edit',
+        'fid': '$fid',
+        'tid': '$tid',
+        'pid': '$pid',
+      },
+    ]) {
+      final page = await _http.get('forum.php', query: query, referer: _threadReferer(tid));
+      _ensureOk(page);
+      final doc = parser.parse(page.body);
+      final textarea = doc.querySelector('textarea[name="message"]');
+      final message = (textarea?.text ?? '').trim();
+      if (message.isEmpty) {
+        lastMessage = _pageMessage(doc);
+        continue;
+      }
+      final subjectInput = doc.querySelector('input[name="subject"]');
+      final subject = (subjectInput?.attributes['value'] ?? '').trim();
+      return (
+        subject: subject,
+        message: message,
+        formhash: _findFormhash(page.body),
+      );
+    }
+    throw SiteException(
+      lastMessage != null && lastMessage.isNotEmpty
+          ? lastMessage
+          : '打不开编辑页：可能没有编辑权限，或楼主已关闭编辑',
+    );
   }
 
   /// 编辑自己的帖子 / 回复。

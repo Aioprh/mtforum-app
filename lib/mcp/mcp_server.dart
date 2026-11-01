@@ -412,7 +412,10 @@ class McpServer extends ChangeNotifier {
             'version': serverVersion,
           },
           'instructions': '这是 MT论坛 的手机客户端。所有工具都使用 App 内已登录的账号，'
-              '权限与该账号一致。先用 forum_list_boards 找版块，再发帖或回复。',
+              '权限与该账号一致。先用 forum_list_boards 找版块，再发帖或回复。'
+              '读长帖可以用 forum_get_thread 的 format=markdown 保留代码块与引用，'
+              '只要某一楼用 forum_get_post；forum_list_notices 读提醒，'
+              'forum_favorite 收藏，forum_edit_post 会先返回原文、再提交改写。',
         });
 
       case 'notifications/initialized':

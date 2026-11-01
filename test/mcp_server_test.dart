@@ -69,7 +69,7 @@ void main() {
     });
 
     final tools = (response!['result'] as Map)['tools'] as List;
-    expect(tools.length, 8);
+    expect(tools.length, 16);
 
     final names = <String>[];
     for (final raw in tools) {
@@ -99,6 +99,14 @@ void main() {
         'forum_search',
         'forum_reply',
         'forum_create_thread',
+        'forum_get_post',
+        'forum_list_notices',
+        'forum_user_profile',
+        'forum_favorite',
+        'forum_edit_post',
+        'forum_comment',
+        'forum_send_pm',
+        'forum_upload_image',
       ]),
     );
   });
@@ -168,6 +176,62 @@ void main() {
     );
   });
 
+  test('新增工具在打网络之前就把非法参数挡掉', () async {
+    final tools = McpTools();
+
+    Future<void> rejects(String name, Map<String, dynamic> args) async {
+      await expectLater(
+        tools.byName(name)!.run(args),
+        throwsA(isA<McpToolException>()),
+        reason: '$name 应该拒绝这组参数：$args',
+      );
+    }
+
+    await rejects('forum_get_post', <String, dynamic>{'tid': 1});
+    await rejects('forum_get_post', <String, dynamic>{'tid': 0, 'pid': 2});
+    await rejects('forum_favorite', <String, dynamic>{'tid': 1, 'action': 'pin'});
+    await rejects('forum_favorite', <String, dynamic>{'tid': 0});
+    await rejects('forum_upload_image', <String, dynamic>{'data': ''});
+    await rejects('forum_upload_image', <String, dynamic>{'data': '不是 base64!!'});
+    await rejects('forum_send_pm', <String, dynamic>{'uid': 0, 'message': 'hi'});
+    await rejects('forum_send_pm', <String, dynamic>{'uid': 7, 'message': '  '});
+    await rejects('forum_comment', <String, dynamic>{'tid': 1, 'pid': 0, 'message': 'hi'});
+    await rejects('forum_edit_post', <String, dynamic>{'tid': 1, 'pid': 0});
+    await rejects('forum_list_notices', <String, dynamic>{'view': 'unknown'});
+    await rejects('forum_user_profile', <String, dynamic>{'uid': -3});
+  });
+
+  test('正文转 Markdown：代码块、引用、列表与链接都保留结构', () {
+    final markdown = McpTools().htmlToMarkdown(
+      '<h3>标题</h3>'
+      '<div class="quote">引用的一句<br>第二行</div>'
+      '<ul><li>甲</li><li>乙</li></ul>'
+      '<pre class="brush: java;">class A {}</pre>'
+      '<p>看 <a href="https://x.com">这里</a> 和 <strong>重点</strong></p>'
+      '<img src="a.png">',
+    );
+
+    expect(markdown, contains('### 标题'));
+    expect(markdown, contains('> 引用的一句'));
+    expect(markdown, contains('> 第二行'));
+    expect(markdown, contains('- 甲'));
+    expect(markdown, contains('- 乙'));
+    expect(markdown, contains('```java'));
+    expect(markdown, contains('class A {}'));
+    expect(markdown, contains('[这里](https://x.com)'));
+    expect(markdown, contains('**重点**'));
+    expect(markdown, contains('![图片](a.png)'));
+  });
+
+  test('Markdown 里不出现脚本内容，空正文返回空串', () {
+    final tools = McpTools();
+    expect(
+      tools.htmlToMarkdown('<p>正文</p><script>alert(1)</script>'),
+      allOf(contains('正文'), isNot(contains('alert'))),
+    );
+    expect(tools.htmlToMarkdown('   '), isEmpty);
+  });
+
   test('正文转纯文本：保留换行，图片压成标记', () {
     final text = McpTools().htmlToText(
       '<div>第一段<br>第二段</div>'
@@ -218,7 +282,7 @@ void main() {
 
     expect(response.statusCode, HttpStatus.ok);
     final decoded = jsonDecode(body) as Map<String, dynamic>;
-    expect((decoded['result'] as Map)['tools'], hasLength(8));
+    expect((decoded['result'] as Map)['tools'], hasLength(16));
 
     // 3) 通知消息返回 202 且无 body
     request = await client.post('127.0.0.1', port, '/mcp');
