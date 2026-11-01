@@ -1936,16 +1936,51 @@ class ForumRepository {
         if (classes.contains('xg1') || classes.contains('p_pop') || child.localName == 'script') {
           continue;
         }
-        // pm_o 在默认模板里是「菜单」容器，但个别主题用它装正文，
-        // 只有短文本才按菜单忽略，避免把对方的消息整条吞掉。
-        if (classes.contains('pm_o') && _clean(child.text).length <= 6) continue;
+        // pm_o 在默认模板里是「共 N 条 · 菜单 | 回复」的操作区，
+        // p_pop 里还藏着一个 hover 才弹出的下拉（删除 / 忽略）。
+        // 这些东西靠 CSS 摆到右侧、悬停才出现，直接取文本会一起塞进摘要。
+        // 个别主题拿 pm_o 装正文，所以只在带菜单按钮时才认定是操作区。
+        if (classes.contains('pm_o')) {
+          if (child.querySelector('.p_pop') != null || child.querySelector('a.o') != null) {
+            continue;
+          }
+          if (_clean(child.text).length <= 6) continue;
+        }
         if (child.id.contains('menu')) continue;
-        buffer.write(child.text);
+        buffer.write(_pmVisibleText(child));
       } else if (afterBreak) {
         buffer.write(child.text);
       }
     }
     return _clean(buffer.toString());
+  }
+
+  /// 取元素里的「看得见」的文本。
+  ///
+  /// Discuz 把「删除 / 忽略」放在 `display:none` 的下拉层里、把「菜单」做成
+  /// 一个纯 JS 按钮，网页端靠 CSS 和鼠标悬停控制出现时机。App 只读 DOM，
+  /// 不认这层「视觉上不存在」，就会把整排操作词当成消息正文的一部分。
+  String _pmVisibleText(Element el) {
+    final buffer = StringBuffer();
+    void walk(Node node) {
+      if (node is Text) {
+        buffer.write(node.text);
+        return;
+      }
+      if (node is! Element) return;
+      final style = (node.attributes['style'] ?? '').replaceAll(' ', '').toLowerCase();
+      if (style.contains('display:none')) return;
+      if (node.classes.contains('p_pop')) return;
+      if (node.localName == 'script' || node.localName == 'style') return;
+      // 只有「菜单」两个字的悬浮按钮，点开才是下拉层。
+      if (node.localName == 'a' && node.classes.contains('o')) return;
+      for (final child in node.nodes) {
+        walk(child);
+      }
+    }
+
+    walk(el);
+    return buffer.toString();
   }
 
   /// 会话对应的对方 uid：优先取会话链接里的 touid。

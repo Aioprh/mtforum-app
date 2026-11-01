@@ -926,14 +926,32 @@ class _PostHtmlViewState extends State<PostHtmlView> {
     }
   }
 
-  /// 自动识别论坛正文中未被服务端转换为 <a> 的纯文本网址。
-  /// 例如隐藏内容里的“https://share.example.com/xxx”也应当可以点击。
-  /// 自动识别正文中未被服务端转换为 <a> 标签的纯文本网址。
+  /// 自动识别正文里服务端没转成 <a> 的地址。
+  ///
+  /// Discuz 的隐藏内容（[hide] 回复可见）里，用户手打的链接往往是裸文本，
+  /// 服务端不会帮忙加 <a>，这里补上：完整 URL、`www.` 开头，以及
+  /// `pan.baidu.com/s/xxx` 这种不带协议头的域名都认。
   List<InlineSpan> _linkifyText(BuildContext context, String text, TextStyle style) {
     final spans = <InlineSpan>[];
-    final pattern = RegExp(r'https?://[^\s<>"]+', caseSensitive: false);
+    // 只吃 ASCII 里的 URL 合法字符：紧跟其后的中文不该被吞进链接。
+    const urlChars = r'[A-Za-z0-9\-._~:/?#\[\]@!$&()*+,;=%]';
+    // 裸域名靠顶级域白名单兜底，避免把「1.9.1」这类版本号认成网址。
+    const tlds = r'com|cn|net|org|cc|io|top|xyz|me|tv|info|biz|vip|club|site|app|dev|'
+        r'co|ltd|wang|tech|online|store|fun|live|pro|ink|wiki|link|cloud|plus|'
+        r'shop|art|design|blog|page|work|space|world|life|news|mobi|asia|'
+        r'tw|hk|jp|kr|us|uk|de|ru';
+    final pattern = RegExp(
+      '(?:https?://$urlChars+)'
+      '|(?:www\\.$urlChars+)'
+      '|(?:(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\\.)+(?:$tlds)$urlChars*)',
+      caseSensitive: false,
+    );
     var cursor = 0;
     for (final match in pattern.allMatches(text)) {
+      // user@qq.com 的 qq.com 不是独立链接，前面连着字母数字就直接放过。
+      if (match.start > 0 && RegExp(r'[A-Za-z0-9@_\-]').hasMatch(text[match.start - 1])) {
+        continue;
+      }
       if (match.start > cursor) {
         spans.add(TextSpan(text: text.substring(cursor, match.start), style: style));
       }
@@ -947,12 +965,17 @@ class _PostHtmlViewState extends State<PostHtmlView> {
       if (url.isEmpty) {
         spans.add(TextSpan(text: match.group(0), style: style));
       } else {
-        final linkUrl = AppConfig.uri(url).toString();
+        // 裸域名补上协议头再交给路由，否则会被当成站内相对路径。
+        final hasScheme = url.startsWith('http://') || url.startsWith('https://');
+        final linkUrl = AppConfig.uri(hasScheme ? url : 'https://$url').toString();
         final recognizer = TapGestureRecognizer()..onTap = () => _openLink(context, linkUrl);
         _recognizers.add(recognizer);
         spans.add(TextSpan(
           text: url,
-          style: style.copyWith(color: Theme.of(context).colorScheme.primary, decoration: TextDecoration.underline),
+          style: style.copyWith(
+            color: Theme.of(context).colorScheme.primary,
+            decoration: TextDecoration.underline,
+          ),
           recognizer: recognizer,
         ));
         if (suffix.isNotEmpty) spans.add(TextSpan(text: suffix, style: style));
@@ -964,6 +987,7 @@ class _PostHtmlViewState extends State<PostHtmlView> {
     }
     return spans;
   }
+
   List<InlineSpan> _inlineChildren(BuildContext context, dom.Element element, TextStyle style) {
     final spans = <InlineSpan>[];
     for (final child in element.nodes) {
