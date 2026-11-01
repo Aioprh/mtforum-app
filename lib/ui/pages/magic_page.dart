@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/http_session.dart';
 import '../../data/models.dart';
 import '../../state/app_state.dart';
+import '../widgets/glass_app_bar.dart';
 import '../widgets/site_form_dialog.dart';
 import '../widgets/smart_image.dart';
 import '../widgets/state_views.dart';
@@ -16,7 +17,8 @@ class MagicPage extends StatelessWidget {
     return DefaultTabController(
       length: 3,
       child: Scaffold(
-        appBar: AppBar(
+        extendBodyBehindAppBar: true,
+        appBar: GlassAppBar(
           title: const Text('道具中心'),
           bottom: const TabBar(
             tabs: [
@@ -181,7 +183,7 @@ class _MagicShopTabState extends State<_MagicShopTab> with AutomaticKeepAliveCli
       onRefresh: _load,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 24),
+        padding: glassPagePadding(context, top: 12, appBarBottom: kTextTabBarHeight),
         children: [
           Row(
             children: [
@@ -475,7 +477,7 @@ class _MagicBoxTabState extends State<_MagicBoxTab> with AutomaticKeepAliveClien
       onRefresh: _load,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 24),
+        padding: glassPagePadding(context, top: 12, appBarBottom: kTextTabBarHeight),
         children: [
           _sectionTitle(scheme, '我的道具', '${_box.items.length} 种'),
           if (_box.capacity.isNotEmpty) ...[
@@ -660,7 +662,7 @@ class _MagicLogTabState extends State<_MagicLogTab> with AutomaticKeepAliveClien
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
+          padding: EdgeInsets.fromLTRB(kPageGutter, glassTopInset(context, bottomHeight: kTextTabBarHeight) + 12, kPageGutter, 4),
           child: Row(
             children: [
               Expanded(

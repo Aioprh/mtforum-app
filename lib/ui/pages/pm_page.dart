@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/http_session.dart';
 import '../../data/forum_repository.dart';
 import '../widgets/user_avatar.dart';
+import '../widgets/glass_app_bar.dart';
 
 /// 站内私信：给指定用户发送一条私信。
 class PmPage extends StatefulWidget {
@@ -82,9 +83,10 @@ class _PmPageState extends State<PmPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       resizeToAvoidBottomInset: true,
-      appBar: AppBar(title: const Text('发送私信')),
+      extendBodyBehindAppBar: true,
+      appBar: const GlassAppBar(title: Text('发送私信')),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        padding: glassPagePadding(context, top: 16),
         children: [
           Row(
             children: [

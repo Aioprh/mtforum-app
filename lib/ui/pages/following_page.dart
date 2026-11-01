@@ -5,6 +5,7 @@ import '../../data/models.dart';
 import '../../state/app_state.dart';
 import '../widgets/state_views.dart';
 import '../widgets/user_avatar.dart';
+import '../widgets/glass_app_bar.dart';
 import 'login_page.dart';
 import 'user_page.dart';
 import '../navigation/app_routes.dart';
@@ -149,7 +150,8 @@ class _FollowingPageState extends State<FollowingPage> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(
+      extendBodyBehindAppBar: true,
+      appBar: GlassAppBar(
         title: const Text('我的关注'),
         actions: [
           if (AppState.instance.isLoggedIn)
@@ -189,7 +191,7 @@ class _FollowingPageState extends State<FollowingPage> {
                                 physics: const AlwaysScrollableScrollPhysics(
                                   parent: BouncingScrollPhysics(),
                                 ),
-                                padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
+                                padding: glassPagePadding(context, top: 8),
                                 itemCount: _items.length,
                                 separatorBuilder: (_, __) => Divider(
                                   height: 1,

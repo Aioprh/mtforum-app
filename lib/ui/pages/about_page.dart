@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_config.dart';
+import '../widgets/glass_app_bar.dart';
 
 /// 关于本应用。
 class AboutPage extends StatelessWidget {
@@ -19,9 +20,10 @@ class AboutPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('关于')),
+      extendBodyBehindAppBar: true,
+      appBar: const GlassAppBar(title: Text('关于')),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 30),
+        padding: glassPagePadding(context, top: 16, bottom: 30),
         children: [
           Center(
             child: Container(
@@ -76,12 +78,14 @@ class AboutPage extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          Container(
+          // 用 Material 铺底色：ListTile 的水波纹画在最近的 Material 上，
+          // 外面套一层带背景色的 Container 会把水波纹挡掉，点下去毫无反馈。
+          Material(
+            color: scheme.surface,
             clipBehavior: Clip.antiAlias,
-            decoration: BoxDecoration(
-              color: scheme.surface,
+            shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.5)),
+              side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.5)),
             ),
             child: Column(
               children: [

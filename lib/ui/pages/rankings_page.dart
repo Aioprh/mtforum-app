@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/http_session.dart';
 import '../../state/app_state.dart';
+import '../widgets/glass_app_bar.dart';
 import '../widgets/state_views.dart';
 
 /// 排行榜：用户 / 主题 / 版块。
@@ -66,13 +67,15 @@ class _RankingsPageState extends State<RankingsPage> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('排行榜')),
+      extendBodyBehindAppBar: true,
+      appBar: const GlassAppBar(title: Text('排行榜')),
       body: SafeArea(
         top: false,
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
+              // 固定的三段切换器跟着顶栏往下让，正文才不会压在玻璃上。
+              padding: EdgeInsets.fromLTRB(kPageGutter, glassTopInset(context) + 10, kPageGutter, 6),
               child: Row(
                 children: [
                   for (final type in _types)
@@ -124,7 +127,7 @@ class _RankingsPageState extends State<RankingsPage> {
                                 )
                               : ListView.separated(
                                   physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-                                  padding: const EdgeInsets.fromLTRB(14, 6, 14, 24),
+                                  padding: const EdgeInsets.fromLTRB(kPageGutter, 6, kPageGutter, 24),
                                   itemCount: _items.length,
                                   separatorBuilder: (_, __) => Divider(
                                     height: 1,

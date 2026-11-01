@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/http_session.dart';
 import '../../state/app_state.dart';
+import '../widgets/glass_app_bar.dart';
 import '../widgets/state_views.dart';
 import '../widgets/thread_feed.dart';
 import '../navigation/app_routes.dart';
@@ -52,7 +53,8 @@ class _TagsPageState extends State<TagsPage> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(
+      extendBodyBehindAppBar: true,
+      appBar: GlassAppBar(
         title: const Text('标签'),
         actions: [
           IconButton(
@@ -73,6 +75,7 @@ class _TagsPageState extends State<TagsPage> {
                     child: _tags.isEmpty
                         ? ListView(
                             physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+                            padding: EdgeInsets.only(top: glassTopInset(context)),
                             children: const [
                               SizedBox(height: 90),
                               EmptyView(text: '暂无标签'),
@@ -80,7 +83,7 @@ class _TagsPageState extends State<TagsPage> {
                           )
                         : ListView(
                             physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-                            padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+                            padding: glassPagePadding(context, top: 14),
                             children: [
                               Wrap(
                                 spacing: 8,
@@ -130,13 +133,14 @@ class _TagThreadsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('#$name', maxLines: 1, overflow: TextOverflow.ellipsis)),
+      extendBodyBehindAppBar: true,
+      appBar: GlassAppBar(title: Text('#$name', maxLines: 1, overflow: TextOverflow.ellipsis)),
       body: SafeArea(
         top: false,
         child: ThreadFeed(
           loader: (page) => AppState.instance.repo.fetchTagThreads(id, page: page),
           emptyText: '该标签下暂无主题',
-          padding: const EdgeInsets.fromLTRB(14, 10, 14, 24),
+          padding: glassPagePadding(context, top: 10),
         ),
       ),
     );

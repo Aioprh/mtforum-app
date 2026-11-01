@@ -7,6 +7,7 @@ import '../../data/models.dart';
 import '../../state/app_state.dart';
 import '../widgets/site_form_dialog.dart';
 import '../widgets/smart_image.dart';
+import '../widgets/glass_app_bar.dart';
 import '../widgets/state_views.dart';
 import 'login_page.dart';
 import '../navigation/app_routes.dart';
@@ -169,7 +170,8 @@ class _MallProductPageState extends State<MallProductPage> {
     final scheme = Theme.of(context).colorScheme;
     final product = _product;
     return Scaffold(
-      appBar: AppBar(
+      extendBodyBehindAppBar: true,
+      appBar: GlassAppBar(
         title: Text(product?.title ?? '商品详情', maxLines: 1, overflow: TextOverflow.ellipsis),
         actions: [
           IconButton(
@@ -189,7 +191,7 @@ class _MallProductPageState extends State<MallProductPage> {
                     onRefresh: _load,
                     child: ListView(
                       physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-                      padding: const EdgeInsets.fromLTRB(14, 12, 14, 20),
+                      padding: glassPagePadding(context, top: 12, bottom: 20),
                       children: [
                         if (product!.image.isNotEmpty)
                           Container(

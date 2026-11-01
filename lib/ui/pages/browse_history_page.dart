@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../services/browse_history.dart';
 import '../widgets/smart_image.dart';
+import '../widgets/glass_app_bar.dart';
 import 'thread_page.dart';
 import '../navigation/app_routes.dart';
 
@@ -103,7 +104,8 @@ class _BrowseHistoryPageState extends State<BrowseHistoryPage> {
     final scheme = Theme.of(context).colorScheme;
     final visible = _visible;
     return Scaffold(
-      appBar: AppBar(
+      extendBodyBehindAppBar: true,
+      appBar: GlassAppBar(
         title: const Text('浏览历史'),
         actions: [
           if (_items.isNotEmpty)
@@ -121,7 +123,7 @@ class _BrowseHistoryPageState extends State<BrowseHistoryPage> {
               : Column(
                   children: [
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+                      padding: EdgeInsets.fromLTRB(kPageGutter, glassTopInset(context) + 10, kPageGutter, 6),
                       child: TextField(
                         controller: _search,
                         onChanged: (value) => setState(() => _query = value),

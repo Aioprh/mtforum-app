@@ -4,6 +4,7 @@ import '../../core/http_session.dart';
 import '../../data/models.dart';
 import '../../state/app_state.dart';
 import '../widgets/state_views.dart';
+import '../widgets/glass_app_bar.dart';
 import '../widgets/user_avatar.dart';
 import 'login_page.dart';
 import 'pm_chat_page.dart';
@@ -181,7 +182,8 @@ class _NativeNoticeCategoryPageState extends State<NativeNoticeCategoryPage> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(
+      extendBodyBehindAppBar: true,
+      appBar: GlassAppBar(
         title: Text(widget.title),
         actions: [
           if (AppState.instance.isLoggedIn)
@@ -213,7 +215,7 @@ class _NativeNoticeCategoryPageState extends State<NativeNoticeCategoryPage> {
                             : ListView.separated(
                                 controller: _scroll,
                                 physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-                                padding: const EdgeInsets.only(bottom: 24),
+                                padding: EdgeInsets.only(top: glassTopInset(context) + 6, bottom: 24),
                                 itemCount: _items.length + (_loadingMore ? 1 : 0),
                                 separatorBuilder: (_, __) => Divider(
                                   height: 1,
@@ -266,7 +268,7 @@ class _NativeNoticeCategoryPageState extends State<NativeNoticeCategoryPage> {
         );
 
     return ListTile(
-      contentPadding: const EdgeInsets.fromLTRB(16, 6, 12, 6),
+      contentPadding: const EdgeInsets.fromLTRB(kPageGutter, 6, 12, 6),
       leading: leading,
       title: Text(
         item.title,

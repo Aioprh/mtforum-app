@@ -1008,7 +1008,8 @@ class _PersonalThreadsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(title)),
+      extendBodyBehindAppBar: true,
+      appBar: GlassAppBar(title: Text(title)),
       body: SafeArea(
         top: false,
         child: ThreadFeed(
@@ -1019,7 +1020,7 @@ class _PersonalThreadsPage extends StatelessWidget {
                   query: {...query, 'page': '$page'},
                 ),
           emptyText: emptyText,
-          padding: const EdgeInsets.fromLTRB(14, 10, 14, 24),
+          padding: glassPagePadding(context, top: 10),
         ),
       ),
     );

@@ -8,6 +8,7 @@ import '../../data/models.dart';
 import '../../state/app_state.dart';
 import '../widgets/smart_image.dart';
 import '../widgets/state_views.dart';
+import '../widgets/glass_app_bar.dart';
 import 'mall_product_page.dart';
 import 'thread_page.dart';
 import 'user_page.dart';
@@ -128,7 +129,8 @@ class _SiteModulePageState extends State<SiteModulePage> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(
+      extendBodyBehindAppBar: true,
+      appBar: GlassAppBar(
         title: Text(widget.title),
         actions: [
           IconButton(
@@ -148,7 +150,7 @@ class _SiteModulePageState extends State<SiteModulePage> {
                     onRefresh: _load,
                     child: ListView(
                       physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-                      padding: const EdgeInsets.fromLTRB(14, 12, 14, 24),
+                      padding: glassPagePadding(context, top: 12),
                       children: [
                         if (_tip.isNotEmpty)
                           Container(

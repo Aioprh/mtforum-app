@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/http_session.dart';
 import '../../data/models.dart';
 import '../../state/app_state.dart';
+import '../widgets/glass_app_bar.dart';
 import '../widgets/state_views.dart';
 import 'user_page.dart';
 import '../navigation/app_routes.dart';
@@ -53,7 +54,8 @@ class _BlackHousePageState extends State<BlackHousePage> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(
+      extendBodyBehindAppBar: true,
+      appBar: GlassAppBar(
         title: const Text('小黑屋'),
         actions: [
           IconButton(
@@ -73,7 +75,7 @@ class _BlackHousePageState extends State<BlackHousePage> {
                     onRefresh: _load,
                     child: ListView.separated(
                       physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-                      padding: const EdgeInsets.fromLTRB(14, 12, 14, 24),
+                      padding: glassPagePadding(context, top: 12),
                       itemCount: _items.isEmpty ? 2 : _items.length + 1,
                       separatorBuilder: (_, __) => const SizedBox(height: 10),
                       itemBuilder: (context, index) {

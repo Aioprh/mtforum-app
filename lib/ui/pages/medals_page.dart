@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/http_session.dart';
 import '../../data/models.dart';
 import '../../state/app_state.dart';
+import '../widgets/glass_app_bar.dart';
 import '../widgets/state_views.dart';
 import '../widgets/user_avatar.dart';
 import 'user_page.dart';
@@ -78,7 +79,8 @@ class _MedalsPageState extends State<MedalsPage> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(
+      extendBodyBehindAppBar: true,
+      appBar: GlassAppBar(
         title: const Text('勋章中心'),
         actions: [
           IconButton(
@@ -98,7 +100,7 @@ class _MedalsPageState extends State<MedalsPage> {
                     onRefresh: _load,
                     child: ListView(
                       physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-                      padding: const EdgeInsets.fromLTRB(14, 12, 14, 24),
+                      padding: glassPagePadding(context, top: 12),
                       children: [
                         _sectionTitle(scheme, '勋章目录', '${_medals.length} 枚'),
                         const SizedBox(height: 10),

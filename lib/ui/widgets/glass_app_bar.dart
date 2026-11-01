@@ -77,6 +77,27 @@ class GlassAppBar extends StatelessWidget implements PreferredSizeWidget {
   }
 }
 
+/// 二级页面统一的左右边距。
+///
+/// 之前每个页面各写各的：14 / 16 / 12 / 20 / 18 都出现过，同一个列表在不同
+/// 页面之间左右会跳几像素。以主路径用得最多的 14 为准。
+const double kPageGutter = 14;
+
+/// 玻璃页面正文的默认内边距：左右 [kPageGutter]，顶部空出玻璃顶栏。
+EdgeInsets glassPagePadding(
+  BuildContext context, {
+  double top = 8,
+  double bottom = 24,
+  double gutter = kPageGutter,
+  double appBarBottom = 0,
+}) =>
+    EdgeInsets.fromLTRB(
+      gutter,
+      glassTopInset(context, bottomHeight: appBarBottom) + top,
+      gutter,
+      bottom,
+    );
+
 /// 玻璃顶栏下正文需要空出的高度：状态栏 + 顶栏（含 [TabBar] 这类 bottom）。
 double glassTopInset(BuildContext context, {double bottomHeight = 0}) =>
     MediaQuery.paddingOf(context).top + kToolbarHeight + bottomHeight;

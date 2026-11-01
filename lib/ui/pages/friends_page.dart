@@ -5,6 +5,7 @@ import '../../data/models.dart';
 import '../../state/app_state.dart';
 import '../widgets/state_views.dart';
 import '../widgets/user_avatar.dart';
+import '../widgets/glass_app_bar.dart';
 import 'login_page.dart';
 import 'pm_chat_page.dart';
 import 'user_page.dart';
@@ -83,7 +84,8 @@ class _FriendsPageState extends State<FriendsPage> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(
+      extendBodyBehindAppBar: true,
+      appBar: GlassAppBar(
         title: const Text('我的好友'),
         actions: [
           if (AppState.instance.isLoggedIn)
@@ -118,7 +120,7 @@ class _FriendsPageState extends State<FriendsPage> {
                                 physics: const AlwaysScrollableScrollPhysics(
                                   parent: BouncingScrollPhysics(),
                                 ),
-                                padding: const EdgeInsets.fromLTRB(14, 10, 14, 24),
+                                padding: glassPagePadding(context, top: 10),
                                 itemCount: _items.length,
                                 separatorBuilder: (_, __) => Divider(
                                   height: 1,

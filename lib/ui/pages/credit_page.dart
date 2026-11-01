@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/http_session.dart';
 import '../../data/models.dart';
 import '../../state/app_state.dart';
+import '../widgets/glass_app_bar.dart';
 import '../widgets/state_views.dart';
 
 /// 积分：余额摘要与交易记录（原生渲染）。
@@ -82,7 +83,8 @@ class _CreditPageState extends State<CreditPage> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(
+      extendBodyBehindAppBar: true,
+      appBar: GlassAppBar(
         title: const Text('积分'),
         actions: [
           IconButton(
@@ -102,7 +104,7 @@ class _CreditPageState extends State<CreditPage> {
                     onRefresh: _load,
                     child: ListView(
                       physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-                      padding: const EdgeInsets.fromLTRB(14, 12, 14, 24),
+                      padding: glassPagePadding(context, top: 12),
                       children: [
                         _balanceCard(scheme),
                         const SizedBox(height: 20),

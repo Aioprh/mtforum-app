@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../../mcp/keep_alive.dart';
 import '../../mcp/mcp_server.dart';
+import '../widgets/glass_app_bar.dart';
 
 /// MCP 服务控制台：开关、地址、token、客户端配置与调用日志。
 class McpPage extends StatefulWidget {
@@ -103,13 +104,14 @@ class _McpPageState extends State<McpPage> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('MCP 服务')),
+      extendBodyBehindAppBar: true,
+      appBar: const GlassAppBar(title: Text('MCP 服务')),
       body: ListenableBuilder(
         listenable: McpServer.instance,
         builder: (context, _) {
           final server = McpServer.instance;
           return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+            padding: glassPagePadding(context, top: 12, bottom: 32),
             children: [
               _statusCard(context, server, scheme),
               const SizedBox(height: 12),
@@ -370,20 +372,24 @@ class _McpPageState extends State<McpPage> {
   }
 
   Widget _section(String title, List<Widget> children, ColorScheme scheme) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-      decoration: BoxDecoration(
-        color: scheme.surface,
+    // 同上：底色交给 Material，SwitchListTile 的水波纹才不会被挡。
+    return Material(
+      color: scheme.surface,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.5)),
+        side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.5)),
       ),
-      child: Column(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 6),
-          ...children,
-        ],
+            Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 6),
+            ...children,
+          ],
+        ),
       ),
     );
   }

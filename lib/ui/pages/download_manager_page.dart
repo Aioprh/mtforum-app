@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../services/download_manager.dart';
+import '../widgets/glass_app_bar.dart';
 
 class DownloadManagerPage extends StatefulWidget {
   const DownloadManagerPage({super.key});
@@ -76,7 +77,8 @@ class _DownloadManagerPageState extends State<DownloadManagerPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
+      extendBodyBehindAppBar: true,
+      appBar: GlassAppBar(
         title: const Text('下载管理'),
         actions: [
           IconButton(
@@ -109,7 +111,7 @@ class _DownloadManagerPageState extends State<DownloadManagerPage> {
             );
           }
           return ListView.separated(
-            padding: const EdgeInsets.all(12),
+            padding: glassPagePadding(context, top: 2),
             itemCount: records.length,
             separatorBuilder: (_, __) => const SizedBox(height: 8),
             itemBuilder: (context, index) {

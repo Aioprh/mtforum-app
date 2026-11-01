@@ -8,6 +8,7 @@ import 'magic_page.dart';
 import 'medals_page.dart';
 import 'site_module_page.dart';
 import '../navigation/app_routes.dart';
+import '../widgets/glass_app_bar.dart';
 
 /// 站点功能导航：全部在 App 内原生呈现，不再跳浏览器。
 class SiteFeaturesPage extends StatelessWidget {
@@ -110,11 +111,12 @@ class SiteFeaturesPage extends StatelessWidget {
     ];
 
     return Scaffold(
-      appBar: AppBar(title: const Text('更多站点功能')),
+      extendBodyBehindAppBar: true,
+      appBar: const GlassAppBar(title: Text('更多站点功能')),
       body: SafeArea(
         top: false,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(14, 12, 14, 28),
+          padding: glassPagePadding(context, top: 12, bottom: 28),
           children: [
             for (final group in groups) ...[
               Padding(
