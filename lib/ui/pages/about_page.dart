@@ -12,6 +12,9 @@ class AboutPage extends StatelessWidget {
   static const String _site = 'https://bbs.binmt.cc';
   static const String _manager = 'https://binmt.cc';
 
+  /// 本项目仓库：装的是什么版本，都能顺着这一行找到源码。
+  static const String _repo = 'https://github.com/Aioprh/mtforum-app';
+
   Future<void> _open(String url) async {
     await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
   }
@@ -103,6 +106,14 @@ class AboutPage extends StatelessWidget {
                   subtitle: const Text('binmt.cc'),
                   trailing: const Icon(Icons.open_in_new_rounded, size: 17),
                   onTap: () => _open(_manager),
+                ),
+                Divider(height: 1, color: scheme.outlineVariant.withValues(alpha: 0.45)),
+                ListTile(
+                  leading: const Icon(Icons.code_rounded),
+                  title: const Text('开源地址'),
+                  subtitle: const Text('github.com/Aioprh/mtforum-app'),
+                  trailing: const Icon(Icons.open_in_new_rounded, size: 17),
+                  onTap: () => _open(_repo),
                 ),
                 Divider(height: 1, color: scheme.outlineVariant.withValues(alpha: 0.45)),
                 ListTile(
