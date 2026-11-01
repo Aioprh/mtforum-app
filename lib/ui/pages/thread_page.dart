@@ -14,6 +14,7 @@ import '../../core/thread_paging.dart';
 import '../../data/forum_repository.dart';
 import '../../data/models.dart';
 import '../../state/app_state.dart';
+import '../widgets/glass_app_bar.dart';
 import '../widgets/measure_height.dart';
 import '../widgets/emoji_panel.dart';
 import '../widgets/post_html_view.dart';
@@ -27,10 +28,28 @@ import '../navigation/app_routes.dart';
 
 /// 帖子详情：楼层流 + 分页加载 + 点赞 / 收藏 / 回复 / 楼中楼。
 class ThreadPage extends StatefulWidget {
-  const ThreadPage({super.key, required this.tid, this.title = ''});
+  const ThreadPage({super.key, required this.tid, this.title = ''})
+      : previewDetail = null,
+        previewPosts = null;
+
+  /// 测试专用构造：直接喂一份已经解析好的主题，跳过网络请求。
+  ///
+  /// 楼层卡片、点评、楼中楼全在 [_postCard] 里，没有数据就只能测到空态，
+  /// 布局回归也就无从谈起。生产代码只走上面那个构造。
+  @visibleForTesting
+  ThreadPage.preview({
+    super.key,
+    required ThreadDetail detail,
+    required List<ForumPost> posts,
+  })  : tid = detail.tid,
+        title = '',
+        previewDetail = detail,
+        previewPosts = posts;
 
   final int tid;
   final String title;
+  final ThreadDetail? previewDetail;
+  final List<ForumPost>? previewPosts;
 
   /// 评论区标题该不该出现：只在第一页、主题正文之后插一次。
   ///
@@ -90,7 +109,18 @@ class _ThreadPageState extends State<ThreadPage> {
   @override
   void initState() {
     super.initState();
-    _load();
+    final preview = widget.previewDetail;
+    if (preview != null) {
+      _detail = preview;
+      _posts.addAll(widget.previewPosts ?? preview.posts);
+      _loading = false;
+      _hasMore = preview.hasMore;
+      _likes = preview.likes;
+      _dislikes = preview.dislikes;
+      _favorited = preview.favorited;
+    } else {
+      _load();
+    }
   }
 
   @override
@@ -954,28 +984,16 @@ class _ThreadPageState extends State<ThreadPage> {
       resizeToAvoidBottomInset: false,
       // 让正文从顶栏背后滚过，玻璃顶栏才有东西可模糊。
       extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
-        backgroundColor: Colors.transparent,
-        surfaceTintColor: Colors.transparent,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        shadowColor: Colors.transparent,
-        // 背景透明时 AppBar 会把透明当作「很暗」，从而选白色状态栏图标；
-        // 浅色主题下那等于看不见，这里按主题亮度自己定。
-        systemOverlayStyle: Theme.of(context).brightness == Brightness.dark
-            ? SystemUiOverlayStyle.light
-            : SystemUiOverlayStyle.dark,
-        flexibleSpace: GlassBackdrop(
-          showBorder: false,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              border: Border(
-                bottom: BorderSide(color: ThreadGlass.borderColor(context), width: 0.6),
-              ),
-            ),
-            child: const SizedBox.expand(),
-          ),
+      // 和其它页面共用同一套玻璃顶栏：透明底 + flexibleSpace 里的模糊底板 +
+      // 底部发丝描边。之前这里为了描边和自定义 actions 又抄了一份。
+      appBar: GlassAppBar(
+        // 顶栏标题压到 16：正文里有一行 20.5 的大标题，两者挨着时默认的
+        // 22sp 会和正文抢主次，看起来像标题被写了两遍。
+        title: Text(
+          title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
         ),
         actions: [
           IconButton(
@@ -1036,7 +1054,7 @@ class _ThreadPageState extends State<ThreadPage> {
   ///
   /// `extendBodyBehindAppBar` 之后 body 从屏幕最顶上开始，不补这一段，
   /// 标题会被顶栏盖住。
-  double get _topInset => MediaQuery.paddingOf(context).top + kToolbarHeight + 8;
+  double get _topInset => glassTopInset(context) + 8;
 
   /// 右上角菜单。
   ///
@@ -1191,7 +1209,7 @@ class _ThreadPageState extends State<ThreadPage> {
       child: ListView.builder(
         controller: _scroll,
         physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-        padding: EdgeInsets.fromLTRB(12, _topInset, 12, _composerBottomPadding),
+        padding: EdgeInsets.fromLTRB(kPageGutter, _topInset, kPageGutter, _composerBottomPadding),
         itemCount: 1 + _posts.length + 1,
         itemBuilder: (context, index) {
           if (index == 0) return _header();
@@ -1329,7 +1347,7 @@ class _ThreadPageState extends State<ThreadPage> {
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       decoration: BoxDecoration(
         color: scheme.primary.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: scheme.primary.withValues(alpha: 0.16)),
       ),
       child: Column(
@@ -1509,14 +1527,16 @@ class _ThreadPageState extends State<ThreadPage> {
       surfaceTintColor: Colors.transparent,
       shadowColor: Colors.transparent,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(post.isOp ? 16 : 12),
+        // 主线楼层和回复用同一个圆角：之前主体 16、回复 12，一页里两种弧度
+        // 挨在一起，看着像两套卡片。以 14 收齐。
+        borderRadius: BorderRadius.circular(14),
         side: BorderSide(
           color: targeted
               ? scheme.primary.withValues(alpha: 0.75)
               : post.isOp
                   ? scheme.primary.withValues(alpha: 0.38)
                   : scheme.outlineVariant.withValues(alpha: 0.55),
-          width: targeted ? 1.5 : post.isOp ? 1.1 : 0.6,
+          width: targeted ? 1.5 : post.isOp ? 1.1 : 0.8,
         ),
       ),
       child: Padding(
@@ -1898,10 +1918,13 @@ class _ThreadPageState extends State<ThreadPage> {
   Widget _commentList(ForumPost post) {
     final scheme = Theme.of(context).colorScheme;
     return Container(
+      // 撑满卡片：Column 默认按内容宽度收缩，点评短的时候底板只有半截宽，
+      // 同一个列表里每楼的底色宽窄不一。
+      width: double.infinity,
       padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
       decoration: BoxDecoration(
         color: scheme.surfaceContainerHighest.withValues(alpha: 0.45),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1943,90 +1966,109 @@ class _ThreadPageState extends State<ThreadPage> {
     final scheme = Theme.of(context).colorScheme;
     final canGoPrevious = _page > 1 && !_loadingMore;
     final canGoNext = _hasMore && !_loadingMore;
-    return Container(
-      margin: const EdgeInsets.fromLTRB(2, 8, 2, 10),
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.55)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(2, 10, 2, 12),
+      child: Row(
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: canGoPrevious ? _loadPrevious : null,
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size(0, 42),
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(11)),
-                  ),
-                  child: const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.chevron_left_rounded, size: 19),
-                      SizedBox(width: 3),
-                      Text('上一页'),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: FilledButton(
-                  onPressed: canGoNext ? _loadMore : null,
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size(0, 42),
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(11)),
-                    disabledBackgroundColor: scheme.surfaceContainerHighest,
-                    disabledForegroundColor: scheme.onSurfaceVariant,
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      if (_loadingMore)
-                        const SizedBox(
-                          width: 15,
-                          height: 15,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      else
-                        const Icon(Icons.chevron_right_rounded, size: 19),
-                      const SizedBox(width: 3),
-                      Text(_loadingMore ? '加载中' : (_hasMore ? '下一页' : '没有下一页')),
-                    ],
-                  ),
-                ),
-              ),
-            ],
+          _pagerButton(
+            icon: Icons.chevron_left_rounded,
+            label: '上一页',
+            enabled: canGoPrevious,
+            onTap: _loadPrevious,
           ),
-          const SizedBox(height: 7),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.article_outlined, size: 14, color: scheme.outline),
-              const SizedBox(width: 5),
-              Text(
-                '第 $_page 页',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: scheme.onSurfaceVariant),
-              ),
-              if (!_hasMore && !_loadingMore) ...[
-                const SizedBox(width: 7),
-                Container(
-                  width: 4,
-                  height: 4,
-                  decoration: BoxDecoration(color: scheme.outlineVariant, shape: BoxShape.circle),
+          Expanded(
+            child: Column(
+              children: [
+                Text(
+                  '第 $_page 页',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: scheme.onSurfaceVariant,
+                  ),
                 ),
-                const SizedBox(width: 7),
-                Text('已显示全部内容', style: TextStyle(fontSize: 11, color: scheme.outline)),
+                const SizedBox(height: 2),
+                Text(
+                  _loadingMore ? '正在加载' : (_hasMore ? '还有更多回复' : '已显示全部内容'),
+                  style: TextStyle(fontSize: 10.5, color: scheme.outline),
+                ),
               ],
-            ],
+            ),
+          ),
+          _pagerButton(
+            icon: Icons.chevron_right_rounded,
+            label: _loadingMore ? '加载中' : (_hasMore ? '下一页' : '到底了'),
+            enabled: canGoNext,
+            loading: _loadingMore,
+            trailing: true,
+            onTap: _loadMore,
           ),
         ],
+      ),
+    );
+  }
+
+  /// 翻页按钮：可点时是主色淡底，到头是灰底，按下有水波纹。
+  ///
+  /// 原来是 OutlinedButton + FilledButton 拼在一块灰底卡片里，两个大按钮加
+  /// 一行页码，看着像网页底部的分页块；换成两侧小胶囊 + 中间页码，和楼层的
+  /// 尺度更接近，也不会在列表尾部突然糊上一块灰。
+  Widget _pagerButton({
+    required IconData icon,
+    required String label,
+    required bool enabled,
+    required VoidCallback onTap,
+    bool trailing = false,
+    bool loading = false,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final fg = enabled ? scheme.primary : scheme.outline;
+    final radius = BorderRadius.circular(12);
+    final iconWidget = loading
+        ? SizedBox(
+            width: 15,
+            height: 15,
+            child: CircularProgressIndicator(strokeWidth: 2, color: fg),
+          )
+        : Icon(icon, size: 17, color: fg);
+    return Material(
+      color: Colors.transparent,
+      child: Ink(
+        decoration: BoxDecoration(
+          borderRadius: radius,
+          color: enabled
+              ? scheme.primary.withValues(alpha: isDark ? 0.20 : 0.10)
+              : scheme.surfaceContainerHighest.withValues(alpha: 0.32),
+          border: Border.all(
+            color: enabled
+                ? scheme.primary.withValues(alpha: isDark ? 0.34 : 0.24)
+                : scheme.outlineVariant.withValues(alpha: 0.32),
+            width: 0.8,
+          ),
+        ),
+        child: InkWell(
+          borderRadius: radius,
+          onTap: enabled ? onTap : null,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (!trailing) ...[iconWidget, const SizedBox(width: 3)],
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: fg,
+                  ),
+                ),
+                if (trailing) ...[const SizedBox(width: 3), iconWidget],
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -2097,6 +2139,11 @@ class _ThreadPageState extends State<ThreadPage> {
                           : '回复 ${_replyTarget!.author}…',
                       isDense: true,
                       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                      // 不写 border 时用的是主题里的下划线，玻璃上会横着一条
+                      // 细线，看着像表单输入格。这里彻底去掉，让人只看到玻璃。
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
                     ),
                   ),
                 ),

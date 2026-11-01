@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mt_forum/state/app_state.dart';
 import 'package:mt_forum/ui/pages/thread_page.dart';
+import 'package:mt_forum/ui/widgets/glass_app_bar.dart';
 import 'package:mt_forum/ui/widgets/thread_glass.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -26,7 +27,16 @@ void main() {
     final appBar = tester.widget<AppBar>(find.byType(AppBar));
     // 顶栏自己不铺底色，交给 flexibleSpace 里的玻璃。
     expect(appBar.backgroundColor, Colors.transparent);
-    expect(appBar.flexibleSpace, isA<GlassBackdrop>());
+    // 顶栏现在走统一的 GlassAppBar，flexibleSpace 里是「玻璃底板 + 可选的
+    // 双击回顶区」这一层，玻璃本身退到 Stack 里面。
+    expect(find.byType(GlassAppBar), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(GlassAppBar),
+        matching: find.byType(GlassBackdrop),
+      ),
+      findsWidgets,
+    );
 
     // 正文从顶栏背后穿过才透得出模糊，所以必须开着 extendBodyBehindAppBar。
     final scaffold = tester.widget<Scaffold>(find.byType(Scaffold));
