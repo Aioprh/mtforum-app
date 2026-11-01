@@ -10,6 +10,7 @@ import '../../core/app_config.dart';
 import '../../core/http_session.dart';
 import '../../core/native_bridge.dart';
 import '../../core/reply_notice.dart';
+import '../../core/thread_paging.dart';
 import '../../data/forum_repository.dart';
 import '../../data/models.dart';
 import '../../state/app_state.dart';
@@ -73,6 +74,12 @@ class _ThreadPageState extends State<ThreadPage> {
   int _page = 1;
   bool _hasMore = false;
 
+  /// 第 1 页顶部展示过的置顶回复 pid。
+  ///
+  /// 站点只在第 1 页插入一份置顶，它原本所在的页仍会返回同一条，
+  /// 翻到那一页时按 pid 跳过，避免同一楼出现两次。
+  Set<int> _pinnedPids = <int>{};
+
   /// 楼层定位用的 key：回复成功后滚到自己那条。
   final Map<int, GlobalKey> _floorKeys = <int, GlobalKey>{};
 
@@ -108,11 +115,12 @@ class _ThreadPageState extends State<ThreadPage> {
         orderDesc: _orderDesc,
       );
       if (!mounted) return;
+      _pinnedPids = ThreadPaging.pinnedPidsOf(detail.posts);
       setState(() {
         _detail = detail;
         _posts
           ..clear()
-          ..addAll(detail.posts);
+          ..addAll(ThreadPaging.withoutPinnedDuplicates(detail.posts, _pinnedPids));
         _page = 1;
         _hasMore = detail.hasMore;
         _likes = detail.likes;
@@ -203,11 +211,15 @@ class _ThreadPageState extends State<ThreadPage> {
       );
       if (!mounted) return;
       final offset = _orderDesc ? 0 : (page - 1) * AppConfig.postsPerPage;
+      // 第 1 页顶部那条置顶只是站点的额外副本，它原本所在的页
+      // 还会照常返回同一楼。先记下 pid，后面翻到那页时跳掉。
+      if (page == 1) _pinnedPids = ThreadPaging.pinnedPidsOf(detail.posts);
+      final visible = ThreadPaging.withoutPinnedDuplicates(detail.posts, _pinnedPids);
       setState(() {
         _page = page;
         _posts
           ..clear()
-          ..addAll(detail.posts.map((post) => post.copyWith(
+          ..addAll(visible.map((post) => post.copyWith(
             floor: post.isPinned ? post.floor : post.floor + offset,
           )));
         _hasMore = detail.hasMore;
@@ -872,7 +884,11 @@ class _ThreadPageState extends State<ThreadPage> {
     _toast('正在缓存整篇帖子，评论和图片较多时可能需要一些时间');
     try {
       final first = await _repo.fetchThread(widget.tid, page: 1);
-      final allPosts = <ForumPost>[...first.posts];
+      // 置顶楼只在第 1 页额外插入，原页仍会返回它，缓存时同样要跳掉。
+      final pinned = ThreadPaging.pinnedPidsOf(first.posts);
+      final allPosts = <ForumPost>[
+        ...ThreadPaging.withoutPinnedDuplicates(first.posts, pinned),
+      ];
       var hasMore = first.hasMore;
       var page = 1;
       // Fetch every page, independently of the current "only OP" and sort filters.
@@ -880,7 +896,8 @@ class _ThreadPageState extends State<ThreadPage> {
         page++;
         final next = await _repo.fetchThread(widget.tid, page: page);
         final offset = (page - 1) * AppConfig.postsPerPage;
-        allPosts.addAll(next.posts.map((post) => post.copyWith(floor: post.isPinned ? post.floor : post.floor + offset)));
+        allPosts.addAll(ThreadPaging.withoutPinnedDuplicates(next.posts, pinned)
+            .map((post) => post.copyWith(floor: post.isPinned ? post.floor : post.floor + offset)));
         hasMore = next.hasMore;
         if (next.posts.isEmpty && hasMore) break;
       }
