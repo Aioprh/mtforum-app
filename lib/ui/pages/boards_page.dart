@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../data/models.dart';
 import '../../state/app_state.dart';
 import '../pages/board_threads_page.dart';
-import '../widgets/back_to_top.dart';
+import '../widgets/glass_app_bar.dart';
 import '../widgets/smart_image.dart';
 import '../widgets/state_views.dart';
 import '../navigation/app_routes.dart';
@@ -59,11 +59,14 @@ class _BoardsPageState extends State<BoardsPage> with AutomaticKeepAliveClientMi
   Widget build(BuildContext context) {
     super.build(context);
     final scheme = Theme.of(context).colorScheme;
+    final topInset = glassTopInset(context);
     return Scaffold(
-      appBar: AppBar(
+      // 列表从玻璃顶栏背后滚过，顶栏才糊得出东西。
+      extendBodyBehindAppBar: true,
+      appBar: GlassAppBar(
         title: const Text('版块'),
         // 顶栏空白处双击回顶。
-        flexibleSpace: DoubleTapTopArea(controller: _scroll),
+        doubleTapController: _scroll,
         actions: [
           IconButton(
             onPressed: () => _load(force: true),
@@ -73,15 +76,19 @@ class _BoardsPageState extends State<BoardsPage> with AutomaticKeepAliveClientMi
         ],
       ),
       body: _loading && _categories.isEmpty
-          ? const FeedSkeleton(count: 4)
+          ? Padding(padding: EdgeInsets.only(top: topInset), child: const FeedSkeleton(count: 4))
           : _error != null && _categories.isEmpty
-              ? ErrorView(message: _error!, onRetry: () => _load(force: true))
+              ? Padding(
+                  padding: EdgeInsets.only(top: topInset),
+                  child: ErrorView(message: _error!, onRetry: () => _load(force: true)),
+                )
               : RefreshIndicator(
                   onRefresh: () => _load(force: true),
+                  edgeOffset: topInset,
                   child: ListView.builder(
                     controller: _scroll,
                     physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-                    padding: const EdgeInsets.fromLTRB(14, 8, 14, 88),
+                    padding: EdgeInsets.fromLTRB(14, topInset + 8, 14, 88),
                     itemCount: _categories.length + 1,
                     itemBuilder: (context, index) {
                       if (index == _categories.length) {

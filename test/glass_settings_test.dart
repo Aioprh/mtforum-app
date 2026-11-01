@@ -18,7 +18,7 @@ void main() {
     AppState.instance.threadGlassBlur = 22;
   });
 
-  testWidgets('「液态玻璃」一个入口同时管底栏、发帖按钮和帖子页', (tester) async {
+  testWidgets('「液态玻璃」一个入口同时管底栏、发帖按钮和顶栏', (tester) async {
     await tester.pumpWidget(const MaterialApp(home: ProfilePage()));
     await tester.pumpAndSettle();
 
@@ -36,12 +36,12 @@ void main() {
     // 面板里两节都在，调节项一个没少。
     expect(find.text('底部导航栏'), findsOneWidget);
     expect(find.text('发帖按钮'), findsOneWidget);
-    expect(find.text('帖子页'), findsOneWidget);
+    expect(find.text('顶栏与输入条'), findsOneWidget);
     expect(find.text('启用液态玻璃悬浮底栏'), findsOneWidget);
     expect(find.text('玻璃透明度'), findsNWidgets(3));
     expect(find.text('背景模糊度'), findsNWidgets(3));
     expect(find.text('发帖按钮恢复默认'), findsOneWidget);
-    expect(find.text('帖子页恢复默认'), findsOneWidget);
+    expect(find.text('恢复默认'), findsOneWidget);
   });
 
   testWidgets('面板里改底栏参数只写底栏，发帖按钮不受影响', (tester) async {
@@ -69,12 +69,12 @@ void main() {
     // 发帖按钮还是原来那套值。
     expect(AppState.instance.composeGlassOpacity, closeTo(0.28, 0.001));
     expect(AppState.instance.composeGlassBlur, closeTo(26, 0.001));
-    // 帖子页也没被带着改。
+    // 顶栏那节也没被带着改。
     expect(AppState.instance.threadGlassOpacity, closeTo(0.55, 0.001));
     expect(AppState.instance.threadGlassBlur, closeTo(22, 0.001));
   });
 
-  testWidgets('帖子页那节单独写自己的参数', (tester) async {
+  testWidgets('顶栏那节单独写自己的参数', (tester) async {
     await tester.pumpWidget(const MaterialApp(home: ProfilePage()));
     await tester.pumpAndSettle();
 

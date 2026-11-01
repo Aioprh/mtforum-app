@@ -6,6 +6,7 @@ import '../../core/http_session.dart';
 import '../../data/forum_repository.dart';
 import '../../data/models.dart';
 import '../../state/app_state.dart';
+import '../widgets/glass_app_bar.dart';
 import '../widgets/state_views.dart';
 import '../widgets/thread_feed.dart';
 import '../widgets/user_avatar.dart';
@@ -116,10 +117,13 @@ class _UserPageState extends State<UserPage> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final name = _profile?.username.isNotEmpty == true ? _profile!.username : widget.name;
+    final topInset = glassTopInset(context);
     return DefaultTabController(
       length: 2,
       child: Scaffold(
-        appBar: AppBar(
+        // 资料卡和帖子从玻璃顶栏背后滚过。
+        extendBodyBehindAppBar: true,
+        appBar: GlassAppBar(
           title: Text(
             _isSelf ? '我的主页' : (name.isEmpty ? '用户主页' : name),
             maxLines: 1,
@@ -140,36 +144,55 @@ class _UserPageState extends State<UserPage> {
             ? const Center(child: CircularProgressIndicator())
             : _error != null
                 ? ErrorView(message: _error!, onRetry: _load)
-                : Column(
+                : TabBarView(
                     children: [
-                      _header(scheme, name),
-                      TabBar(
-                        labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
-                        tabs: [
-                          Tab(text: _isSelf ? '我的主题' : 'TA的主题'),
-                          Tab(text: _isSelf ? '我的回复' : 'TA的回复'),
-                        ],
-                        indicatorColor: scheme.primary,
+                      _tabFeed(
+                        scheme: scheme,
+                        name: name,
+                        topInset: topInset,
+                        loader: (page) => _repo.fetchUserThreads(widget.uid, page: page),
+                        emptyText: 'TA 还没有发布过主题',
                       ),
-                      Expanded(
-                        child: TabBarView(
-                          children: [
-                            ThreadFeed(
-                              loader: (page) => _repo.fetchUserThreads(widget.uid, page: page),
-                              emptyText: 'TA 还没有发布过主题',
-                              padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
-                            ),
-                            ThreadFeed(
-                              loader: (page) => _repo.fetchUserReplies(widget.uid, page: page),
-                              emptyText: 'TA 还没有回复过帖子',
-                              padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
-                            ),
-                          ],
-                        ),
+                      _tabFeed(
+                        scheme: scheme,
+                        name: name,
+                        topInset: topInset,
+                        loader: (page) => _repo.fetchUserReplies(widget.uid, page: page),
+                        emptyText: 'TA 还没有回复过帖子',
                       ),
                     ],
                   ),
       ),
+    );
+  }
+
+  /// 每个 Tab 都是一个独立的流：资料卡打头，TabBar 滚到顶部后钉住并磨砂。
+  ///
+  /// 早先 header 和 TabBar 在 Column 里固定不动，只有下面的列表能滚，
+  /// TabBar 背后永远是那张静态资料卡，做成玻璃也透不出东西。
+  Widget _tabFeed({
+    required ColorScheme scheme,
+    required String name,
+    required double topInset,
+    required Future<List<ThreadSummary>> Function(int page) loader,
+    required String emptyText,
+  }) {
+    return ThreadFeed(
+      loader: loader,
+      emptyText: emptyText,
+      header: _header(scheme, name),
+      pinnedHeader: TabBar(
+        labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+        tabs: [
+          Tab(text: _isSelf ? '我的主题' : 'TA的主题'),
+          Tab(text: _isSelf ? '我的回复' : 'TA的回复'),
+        ],
+        indicatorColor: scheme.primary,
+      ),
+      pinnedHeaderHeight: 48,
+      pinnedHeaderFrost: 18,
+      padding: EdgeInsets.fromLTRB(14, topInset + 10, 14, 24),
+      refreshOffset: topInset + 10,
     );
   }
 
@@ -182,7 +205,8 @@ class _UserPageState extends State<UserPage> {
       ('粉丝', profile?.followers ?? ''),
     ];
     return Container(
-      margin: const EdgeInsets.fromLTRB(14, 10, 14, 6),
+      // 左右留白交给 ThreadFeed 的 padding，这里再缩进一次会缩成 28。
+      margin: const EdgeInsets.only(bottom: 6),
       padding: const EdgeInsets.fromLTRB(14, 16, 14, 12),
       decoration: BoxDecoration(
         color: scheme.surface,

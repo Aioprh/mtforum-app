@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/http_session.dart';
 import '../../data/models.dart';
 import '../../state/app_state.dart';
+import '../widgets/glass_app_bar.dart';
 import '../widgets/state_views.dart';
 import '../widgets/user_avatar.dart';
 import 'login_page.dart';
@@ -76,8 +77,11 @@ class _PmListPageState extends State<PmListPage> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final topInset = glassTopInset(context);
     return Scaffold(
-      appBar: AppBar(
+      // 会话列表从玻璃顶栏背后滚过。
+      extendBodyBehindAppBar: true,
+      appBar: GlassAppBar(
         title: const Text('私信'),
         actions: [
           if (AppState.instance.isLoggedIn)
@@ -98,21 +102,22 @@ class _PmListPageState extends State<PmListPage> {
                     ? ErrorView(message: _error!, onRetry: _load)
                     : RefreshIndicator(
                         onRefresh: _load,
+                        edgeOffset: topInset,
                         child: _items.isEmpty
                             ? ListView(
                                 physics: const AlwaysScrollableScrollPhysics(
                                   parent: BouncingScrollPhysics(),
                                 ),
-                                children: const [
-                                  SizedBox(height: 90),
-                                  EmptyView(text: '还没有私信', icon: Icons.mail_outline_rounded),
+                                children: [
+                                  SizedBox(height: topInset + 82),
+                                  const EmptyView(text: '还没有私信', icon: Icons.mail_outline_rounded),
                                 ],
                               )
                             : ListView.separated(
                                 physics: const AlwaysScrollableScrollPhysics(
                                   parent: BouncingScrollPhysics(),
                                 ),
-                                padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
+                                padding: EdgeInsets.fromLTRB(14, topInset + 8, 14, 24),
                                 itemCount: _items.length,
                                 separatorBuilder: (_, __) => Divider(
                                   height: 1,

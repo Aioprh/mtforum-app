@@ -14,6 +14,7 @@ import '../../core/thread_paging.dart';
 import '../../data/forum_repository.dart';
 import '../../data/models.dart';
 import '../../state/app_state.dart';
+import '../widgets/measure_height.dart';
 import '../widgets/emoji_panel.dart';
 import '../widgets/post_html_view.dart';
 import '../widgets/state_views.dart';
@@ -1001,7 +1002,10 @@ class _ThreadPageState extends State<ThreadPage> {
               left: 0,
               right: 0,
               bottom: insets,
-              child: _composer(),
+              child: MeasureHeight(
+                onHeight: _onComposerMeasured,
+                child: _composer(),
+              ),
             ),
           ],
         ),
@@ -1009,14 +1013,12 @@ class _ThreadPageState extends State<ThreadPage> {
     );
   }
 
-  /// 回复框浮在列表上需要预留的高度。
+  /// 回复框实测高度，首帧给个估值，量到真值后覆盖。
   ///
-  /// 悬浮布局没法自动测量，按常规高度估一个略偏大的值：估小了最后一条
-  /// 回复会被压在框下面，估大只是尾部多一小段空白。
-  double get _composerReserve {
-    final base = _replyTarget == null ? 64.0 : 100.0;
-    return base + (_showEmoji ? 220 : 0);
-  }
+  /// 早先按「有回复目标 100、无目标 64、开表情 +220」估。估小了输入框
+  /// 换行后最后一条回复被压在框下面，估大了尾部多一段空白，而且改一次
+  /// 布局就要回来重算这几个数。
+  double _composerReserve = 64;
 
   /// 列表底部让给悬浮回复框的高度，键盘弹起时再加上键盘高度。
   ///
@@ -1024,6 +1026,11 @@ class _ThreadPageState extends State<ThreadPage> {
   /// 回复框背后就什么都透不出来了。
   double get _composerBottomPadding =>
       _composerReserve + MediaQuery.viewInsetsOf(context).bottom + 16;
+
+  void _onComposerMeasured(double height) {
+    if ((height - _composerReserve).abs() < 0.5) return;
+    setState(() => _composerReserve = height);
+  }
 
   /// 正文区顶部要空出的高度：状态栏 + 顶栏。
   ///

@@ -25,6 +25,7 @@ class ThreadFeed extends StatefulWidget {
     this.onRefresh,
     this.controller,
     this.doubleTapToTop = false,
+    this.refreshOffset,
   });
 
   final Future<List<ThreadSummary>> Function(int page) loader;
@@ -62,6 +63,12 @@ class ThreadFeed extends StatefulWidget {
   /// 双击只认卡片本身：整页包一层识别器会把「点一下没反应又补一下」
   /// 当成双击，尤其是滑了一点点之后，很容易莫名其妙被弹回顶部。
   final bool doubleTapToTop;
+
+  /// 下拉刷新指示器相对列表顶部的偏移。
+  ///
+  /// 顶栏做成玻璃之后，指示器默认那点偏移会藏在顶栏背后，得由页面把
+  /// 「状态栏 + 顶栏」的高度传进来。
+  final double? refreshOffset;
 
   @override
   State<ThreadFeed> createState() => _ThreadFeedState();
@@ -321,7 +328,7 @@ class _ThreadFeedState extends State<ThreadFeed> {
 
     return RefreshIndicator(
       onRefresh: _refresh,
-      edgeOffset: widget.header == null ? 0 : 8,
+      edgeOffset: widget.refreshOffset ?? (widget.header == null ? 0 : 8),
       child: CustomScrollView(
         controller: _scroll,
         physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),

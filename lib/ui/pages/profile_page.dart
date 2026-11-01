@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/models.dart';
 import '../../state/app_state.dart';
+import '../widgets/glass_app_bar.dart';
 import '../widgets/glass_compose_button.dart';
 import '../widgets/thread_glass.dart';
 import '../widgets/sign_in_badge.dart';
@@ -152,7 +153,7 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    '底栏、发帖按钮、帖子页各自一套玻璃材质，透明度和模糊度分开调，保存后立即生效。',
+                    '底栏、发帖按钮、页面顶栏与输入条各自一套玻璃材质，透明度和模糊度分开调，保存后立即生效。',
                     style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant, height: 1.5),
                   ),
                   const SizedBox(height: 18),
@@ -291,8 +292,8 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
                   _glassSectionHeader(
                     context,
                     Icons.layers_rounded,
-                    '帖子页',
-                    '顶栏、底部回复框、右上角菜单共用一套材质',
+                    '顶栏与输入条',
+                    '帖子页、私信、发帖、版块等页面的顶栏和悬浮输入区共用一套材质',
                   ),
                   const SizedBox(height: 12),
                   // 预览：上下两条玻璃压在同一块色块上，顶栏和回复框的观感一起看。
@@ -427,7 +428,7 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
                         threadOpacity = 0.55;
                         threadBlur = 22;
                       }),
-                      child: const Text('帖子页恢复默认'),
+                      child: const Text('恢复默认'),
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -657,8 +658,11 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
       builder: (context, _) {
         final state = AppState.instance;
         final profile = state.profile;
+        final topInset = glassTopInset(context);
         return Scaffold(
-          appBar: AppBar(
+          // 资料卡和菜单从玻璃顶栏背后滚过。
+          extendBodyBehindAppBar: true,
+          appBar: GlassAppBar(
             title: const Text('我的'),
             actions: [
               if (state.isLoggedIn)
@@ -671,9 +675,10 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
           ),
           body: RefreshIndicator(
             onRefresh: _refresh,
+            edgeOffset: topInset,
             child: ListView(
               physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-              padding: const EdgeInsets.fromLTRB(16, 6, 16, 30),
+              padding: EdgeInsets.fromLTRB(16, topInset + 6, 16, 30),
               children: [
                 if (state.isLoggedIn) ...[
                   GestureDetector(

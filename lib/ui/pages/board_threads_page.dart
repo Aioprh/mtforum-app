@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/models.dart';
 import '../../state/app_state.dart';
-import '../widgets/back_to_top.dart';
+import '../widgets/glass_app_bar.dart';
 import '../widgets/thread_feed.dart';
 import 'compose_page.dart';
 import '../navigation/app_routes.dart';
@@ -40,11 +40,14 @@ class _BoardThreadsPageState extends State<BoardThreadsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final topInset = glassTopInset(context);
     return Scaffold(
-      appBar: AppBar(
+      // 帖子从玻璃顶栏背后滚过。
+      extendBodyBehindAppBar: true,
+      appBar: GlassAppBar(
         title: Text(widget.name, maxLines: 1, overflow: TextOverflow.ellipsis),
         // 顶栏空白处双击回顶；标题和右侧发帖按钮在上层，不受影响。
-        flexibleSpace: DoubleTapTopArea(controller: _scroll),
+        doubleTapController: _scroll,
         actions: [
           IconButton(
             tooltip: '发帖',
@@ -59,7 +62,8 @@ class _BoardThreadsPageState extends State<BoardThreadsPage> {
           loader: _loader,
           controller: _scroll,
           emptyText: '该版块暂时还没有主题',
-          padding: const EdgeInsets.fromLTRB(14, 10, 14, 24),
+          padding: EdgeInsets.fromLTRB(14, topInset + 10, 14, 24),
+          refreshOffset: topInset + 10,
           header: _header(context),
         ),
       ),

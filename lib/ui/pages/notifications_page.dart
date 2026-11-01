@@ -4,6 +4,7 @@ import 'followers_page.dart';
 import 'native_notice_category_page.dart';
 import 'pm_list_page.dart';
 import '../navigation/app_routes.dart';
+import '../widgets/glass_app_bar.dart';
 
 /// 消息通知：私信、粉丝与各类提醒。全部为原生页面。
 class NotificationsPage extends StatefulWidget {
@@ -31,10 +32,13 @@ class _NotificationsPageState extends State<NotificationsPage> {
       (title: '系统提醒', subtitle: '系统通知与管理提醒', icon: Icons.notifications_active_rounded, color: Color(0xFFE97D8A), view: 'system'),
       (title: '应用提醒', subtitle: '应用相关通知', icon: Icons.sensors_rounded, color: Color(0xFF8BB5E4), view: 'app'),
     ];
+    final topInset = glassTopInset(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('消息提醒')),
+      // 列表从玻璃顶栏背后滚过。
+      extendBodyBehindAppBar: true,
+      appBar: const GlassAppBar(title: Text('消息提醒')),
       body: ListView.separated(
-        padding: EdgeInsets.zero,
+        padding: EdgeInsets.only(top: topInset),
         itemCount: categories.length,
         separatorBuilder: (_, __) => Divider(height: 1, color: scheme.outlineVariant.withValues(alpha: 0.45)),
         itemBuilder: (context, index) {

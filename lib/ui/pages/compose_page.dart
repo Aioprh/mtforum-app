@@ -11,6 +11,9 @@ import '../../core/pending_upload.dart';
 import '../../data/models.dart';
 import '../../state/app_state.dart';
 import '../widgets/emoji_panel.dart';
+import '../widgets/glass_app_bar.dart';
+import '../widgets/measure_height.dart';
+import '../widgets/thread_glass.dart';
 import 'login_page.dart';
 import '../navigation/app_routes.dart';
 
@@ -603,7 +606,9 @@ class _ComposePageState extends State<ComposePage> {
     return Scaffold(
       // 自行处理键盘高度，保证底部输入区始终浮在输入法之上。
       resizeToAvoidBottomInset: false,
-      appBar: AppBar(
+      // 正文从玻璃顶栏背后滚过。
+      extendBodyBehindAppBar: true,
+      appBar: GlassAppBar(
         title: Text(
           widget.initialBoardName == null
               ? '发帖'
@@ -627,33 +632,63 @@ class _ComposePageState extends State<ComposePage> {
       ),
       body: SafeArea(
         top: false,
-        child: Column(
+        child: Stack(
           children: [
-            Expanded(
+            // 编辑区铺满 body，正文从底部工具条背后掠过。
+            // 让位高度加在 ListView 的 padding 上：加在外层会把视口截短，
+            // 工具条背后只剩纯色底，玻璃就白做了。
+            Positioned.fill(
               child: ListView(
                 controller: _scroll,
                 keyboardDismissBehavior:
                     ScrollViewKeyboardDismissBehavior.onDrag,
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  glassTopInset(context) + 12,
+                  16,
+                  _bottomBarHeight + insets + 16,
+                ),
                 children: _content(scheme),
               ),
             ),
-            Container(
-              decoration: BoxDecoration(
-                color: scheme.surface,
-                border: Border(
-                  top: BorderSide(
-                    color: scheme.outlineVariant.withValues(alpha: 0.6),
-                  ),
-                ),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [_toolbar(scheme), _panelArea()],
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: insets,
+              child: MeasureHeight(
+                onHeight: _onBottomBarMeasured,
+                child: _bottomBar(scheme),
               ),
             ),
-            if (insets > 0) SizedBox(height: insets),
           ],
+        ),
+      ),
+    );
+  }
+
+  /// 底部工具条（含展开的面板）给正文让出的高度。
+  ///
+  /// 面板高度由内容决定，估不准；交给 [MeasureHeight] 量，首帧先给个估值。
+  double _bottomBarHeight = 58;
+
+  void _onBottomBarMeasured(double height) {
+    if ((height - _bottomBarHeight).abs() < 0.5) return;
+    setState(() => _bottomBarHeight = height);
+  }
+
+  Widget _bottomBar(ColorScheme scheme) {
+    return GlassBackdrop(
+      showBorder: false,
+      opacityScale: 0.94,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border(
+            top: BorderSide(color: ThreadGlass.borderColor(context), width: 0.6),
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [_toolbar(scheme), _panelArea()],
         ),
       ),
     );
@@ -1112,15 +1147,10 @@ class _ComposePageState extends State<ComposePage> {
     };
   }
 
-  Widget _panelShell(ColorScheme scheme, Widget child) {
+  Widget _panelShell(Widget child) {
     return Container(
       constraints: const BoxConstraints(maxHeight: 250),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainer.withValues(alpha: 0.98),
-        border: Border(
-          top: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.72)),
-        ),
-      ),
+      // 面板底板交给外层那块玻璃，这里再铺一层实色就把模糊挡住了。
       child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
         child: child,
@@ -1140,7 +1170,6 @@ class _ComposePageState extends State<ComposePage> {
         .take(12)
         .toList();
     return _panelShell(
-      scheme,
       Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1299,7 +1328,6 @@ class _ComposePageState extends State<ComposePage> {
       ('hide', '隐藏内容', 'hide'),
     ];
     return _panelShell(
-      scheme,
       Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1395,7 +1423,6 @@ class _ComposePageState extends State<ComposePage> {
   Widget _attachPanel() {
     final scheme = Theme.of(context).colorScheme;
     return _panelShell(
-      scheme,
       Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1469,9 +1496,7 @@ class _ComposePageState extends State<ComposePage> {
   }
 
   Widget _advancedPanel() {
-    final scheme = Theme.of(context).colorScheme;
     return _panelShell(
-      scheme,
       Column(
         children: [
           SwitchListTile(

@@ -3,7 +3,10 @@ import 'package:flutter/material.dart';
 import '../../core/http_session.dart';
 import '../../data/models.dart';
 import '../../state/app_state.dart';
+import '../widgets/glass_app_bar.dart';
+import '../widgets/measure_height.dart';
 import '../widgets/state_views.dart';
+import '../widgets/thread_glass.dart';
 import '../widgets/user_avatar.dart';
 import 'login_page.dart';
 import 'user_page.dart';
@@ -150,9 +153,14 @@ class _PmChatPageState extends State<PmChatPage> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final insets = MediaQuery.viewInsetsOf(context).bottom;
     return Scaffold(
-      resizeToAvoidBottomInset: true,
-      appBar: AppBar(
+      // 输入条自己避让键盘：改成悬浮层之后，让 Scaffold 缩放 body 会把
+      // 消息列表连同玻璃底板一起往上顶。
+      resizeToAvoidBottomInset: false,
+      // 消息从玻璃顶栏背后滚过，顶栏才糊得出东西。
+      extendBodyBehindAppBar: true,
+      appBar: GlassAppBar(
         title: Text(_peer.isEmpty ? '私信' : _peer, maxLines: 1, overflow: TextOverflow.ellipsis),
         actions: [
           IconButton(
@@ -166,31 +174,69 @@ class _PmChatPageState extends State<PmChatPage> {
         top: false,
         child: !AppState.instance.isLoggedIn
             ? _loginHint(scheme)
-            : Column(
+            : Stack(
                 children: [
-                  Expanded(child: _messageArea(scheme)),
-                  _composer(scheme),
+                  // 消息列表铺满整个 body，气泡从输入条背后掠过。
+                  // 底部让位放在列表 padding 里，别套在外层——外层留白会把
+                  // 视口截短，输入条背后就只剩纯色底了。
+                  Positioned.fill(child: _messageArea(scheme)),
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: insets,
+                    child: MeasureHeight(
+                      onHeight: _onComposerMeasured,
+                      child: _composer(scheme),
+                    ),
+                  ),
                 ],
               ),
       ),
     );
   }
 
+  /// 输入条给列表让出的高度，由 [MeasureHeight] 实测，首帧先给个估值。
+  double _composerReserve = 64;
+
+  void _onComposerMeasured(double height) {
+    if ((height - _composerReserve).abs() < 0.5) return;
+    setState(() => _composerReserve = height);
+  }
+
   Widget _messageArea(ColorScheme scheme) {
-    if (_loading) return const Center(child: CircularProgressIndicator());
-    if (_error != null) return ErrorView(message: _error!, onRetry: _load);
+    final topInset = glassTopInset(context) + 8;
+    final bottomInset =
+        _composerReserve + MediaQuery.viewInsetsOf(context).bottom + 16;
+    if (_loading) {
+      return Padding(
+        padding: EdgeInsets.only(top: topInset),
+        child: const Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (_error != null) {
+      return Padding(
+        padding: EdgeInsets.only(top: topInset),
+        child: ErrorView(message: _error!, onRetry: _load),
+      );
+    }
     if (_messages.isEmpty) {
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-        children: const [SizedBox(height: 100), EmptyView(text: '还没有私信往来', icon: Icons.mail_outline_rounded)],
+        children: [
+          SizedBox(height: topInset + 92),
+          const EmptyView(text: '还没有私信往来', icon: Icons.mail_outline_rounded),
+          SizedBox(height: bottomInset),
+        ],
       );
     }
     return RefreshIndicator(
       onRefresh: _load,
+      // 顶栏是玻璃，下拉圆圈要落到它下面才看得见。
+      edgeOffset: topInset,
       child: ListView.builder(
         controller: _scroll,
         physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-        padding: const EdgeInsets.fromLTRB(12, 14, 12, 16),
+        padding: EdgeInsets.fromLTRB(12, topInset, 12, bottomInset),
         itemCount: _messages.length,
         itemBuilder: (context, index) => _bubble(scheme, _messages[index]),
       ),
@@ -259,43 +305,50 @@ class _PmChatPageState extends State<PmChatPage> {
   }
 
   Widget _composer(ColorScheme scheme) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        border: Border(top: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.5))),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Expanded(
-            child: TextField(
-              controller: _input,
-              minLines: 1,
-              maxLines: 4,
-              textInputAction: TextInputAction.newline,
-              decoration: InputDecoration(
-                hintText: '输入私信内容…',
-                isDense: true,
-                filled: true,
-                fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.45),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(18),
-                  borderSide: BorderSide.none,
+    return GlassBackdrop(
+      showBorder: false,
+      opacityScale: 0.92,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border(
+            top: BorderSide(color: ThreadGlass.borderColor(context), width: 0.6),
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _input,
+                  minLines: 1,
+                  maxLines: 4,
+                  textInputAction: TextInputAction.newline,
+                  decoration: InputDecoration(
+                    hintText: '输入私信内容…',
+                    isDense: true,
+                    filled: true,
+                    fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.45),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(18),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  ),
                 ),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               ),
-            ),
+              const SizedBox(width: 6),
+              IconButton.filled(
+                tooltip: '发送',
+                onPressed: _sending ? null : _send,
+                icon: _sending
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.send_rounded, size: 19),
+              ),
+            ],
           ),
-          const SizedBox(width: 6),
-          IconButton.filled(
-            tooltip: '发送',
-            onPressed: _sending ? null : _send,
-            icon: _sending
-                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.send_rounded, size: 19),
-          ),
-        ],
+        ),
       ),
     );
   }
