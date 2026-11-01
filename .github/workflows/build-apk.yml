@@ -97,6 +97,20 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      # tag 推送时版本就是 pubspec 里的值；main 上的构建则已经被上一步 +1 过，
+      # 两种情况的 tag 名都从这里统一取，下面发布时不再各算各的。
+      - name: Read app version
+        id: app_version
+        run: |
+          set -e
+          VERSION=$(sed -n 's/^version: *\([0-9][0-9.]*\)+.*$/\1/p' pubspec.yaml)
+          if [ -z "$VERSION" ]; then
+            echo "pubspec.yaml 里没读到 version" >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "构建版本 $VERSION"
+
       # 固定发布签名：早期版本每次都用 CI 临时生成的 debug 证书，指纹每次都变，
       # 新装包无法覆盖旧版本（INSTALL_FAILED_UPDATE_INCOMPATIBLE）。
       # 密钥存在仓库 Secret 里，构建时还原；缺失则回退 debug 签名并告警。
@@ -213,8 +227,15 @@ jobs:
           path: build/app/outputs/flutter-apk/*.apk
           if-no-files-found: error
 
+      # 每次构建都发 Release，不再只认 v* 标签：Artifacts 要登录才能下、90 天
+      # 就过期，手机上想直接装包只有 Releases 这条公开链接。
+      # tag 名按版本号取，同一版本重复构建只会更新同一个 Release 的附件，
+      # 不会堆出一串同名版本。
       - name: Publish release
-        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v{0}', steps.app_version.outputs.version) }}
+          name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v{0}', steps.app_version.outputs.version) }}
+          generate_release_notes: true
+          make_latest: true
           files: build/app/outputs/flutter-apk/*.apk

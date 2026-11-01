@@ -35,12 +35,18 @@ flutter build apk --release --target-platform android-arm64  # arm64 单架构
 
 ## 云端构建
 
-推送到 `main` 或手动触发 `Build APK` workflow，会自动构建并上传 APK 产物。
-推送 `v*` 标签会额外创建 GitHub Release 并附加 APK。
+推送到 `main`、推 `v*` 标签或手动触发 `Build APK` workflow，都会构建 APK，产物有两条出口：
+
+1. Actions 运行页的 Artifacts（需登录，保留 90 天）；
+2. GitHub Releases（公开下载，长期保留）。
+
+`main` 上的构建会先把 `pubspec.yaml` 的 patch 号 +1，Release 的 tag 就用这个版本号
+（如 `v2.2.6`）；推 `v*` 标签时则用标签名本身。同一版本重复构建只更新同一个 Release
+的附件，不会堆出一串同名版本。
 
 ```bash
-git tag v1.0.1
-git push origin v1.0.1
+git tag v2.2.6
+git push origin v2.2.6
 ```
 
 ## 签名与 fork
