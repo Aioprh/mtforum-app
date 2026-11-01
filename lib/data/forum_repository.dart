@@ -11,6 +11,7 @@ import '../core/page_message.dart';
 import '../core/pending_upload.dart';
 import '../core/recycle_bin.dart';
 import '../core/reply_context.dart';
+import '../core/thread_paging.dart';
 import '../core/upload_hash.dart';
 import '../core/upload_result.dart';
 import '../core/waf_solver.dart';
@@ -259,11 +260,18 @@ class ForumRepository {
       }
     }
 
+    // `total` 是「这帖一共多少楼」。第 1 页的「回复 N」节点给的是全帖数，
+    // 第 2 页以后给的是本页条数，所以只有第 1 页这个数能拿去算总页数；
+    // `totalKnown` 就是标记它到底是从页面读到的、还是退回的 posts.length。
     var total = posts.length;
+    var totalKnown = false;
     final commentNode = doc.querySelector('.comiis_pltit h2');
     if (commentNode != null) {
       final match = RegExp(r'(\d+)').firstMatch(commentNode.text.replaceAll(',', ''));
-      if (match != null) total = (int.tryParse(match.group(1)!) ?? 0) + 1;
+      if (match != null) {
+        total = (int.tryParse(match.group(1)!) ?? 0) + 1;
+        totalKnown = true;
+      }
     }
     if (posts.length <= 1 && total <= 1) total = posts.length;
 
@@ -288,9 +296,14 @@ class ForumRepository {
       replies: math.max(0, total - 1),
       posts: posts,
       formhash: formhash,
-      hasMore: _hasNextThreadPage(doc, page) ||
-          page * AppConfig.postsPerPage < total ||
-          posts.length >= AppConfig.postsPerPage,
+      hasMore: ThreadPaging.hasNextPage(
+        page: page,
+        postCount: posts.length,
+        total: total,
+        totalKnown: totalKnown,
+        linksSayMore: _hasNextThreadPage(doc, page, tid),
+        perPage: AppConfig.postsPerPage,
+      ),
       isLoggedIn: loggedIn,
       likes: _intOf(doc.querySelector('.comiis_recommend_num')?.text ?? doc.querySelector('#recommendv_add')?.text),
       dislikes: _intOf(doc.querySelector('#recommendv_subtract')?.text),
@@ -308,11 +321,14 @@ class ForumRepository {
 
   /// 优先读取 Discuz 页面实际分页链接；部分主题页的回复总数节点并不可靠，
   /// 只按 total 推算会把“下一页”错误地隐藏。
-  bool _hasNextThreadPage(Document doc, int currentPage) {
+  bool _hasNextThreadPage(Document doc, int currentPage, int tid) {
     for (final link in doc.querySelectorAll(
       '.pg a[href], .comiis_page a[href], a[href*="mod=viewthread"][href*="page="], a[href*="viewthread-"]',
     )) {
       final href = (link.attributes['href'] ?? '').replaceAll('&amp;', '&');
+      // 相关主题、本版推荐这些区块里也全是帖子链接，其中指向别的主题
+      // 第 2 页的，会被当成「本帖还有下一页」，得先认一下 tid。
+      if (!_isSameThread(href, tid)) continue;
       final queryPage = RegExp(r'(?:[?&])page=(\d+)').firstMatch(href)?.group(1);
       final prettyPage = RegExp(r'viewthread-\d+-(\d+)-\d+\.html').firstMatch(href)?.group(1);
       final targetPage = int.tryParse(queryPage ?? prettyPage ?? '');
@@ -326,6 +342,16 @@ class ForumRepository {
       }
     }
     return false;
+  }
+
+  /// 链接是否指向本帖。认不出 tid 时放行，宁可多翻一页也别漏页。
+  bool _isSameThread(String href, int tid) {
+    if (tid <= 0) return true;
+    final match = RegExp(r'thread-(\d+)-').firstMatch(href) ??
+        RegExp(r'[?&](?:amp;)?tid=(\d+)').firstMatch(href);
+    final linkTid = match?.group(1);
+    if (linkTid == null) return true;
+    return linkTid == '$tid';
   }
 
   /// 解析投票区块：兼容存在可投票表单与仅展示结果两种页面。

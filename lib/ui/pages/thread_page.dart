@@ -98,6 +98,9 @@ class _ThreadPageState extends State<ThreadPage> {
   int _page = 1;
   bool _hasMore = false;
 
+  /// 当前这一页里已经显示过的楼层 pid，用来识别「站点把最后一页又发了一遍」。
+  final Set<int> _shownPids = <int>{};
+
   /// 第 1 页顶部展示过的置顶回复 pid。
   ///
   /// 站点只在第 1 页插入一份置顶，它原本所在的页仍会返回同一条，
@@ -246,11 +249,26 @@ class _ThreadPageState extends State<ThreadPage> {
       );
       if (!mounted) return;
       final offset = _orderDesc ? 0 : (page - 1) * AppConfig.postsPerPage;
+      // 站点的 page 超过总页数时不会报错，直接把最后一页再发一遍。
+      // 分页链接一旦解析偏了，这里就会拿到和上一页一模一样的楼：
+      // 页码跳到 2、内容纹丝不动，点多少次都到不了底。按 pid 认重，
+      // 认出来就停在当前页并收掉「下一页」。
+      if (page > 1 && ThreadPaging.isRepeatedPage(_shownPids, detail.posts)) {
+        setState(() {
+          _loadingMore = false;
+          _hasMore = false;
+        });
+        _toast('已经到底了');
+        return;
+      }
       // 第 1 页顶部那条置顶只是站点的额外副本，它原本所在的页
       // 还会照常返回同一楼。先记下 pid，后面翻到那页时跳掉。
       if (page == 1) _pinnedPids = ThreadPaging.pinnedPidsOf(detail.posts);
       final visible = ThreadPaging.withoutPinnedDuplicates(detail.posts, _pinnedPids);
       setState(() {
+        _shownPids
+          ..clear()
+          ..addAll(detail.posts.map((post) => post.pid));
         _page = page;
         _posts
           ..clear()

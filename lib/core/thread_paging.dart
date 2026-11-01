@@ -29,4 +29,47 @@ class ThreadPaging {
         .where((post) => post.isPinned || !pinnedPids.contains(post.pid))
         .toList();
   }
+
+  /// 判断是否还有下一页。
+  ///
+  /// 三个信号按可信度排序：
+  /// 1. 站点渲染的分页链接（最准，`page=2` 这类 href 直接说明有第 2 页）；
+  /// 2. 主题的总楼数——**只有第 1 页的这个数才是全帖总数**。第 2 页以后
+  ///    的「回复 N」节点给的是本页条数，比如 16 楼的帖子第 2 页会报 5，
+  ///    拿它乘页数算，会提前把「下一页」关掉，所以只在第 1 页采信；
+  /// 3. 这一页装满 10 条，大概还有。
+  ///
+  /// 早先把 3 当成无条件的补充条件，满 10 条的帖子（比如 1 楼 + 9 回复
+  /// 正好一页）就永远显示「下一页」，点下去取回来的还是同一页——
+  /// 页码跳到 2、内容一丝没变，点多少次都到不了底。
+  static bool hasNextPage({
+    required int page,
+    required int postCount,
+    required int total,
+    required bool totalKnown,
+    required bool linksSayMore,
+    int perPage = 10,
+  }) {
+    if (linksSayMore) return true;
+    // 第 1 页的总数是全帖总数，能直接算出总页数。
+    if (page == 1 && totalKnown) return total > page * perPage;
+    return postCount >= perPage;
+  }
+
+  /// 取回来的这一页是不是已经展示过的那一页。
+  ///
+  /// Discuz 的 `page` 超过总页数时不报错，直接把最后一页再发一遍。
+  /// 分页链接的解析一旦有偏差（模板改版、置顶块错位），客户端就会拿
+  /// 着「还有下一页」一直请求同一页。这里用 pid 认重：本页所有楼都在
+  /// 已经显示的集合里，就是同一页又回来了一次，该收尾了。
+  static bool isRepeatedPage(Set<int> shownPids, Iterable<ForumPost> pagePosts) {
+    if (shownPids.isEmpty) return false;
+    var counted = 0;
+    for (final post in pagePosts) {
+      if (post.pid <= 0) return false; // pid 不可靠时不作判断
+      if (!shownPids.contains(post.pid)) return false;
+      counted++;
+    }
+    return counted > 0;
+  }
 }
