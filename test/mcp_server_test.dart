@@ -235,6 +235,40 @@ void main() {
     expect(response.statusCode, HttpStatus.accepted);
     expect(await utf8.decodeStream(response), isEmpty);
   });
+
+  test('令牌可以手动关闭：不带 Authorization 也放行，重新打开又拦住', () async {
+    final port = await _freePort();
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'mt_forum_mcp_port': port,
+      'mt_forum_mcp_require_token': false,
+    });
+    await McpServer.instance.load();
+    await McpServer.instance.setAllowLan(false);
+    await McpServer.instance.setEnabled(true);
+
+    expect(McpServer.instance.requireToken, isFalse);
+
+    final client = HttpClient();
+    addTearDown(client.close);
+
+    Future<HttpClientResponse> call() async {
+      final request = await client.post('127.0.0.1', port, '/mcp');
+      request.headers.contentType = ContentType('application', 'json', charset: 'utf-8');
+      request.write(jsonEncode(<String, dynamic>{'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'}));
+      return request.close();
+    }
+
+    var response = await call();
+    final body = await utf8.decodeStream(response);
+    expect(response.statusCode, HttpStatus.ok, reason: '关闭校验后应直接放行');
+    expect((jsonDecode(body) as Map)['result'], isNotNull);
+
+    // 重新打开校验，同一个请求（仍不带令牌）要被拒。
+    await McpServer.instance.setRequireToken(true);
+    response = await call();
+    await response.drain<void>();
+    expect(response.statusCode, HttpStatus.unauthorized);
+  });
 }
 
 /// 让系统分配一个空闲端口，关掉后再交给服务用。

@@ -71,17 +71,16 @@ class _McpPageState extends State<McpPage> {
 
   String _config(McpServer server) {
     final url = server.urls.isEmpty ? '' : server.urls.last;
+    final args = <String>['-y', 'mcp-remote', url];
+    // 关掉令牌校验后不必再带请求头，配置越短越不容易填错。
+    if (server.requireToken) {
+      args.addAll(<String>['--header', 'Authorization: Bearer ${server.token}']);
+    }
     final config = <String, Object?>{
       'mcpServers': <String, Object?>{
         'mtforum': <String, Object?>{
           'command': 'npx',
-          'args': <String>[
-            '-y',
-            'mcp-remote',
-            url,
-            '--header',
-            'Authorization: Bearer ${server.token}',
-          ],
+          'args': args,
         },
       },
     };
@@ -124,7 +123,7 @@ class _McpPageState extends State<McpPage> {
                   ),
               ], scheme),
               const SizedBox(height: 12),
-              _section('访问令牌', [
+              _section(server.requireToken ? '访问令牌' : '访问令牌（未启用）', [
                 Row(
                   children: [
                     Expanded(
@@ -136,7 +135,8 @@ class _McpPageState extends State<McpPage> {
                           fontSize: 11.5,
                           height: 1.5,
                           fontFamily: 'monospace',
-                          color: scheme.onSurfaceVariant,
+                          color: server.requireToken ? scheme.onSurfaceVariant : scheme.outline,
+                          decoration: server.requireToken ? null : TextDecoration.lineThrough,
                         ),
                       ),
                     ),
@@ -179,6 +179,22 @@ class _McpPageState extends State<McpPage> {
               ], scheme),
               const SizedBox(height: 12),
               _section('权限', [
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: server.requireToken,
+                  onChanged: (value) => server.setRequireToken(value),
+                  title: const Text('要求令牌验证', style: TextStyle(fontSize: 13.5)),
+                  subtitle: Text(
+                    server.requireToken
+                        ? '客户端需带 Authorization: Bearer 令牌'
+                        : '已关闭：同一网络下任何人都能调用，包括发帖与回复',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      height: 1.45,
+                      color: server.requireToken ? scheme.outline : scheme.error,
+                    ),
+                  ),
+                ),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   value: server.allowLan,
@@ -350,9 +366,12 @@ class _McpPageState extends State<McpPage> {
             ],
           ),
           Text(
-            'Claude Desktop / Cursor 等支持 stdio 的客户端，把下面这段放进 mcpServers；'
-            '直接支持 HTTP 的客户端（Cherry Studio 等）选「Streamable HTTP」，'
-            '地址填上面的 URL，请求头加 Authorization: Bearer 令牌。',
+            server.requireToken
+                ? 'Claude Desktop / Cursor 等支持 stdio 的客户端，把下面这段放进 mcpServers；'
+                    '直接支持 HTTP 的客户端（Cherry Studio 等）选「Streamable HTTP」，'
+                    '地址填上面的 URL，请求头加 Authorization: Bearer 令牌。'
+                : '令牌校验已关闭，下面的配置不用带请求头；'
+                    '直接支持 HTTP 的客户端填上面的 URL 即可直接连。',
             style: TextStyle(fontSize: 11.5, height: 1.6, color: scheme.outline),
           ),
           const SizedBox(height: 10),

@@ -43,6 +43,7 @@ class McpServer extends ChangeNotifier {
   static const String _keyPort = 'mt_forum_mcp_port';
   static const String _keyToken = 'mt_forum_mcp_token';
   static const String _keyWrite = 'mt_forum_mcp_write';
+  static const String _keyRequireToken = 'mt_forum_mcp_require_token';
 
   static const String serverName = 'mtforum';
   static const String serverVersion = '1.0.0';
@@ -62,6 +63,11 @@ class McpServer extends ChangeNotifier {
   bool _loaded = false;
   bool allowLan = true;
   bool allowWrite = true;
+
+  /// 是否校验令牌。关掉之后同一网络里任何客户端都能直接调用，
+  /// 适合临时用本机调试；默认开着。
+  bool requireToken = true;
+
   int port = 8642;
   String token = '';
 
@@ -95,6 +101,7 @@ class McpServer extends ChangeNotifier {
     _enabled = prefs.getBool(_keyEnabled) ?? false;
     allowLan = prefs.getBool(_keyLan) ?? true;
     allowWrite = prefs.getBool(_keyWrite) ?? true;
+    requireToken = prefs.getBool(_keyRequireToken) ?? true;
     port = prefs.getInt(_keyPort) ?? 8642;
     token = prefs.getString(_keyToken) ?? '';
     if (token.isEmpty) {
@@ -144,6 +151,13 @@ class McpServer extends ChangeNotifier {
   Future<void> setAllowWrite(bool value) async {
     if (allowWrite == value) return;
     allowWrite = value;
+    await _persist();
+    notifyListeners();
+  }
+
+  Future<void> setRequireToken(bool value) async {
+    if (requireToken == value) return;
+    requireToken = value;
     await _persist();
     notifyListeners();
   }
@@ -310,6 +324,8 @@ class McpServer extends ChangeNotifier {
   }
 
   bool _authorized(HttpRequest request) {
+    // 手动关掉令牌校验后不再看请求头，谁连上谁就能用。
+    if (!requireToken) return true;
     if (token.isEmpty) return false;
     final header = request.headers.value(HttpHeaders.authorizationHeader) ?? '';
     if (header.toLowerCase().startsWith('bearer ')) {
@@ -499,6 +515,7 @@ class McpServer extends ChangeNotifier {
     await prefs.setBool(_keyEnabled, _enabled);
     await prefs.setBool(_keyLan, allowLan);
     await prefs.setBool(_keyWrite, allowWrite);
+    await prefs.setBool(_keyRequireToken, requireToken);
     await prefs.setInt(_keyPort, port);
     await prefs.setString(_keyToken, token);
   }
@@ -520,6 +537,7 @@ class McpServer extends ChangeNotifier {
     lastError = null;
     lanAddresses = const <String>[];
     allowWrite = true;
+    requireToken = true;
     allowLan = false;
     port = 8642;
     token = '';
