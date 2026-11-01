@@ -20,8 +20,8 @@ import '../widgets/glass_menu.dart';
 import '../widgets/measure_height.dart';
 import '../widgets/emoji_panel.dart';
 import '../widgets/post_html_view.dart';
+import '../widgets/reply_composer.dart';
 import '../widgets/state_views.dart';
-import '../widgets/thread_glass.dart';
 import '../widgets/user_avatar.dart';
 import 'login_page.dart';
 import 'pm_page.dart';
@@ -1062,15 +1062,16 @@ class _ThreadPageState extends State<ThreadPage> {
   ///
   /// 早先按「有回复目标 100、无目标 64、开表情 +220」估。估小了输入框
   /// 换行后最后一条回复被压在框下面，估大了尾部多一段空白，而且改一次
-  /// 布局就要回来重算这几个数。
-  double _composerReserve = 64;
+  /// 布局就要回来重算这几个数。现在回复框是悬浮胶囊，收起时 6 + 40 + 6 + 8。
+  double _composerReserve = 60;
 
   /// 列表底部让给悬浮回复框的高度，键盘弹起时再加上键盘高度。
   ///
   /// 留白必须加在列表内容末尾，不能加在列表外层——外层留白会截短视口，
-  /// 回复框背后就什么都透不出来了。
+  /// 回复框背后就什么都透不出来了。胶囊自己已经带了 8 的外边距，这里再补
+  /// 12，最后一条回复和胶囊之间才是一口气的距离。
   double get _composerBottomPadding =>
-      _composerReserve + MediaQuery.viewInsetsOf(context).bottom + 16;
+      _composerReserve + MediaQuery.viewInsetsOf(context).bottom + 12;
 
   void _onComposerMeasured(double height) {
     if ((height - _composerReserve).abs() < 0.5) return;
@@ -1937,108 +1938,22 @@ class _ThreadPageState extends State<ThreadPage> {
   }
 
   Widget _composer() {
-    final scheme = Theme.of(context).colorScheme;
-    return GlassBackdrop(
-      showBorder: false,
-      // 输入区比顶栏再透一点：键盘弹起时它离正文最近，实了会像块板子。
-      opacityScale: 0.92,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          border: Border(top: BorderSide(color: ThreadGlass.borderColor(context), width: 0.6)),
-        ),
-        child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (_replyTarget != null)
-            Container(
-              padding: const EdgeInsets.fromLTRB(14, 6, 6, 0),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.reply_rounded,
-                    size: 14,
-                    color: scheme.primary,
-                  ),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      '回复 ${_replyTarget!.author} · ${_replyTarget!.floorLabel}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 11.5, color: scheme.primary),
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: '取消',
-                    visualDensity: VisualDensity.compact,
-                    onPressed: _clearReplyTarget,
-                    icon: const Icon(Icons.close_rounded, size: 16),
-                  ),
-                ],
-              ),
-            ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(4, 7, 8, 7),
-            child: Row(
-              children: [
-                IconButton(
-                  tooltip: '表情',
-                  onPressed: _toggleEmoji,
-                  icon: Icon(
-                    _showEmoji ? Icons.keyboard_alt_outlined : Icons.sentiment_satisfied_alt_rounded,
-                    color: _showEmoji ? scheme.primary : scheme.onSurfaceVariant,
-                  ),
-                ),
-                Expanded(
-                  child: TextField(
-                    controller: _replyController,
-                    focusNode: _replyFocus,
-                    minLines: 1,
-                    maxLines: 4,
-                    textInputAction: TextInputAction.newline,
-                    decoration: InputDecoration(
-                      hintText: _replyTarget == null
-                          ? '写下你的回复…'
-                          : '回复 ${_replyTarget!.author}…',
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-                      // 不写 border 时用的是主题里的下划线，玻璃上会横着一条
-                      // 细线，看着像表单输入格。这里彻底去掉，让人只看到玻璃。
-                      border: InputBorder.none,
-                      enabledBorder: InputBorder.none,
-                      focusedBorder: InputBorder.none,
-                    ),
-                  ),
-                ),
-                IconButton(
-                  tooltip: '插入图片',
-                  onPressed: _uploading ? null : _attachReplyImage,
-                  icon: _uploading
-                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.image_outlined, size: 20),
-                ),
-                const SizedBox(width: 2),
-                IconButton.filled(
-                  tooltip: '发送',
-                  onPressed: _sending ? null : _sendReply,
-                  icon: _sending
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                        )
-                      : const Icon(Icons.send_rounded, size: 19),
-                ),
-              ],
-            ),
-          ),
-          if (_showEmoji)
-            EmojiPanel(
-              height: 220,
-              onSelected: (emoji) => insertAtCursor(_replyController, emoji),
-            ),
-          ],
-        ),
+    return ReplyComposer(
+      controller: _replyController,
+      focusNode: _replyFocus,
+      replyToAuthor: _replyTarget?.author,
+      replyToFloor: _replyTarget?.floorLabel,
+      attachmentCount: _replyAttachments.length,
+      uploading: _uploading,
+      sending: _sending,
+      showEmoji: _showEmoji,
+      onToggleEmoji: _toggleEmoji,
+      onClearReplyTarget: _clearReplyTarget,
+      onAttach: _attachReplyImage,
+      onSend: _sendReply,
+      emojiPanel: EmojiPanel(
+        height: 220,
+        onSelected: (emoji) => insertAtCursor(_replyController, emoji),
       ),
     );
   }
