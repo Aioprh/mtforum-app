@@ -1030,7 +1030,7 @@ class McpTools {
       }
       if (node is! dom.Element) return '';
       final tag = node.localName ?? '';
-      final children = () => node.nodes.map(inlineText).join();
+      String inner() => node.nodes.map(inlineText).join();
       switch (tag) {
         case 'br':
           return '\n';
@@ -1043,18 +1043,18 @@ class McpTools {
         }
         case 'a': {
           final href = node.attributes['href'] ?? '';
-          final label = children().trim();
+          final label = inner().trim();
           if (label.isEmpty) return '';
           return href.isEmpty || href == label ? label : '[$label]($href)';
         }
         case 'strong':
         case 'b': {
-          final text = children().trim();
+          final text = inner().trim();
           return text.isEmpty ? '' : '**$text**';
         }
         case 'em':
         case 'i': {
-          final text = children().trim();
+          final text = inner().trim();
           return text.isEmpty ? '' : '*$text*';
         }
         case 'code': {
@@ -1062,7 +1062,7 @@ class McpTools {
           return text.isEmpty ? '' : '`$text`';
         }
         default:
-          return children();
+          return inner();
       }
     }
 
