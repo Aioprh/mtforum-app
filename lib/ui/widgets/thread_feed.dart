@@ -54,10 +54,13 @@ class ThreadFeed extends StatefulWidget {
   /// 外部传进来的滚动控制器，页面级的「双击顶栏回顶」要用。
   final ScrollController? controller;
 
-  /// 内容区双击回到顶部。
+  /// 双击帖子卡片回到顶部。
   ///
-  /// 只有滚离顶部之后才挂上双击识别，回到顶部就摘掉——否则单击进帖子
+  /// 只有滚过大半屏之后才挂上双击识别，回到顶部就摘掉——否则单击进帖子
   /// 每次都要等双击判定超时，点起来会发钝。
+  ///
+  /// 双击只认卡片本身：整页包一层识别器会把「点一下没反应又补一下」
+  /// 当成双击，尤其是滑了一点点之后，很容易莫名其妙被弹回顶部。
   final bool doubleTapToTop;
 
   @override
@@ -98,13 +101,22 @@ class _ThreadFeedState extends State<ThreadFeed> {
 
   void _onScroll() {
     if (!_scroll.hasClients) return;
-    // 双击回顶只在离开首屏后启用，跨过阈值时刷新一次就够，别每帧都 setState。
-    final far = _scroll.position.pixels > 8;
+    // 双击回顶只在滚过大半屏后才启用：刚滑一点点时双击本来也没什么意义，
+    // 挂上反而会把「点一下没反应再点一下」误判成双击弹回顶部。
+    final far = _scroll.position.pixels > _doubleTapThreshold;
     if (far != _farFromTop) setState(() => _farFromTop = far);
     if (_loading || !_hasMore || _error != null) return;
     if (_scroll.position.pixels >= _scroll.position.maxScrollExtent - 500) {
       _loadMore();
     }
+  }
+
+  /// 双击回顶的启用距离，跟着视口高度走，顺手夹在合理区间里。
+  double get _doubleTapThreshold {
+    if (!_scroll.hasClients) return 360;
+    final viewport = _scroll.position.viewportDimension;
+    if (!viewport.isFinite || viewport <= 0) return 360;
+    return (viewport * 0.6).clamp(160.0, 720.0);
   }
 
   Future<void> _loadFirst() async {
@@ -307,7 +319,7 @@ class _ThreadFeedState extends State<ThreadFeed> {
       ),
     ];
 
-    final feed = RefreshIndicator(
+    return RefreshIndicator(
       onRefresh: _refresh,
       edgeOffset: widget.header == null ? 0 : 8,
       child: CustomScrollView(
@@ -315,13 +327,6 @@ class _ThreadFeedState extends State<ThreadFeed> {
         physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
         slivers: slivers,
       ),
-    );
-
-    if (!widget.doubleTapToTop) return feed;
-    return GestureDetector(
-      behavior: HitTestBehavior.translucent,
-      onDoubleTap: _farFromTop ? () => scrollToTop(_scroll) : null,
-      child: feed,
     );
   }
 }
