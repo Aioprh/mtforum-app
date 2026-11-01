@@ -9,6 +9,7 @@ import '../core/app_config.dart';
 import '../core/http_session.dart';
 import '../core/page_message.dart';
 import '../core/pending_upload.dart';
+import '../core/recycle_bin.dart';
 import '../core/reply_context.dart';
 import '../core/upload_hash.dart';
 import '../core/upload_result.dart';
@@ -23,6 +24,9 @@ class ForumRepository {
 
   final HttpSession _http = HttpSession.instance;
   String _followingFormhash = '';
+
+  /// 个人列表的分页游标，见 [fetchPersonalList]。
+  final Map<String, int> _listCursor = {};
 
   static const String _loginPath = 'member.php?mod=logging&action=login&mobile=2';
 
@@ -59,12 +63,65 @@ class ForumRepository {
   }
 
   /// 我的主题 / 我的回复 / 我的收藏等页面。
+  ///
+  /// 回收站主题（用户自己删掉的帖子）会被解析层直接跳过，但它们在页面上
+  /// 仍然占着条数：删得多的时候一页可能只剩两三条。上层 ThreadFeed 是按
+  /// 「这一批满不满 10 条」判断还有没有下一页的，不补就会以为到底了，
+  /// 后面的正常帖子再也翻不出来。所以这里发现本页有被筛掉的条目时，
+  /// 继续往下拉几页凑够一页。
+  ///
+  /// 补页会让游标跑到上层以为的页码前面（上层按自己的请求次数计数），
+  /// 所以每份列表记一个 [_listCursor]，下一次从后面接着拉，避免重复。
   Future<List<ThreadSummary>> fetchPersonalList(String path, {Map<String, String>? query}) async {
-    final result = await _http.get(path, query: query);
+    final key = _cursorKey(path, query);
+    final requested = int.tryParse(query?['page'] ?? '') ?? 0;
+    // 第一页意味着重新加载（进页面 / 下拉刷新），游标从头开始。
+    if (requested <= 1) _listCursor.remove(key);
+
+    var start = requested;
+    if (requested > 1) {
+      final cursor = _listCursor[key] ?? 0;
+      if (cursor >= requested) start = cursor + 1;
+    }
+
+    var raw = 0;
+    void count(int value) => raw = value;
+
+    final result = await _http.get(
+      path,
+      query: {...?query, if (requested > 0) 'page': '$start'},
+    );
     _ensureOk(result);
-    final list = _parseThreadList(result.body);
-    if (list.isNotEmpty) return list;
-    return _parseLooseThreads(result.body);
+    var list = _parseThreadList(result.body, onRaw: count);
+    if (list.isEmpty) list = _parseLooseThreads(result.body, onRaw: count);
+    if (requested > 0) _listCursor[key] = start;
+
+    // 没有页码的入口、空页，或本页一条没被筛掉，都不需要补。
+    if (requested <= 0 || raw == 0 || list.length >= raw) return list;
+
+    final collected = <ThreadSummary>[...list];
+    while (collected.length < AppConfig.pageSize && start < requested + 5) {
+      start++;
+      final more = await _http.get(path, query: {...?query, 'page': '$start'});
+      if (!more.ok) break;
+      var rawMore = 0;
+      var batch = _parseThreadList(more.body, onRaw: (value) => rawMore = value);
+      if (batch.isEmpty) batch = _parseLooseThreads(more.body, onRaw: (value) => rawMore = value);
+      // 这一页本来就没内容，说明翻到底了。
+      if (rawMore == 0) break;
+      collected.addAll(batch);
+      _listCursor[key] = start;
+      if (batch.length == rawMore) break;
+    }
+    return collected;
+  }
+
+  /// 分页游标。列表按「路径 + 除 page 外的全部参数」区分，
+  /// 我的主题 / 我的回复 / TA的主题各存各的。
+  String _cursorKey(String path, Map<String, String>? query) {
+    final rest = <String, String>{...?query}..remove('page');
+    final keys = rest.keys.toList()..sort();
+    return '$path?${keys.map((k) => '$k=${rest[k]}').join('&')}';
   }
 
   Future<List<ForumCategory>> fetchBoards() async {
@@ -2932,13 +2989,31 @@ class ForumRepository {
 
   // ---------------------------------------------------------------- 解析
 
-  List<ThreadSummary> _parseThreadList(String html) {
+  /// 解析主题列表（测试用）。
+  @visibleForTesting
+  static List<ThreadSummary> parseThreadListForTest(String html, {void Function(int raw)? onRaw}) =>
+      ForumRepository.instance._parseThreadList(html, onRaw: onRaw);
+
+  /// 宽松解析（测试用）。
+  @visibleForTesting
+  static List<ThreadSummary> parseLooseThreadsForTest(String html, {void Function(int raw)? onRaw}) =>
+      ForumRepository.instance._parseLooseThreads(html, onRaw: onRaw);
+
+  /// 解析主题列表。
+  ///
+  /// [onRaw] 回传「页面上本来有多少条」——回收站主题会被跳过，
+  /// 调用方拿这个数字和返回长度一比就知道有没有被筛掉，用于补页。
+  List<ThreadSummary> _parseThreadList(String html, {void Function(int raw)? onRaw}) {
     final doc = parser.parse(html);
     final items = <ThreadSummary>[];
+    var raw = 0;
     for (final li in doc.querySelectorAll('li.forumlist_li')) {
       final titleLink = li.querySelector('.mmlist_li_box h2 a[href*="thread-"]') ??
           li.querySelector('.mmlist_li_box a[href*="thread-"]');
       if (titleLink == null) continue;
+      raw++;
+      // 已删除的帖子（回收站）在列表里只剩个空壳，点进去也看不到内容。
+      if (_isRecycledThread(li, titleLink)) continue;
       final href = titleLink.attributes['href'] ?? '';
       final tid = _firstInt(RegExp(r'thread-(\d+)').firstMatch(href)?.group(1));
       if (tid == null) continue;
@@ -2970,19 +3045,41 @@ class ForumRepository {
         views: numbers.length >= 3 ? numbers[2] : 0,
       ));
     }
+    onRaw?.call(raw);
     return items;
   }
 
+  /// 这条是不是回收站里的主题（被用户/管理删掉的）。
+  ///
+  /// 三种标记都认，因为各套模板写法不同：标题前缀、链接上的 `recy`
+  /// 类名、列表项里独立的「回收站」小标签。
+  bool _isRecycledThread(Element li, Element titleLink) {
+    if (RecycleBin.hasTitlePrefix(_clean(titleLink.text))) return true;
+    if (RecycleBin.hasRecyClass(_classes(titleLink))) return true;
+    if (RecycleBin.hasRecyClass(_classes(li))) return true;
+    for (final tag in li.querySelectorAll('span, em, i, b, strong, label')) {
+      if (RecycleBin.isLabel(tag.text)) return true;
+    }
+    return false;
+  }
+
+  /// 元素的 class 拆分。没有 class 属性时返回空集合，不用到处判空。
+  Iterable<String> _classes(Element element) =>
+      (element.attributes['class'] ?? '').split(RegExp(r'\s+')).where((e) => e.isNotEmpty);
+
   /// 兜底：从任意页面提取主题链接（个人中心、收藏页等）。
-  List<ThreadSummary> _parseLooseThreads(String html) {
+  List<ThreadSummary> _parseLooseThreads(String html, {void Function(int raw)? onRaw}) {
     final doc = parser.parse(html);
     final items = <ThreadSummary>[];
     final seen = <int>{};
+    var raw = 0;
     for (final a in doc.querySelectorAll('a[href*="thread-"]')) {
       final text = _clean(a.text);
       if (text.length < 4) continue;
       final tid = _firstInt(RegExp(r'thread-(\d+)').firstMatch(a.attributes['href'] ?? '')?.group(1));
       if (tid == null || !seen.add(tid)) continue;
+      raw++;
+      if (RecycleBin.hasTitlePrefix(text) || RecycleBin.hasRecyClass(_classes(a))) continue;
       final container = a.parent?.parent ?? a.parent;
       items.add(ThreadSummary(
         tid: tid,
@@ -2996,6 +3093,7 @@ class ForumRepository {
         boardName: _clean(container?.querySelector('.comiis_xznalist_bk a')?.text ?? ''),
       ));
     }
+    onRaw?.call(raw);
     return items;
   }
 
