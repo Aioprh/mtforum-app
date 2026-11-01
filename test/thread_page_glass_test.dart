@@ -36,6 +36,22 @@ void main() {
     expect(find.byType(GlassBackdrop), findsWidgets);
   });
 
+  testWidgets('正文层铺到回复框背后，玻璃才有东西可模糊', (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: ThreadPage(tid: 1, title: '测试帖子')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // 回复框和正文在同一个 Stack 里，正文层必须是铺满的 _buildBody()。
+    // 早先这里套了一层 Padding 给回复框让位，等于把视口截短，框后面只剩
+    // Scaffold 的纯色底，模糊纯色当然一点玻璃感都没有。
+    final fills = find.byWidgetPredicate(
+      (w) => w is Positioned && w.left == 0 && w.top == 0 && w.right == 0 && w.bottom == 0,
+    );
+    expect(fills, findsOneWidget);
+    final fill = tester.widget<Positioned>(fills);
+    expect(fill.child, isNot(isA<Padding>()));
+  });
+
   testWidgets('右上角菜单是自绘玻璃浮层', (tester) async {
     await tester.pumpWidget(const MaterialApp(home: ThreadPage(tid: 1, title: '测试帖子')));
     await tester.pump();

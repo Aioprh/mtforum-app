@@ -993,13 +993,10 @@ class _ThreadPageState extends State<ThreadPage> {
         top: false,
         child: Stack(
           children: [
-            // 回复框浮在列表上层：内容从它背后掠过，玻璃才透得出模糊。
-            Positioned.fill(
-              child: Padding(
-                padding: EdgeInsets.only(bottom: _composerReserve + insets),
-                child: _buildBody(),
-              ),
-            ),
+            // 列表铺满整个 body，正文和评论从回复框背后掠过，玻璃才透得出模糊。
+            // 底部留白改在列表自己的 padding 里补：之前给这一层加 padding，
+            // 等于把视口截短，框后面只剩 Scaffold 的纯色底，模糊纯色看不出一点玻璃感。
+            Positioned.fill(child: _buildBody()),
             Positioned(
               left: 0,
               right: 0,
@@ -1020,6 +1017,13 @@ class _ThreadPageState extends State<ThreadPage> {
     final base = _replyTarget == null ? 64.0 : 100.0;
     return base + (_showEmoji ? 220 : 0);
   }
+
+  /// 列表底部让给悬浮回复框的高度，键盘弹起时再加上键盘高度。
+  ///
+  /// 留白必须加在列表内容末尾，不能加在列表外层——外层留白会截短视口，
+  /// 回复框背后就什么都透不出来了。
+  double get _composerBottomPadding =>
+      _composerReserve + MediaQuery.viewInsetsOf(context).bottom + 16;
 
   /// 正文区顶部要空出的高度：状态栏 + 顶栏。
   ///
@@ -1167,6 +1171,7 @@ class _ThreadPageState extends State<ThreadPage> {
           children: [
             SizedBox(height: _topInset + 72),
             EmptyView(text: _detail?.notice.isNotEmpty == true ? _detail!.notice : '该帖子暂时没有可显示的内容'),
+            SizedBox(height: _composerBottomPadding),
           ],
         ),
       );
@@ -1179,7 +1184,7 @@ class _ThreadPageState extends State<ThreadPage> {
       child: ListView.builder(
         controller: _scroll,
         physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-        padding: EdgeInsets.fromLTRB(12, _topInset, 12, 16),
+        padding: EdgeInsets.fromLTRB(12, _topInset, 12, _composerBottomPadding),
         itemCount: 1 + _posts.length + 1,
         itemBuilder: (context, index) {
           if (index == 0) return _header();
