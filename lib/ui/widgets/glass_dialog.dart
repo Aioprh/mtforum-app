@@ -32,6 +32,15 @@ class GlassDialog extends StatelessWidget {
     final scheme = theme.colorScheme;
     final hasActions = actions != null && actions!.isNotEmpty;
 
+    // 对话框和顶栏、回复框不是一类东西：那两处是「从上面掠过」，透一点没关系；
+    // 这里是要人逐字读的一段话，背后往往还是一张彩色封面。而全局玻璃不透明度
+    // 可调到 0.05，用户一旦调低，正文就等于直接写在背景图上——再怎么加深文字
+    // 颜色也救不回来。所以这里压一个下限，只保住对话框，不动全局设置。
+    final glassOpacity = ThreadGlass.opacity;
+    final glassBlur = ThreadGlass.blur;
+    final dialogOpacity = glassOpacity < 0.8 ? 0.8 : glassOpacity;
+    final dialogBlur = glassBlur < 20 ? 20.0 : glassBlur;
+
     Widget column = Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -50,12 +59,12 @@ class GlassDialog extends StatelessWidget {
         if (content != null)
           DefaultTextStyle.merge(
             style: TextStyle(
-              fontSize: 14,
-              height: 1.55,
-              // 原来用 onSurfaceVariant：它是给「实心卡片」配的次级色，
-              // 叠在这层半透明玻璃上再被背后的正文透上来一层，灰字几乎看不见。
-              // 对话框正文是要人逐字读的，直接用 onSurface 压住。
-              color: scheme.onSurface.withValues(alpha: 0.92),
+              // 中文正文 14 在手机上偏紧，尤其是两行以上连续阅读。
+              fontSize: 15,
+              height: 1.5,
+              // 用不带任何透明度、亮度也拉满的 onSurface：对话框底下是玻璃，
+              // 任何 alpha 都会被背景再稀释一层，读起来发灰。
+              color: scheme.onSurface,
             ),
             child: content!,
           ),
@@ -86,6 +95,8 @@ class GlassDialog extends StatelessWidget {
         borderRadius: BorderRadius.circular(22),
         showShadow: true,
         opacityScale: 1.12,
+        opacity: dialogOpacity,
+        blur: dialogBlur,
         child: ConstrainedBox(
           constraints: BoxConstraints(
             minWidth: 268,
@@ -120,7 +131,7 @@ Future<T?> showGlassDialog<T>({
     context: context,
     barrierDismissible: barrierDismissible,
     barrierLabel: barrierLabel ?? '关闭对话框',
-    barrierColor: barrierColor ?? Colors.black.withValues(alpha: 0.34),
+    barrierColor: barrierColor ?? Colors.black.withValues(alpha: 0.42),
     transitionDuration: const Duration(milliseconds: 180),
     useRootNavigator: useRootNavigator,
     routeSettings: routeSettings,

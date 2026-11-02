@@ -127,8 +127,27 @@ void main() {
 
     final paragraph = tester.renderObject<RenderParagraph>(find.text('同时删除本地文件？'));
     final style = paragraph.text.style!;
-    // 玻璃是半透明的，底下还压着页面正文；次级灰在这种背景上几乎读不清。
-    expect(style.color!.a, greaterThanOrEqualTo(0.85), reason: '正文不能再用半透明的次级色');
-    expect(style.fontSize, greaterThanOrEqualTo(14));
+    // 玻璃是半透明的，底下还压着页面正文；次级灰、甚至带一点 alpha 的
+    // onSurface 都会在背景上被稀释成灰字，这里要求完全不透明。
+    expect(style.color!.a, 1.0, reason: '正文不能再用任何半透明的颜色');
+    expect(style.fontSize, greaterThanOrEqualTo(15));
+  });
+
+  testWidgets('全局玻璃调得再透，对话框也守住可读性下限', (tester) async {
+    // 设置面板允许把不透明度拖到 0.05、模糊拖到 0——这时背后是一张彩色
+    // 封面，文字等于直接印在图上。对话框必须自己兜底。
+    AppState.instance.threadGlassOpacity = 0.05;
+    AppState.instance.threadGlassBlur = 0;
+
+    await tester.pumpWidget(host((context) async {
+      await showGlassDialog<bool>(context: context, builder: confirmBody);
+    }));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('打开'));
+    await tester.pumpAndSettle();
+
+    final backdrop = tester.widget<GlassBackdrop>(find.byType(GlassBackdrop).last);
+    expect(backdrop.opacity, greaterThanOrEqualTo(0.8));
+    expect(backdrop.blur, greaterThanOrEqualTo(20));
   });
 }
