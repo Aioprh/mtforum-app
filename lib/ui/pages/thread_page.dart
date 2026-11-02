@@ -635,7 +635,7 @@ class _ThreadPageState extends State<ThreadPage> {
       context: context,
       builder: (dialogContext) => GlassDialog(
         title: Text('踢帖（${detail.kickVotes}/${detail.kickLimit}）'),
-        content: Text('踢帖人数达到 ${detail.kickLimit} 人后主题会进入审核，恶意踢帖可能被处罚。确定要踢「${detail.title}」吗？'),
+        content: Text('踢帖满 ${detail.kickLimit} 人后主题进入审核，恶意踢帖可能被处罚。确定踢「${detail.title}」吗？'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('取消')),
           FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('确定踢帖')),

@@ -69,14 +69,8 @@ class GlassDialog extends StatelessWidget {
             child: content!,
           ),
         if (hasActions) ...[
-          const SizedBox(height: 16),
-          OverflowBar(
-            alignment: MainAxisAlignment.end,
-            overflowAlignment: OverflowBarAlignment.end,
-            spacing: 8,
-            overflowSpacing: 6,
-            children: actions!,
-          ),
+          const SizedBox(height: 18),
+          _actionBar(context, actions!),
         ],
       ],
     );
@@ -104,11 +98,60 @@ class GlassDialog extends StatelessWidget {
             maxHeight: MediaQuery.sizeOf(context).height - _inset.vertical,
           ),
           child: Padding(
-            padding: EdgeInsets.fromLTRB(22, 21, 22, hasActions ? 12 : 21),
+            padding: EdgeInsets.fromLTRB(22, 21, 22, hasActions ? 18 : 21),
             child: column,
           ),
         ),
       ),
+    );
+  }
+
+  /// 动作区。
+  ///
+  /// 之前是 OverflowBar 右对齐：一个纯文字「取消」挨着一个填充胶囊「确定踢帖」，
+  /// 两种形状、两种高度并排，右边那颗又几乎顶到卡片边，看着像临时拼上去的。
+  /// 两个按钮时改成等宽并排、同高同圆角，靠底色分主次；一个或三个按钮仍右对齐。
+  Widget _actionBar(BuildContext context, List<Widget> actions) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final radius = BorderRadius.circular(14);
+
+    return Theme(
+      data: theme.copyWith(
+        textButtonTheme: TextButtonThemeData(
+          style: TextButton.styleFrom(
+            foregroundColor: scheme.onSurface,
+            backgroundColor: scheme.surfaceContainerHighest.withValues(alpha: 0.72),
+            minimumSize: const Size.fromHeight(46),
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            shape: RoundedRectangleBorder(borderRadius: radius),
+            textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+          ),
+        ),
+        filledButtonTheme: FilledButtonThemeData(
+          style: FilledButton.styleFrom(
+            minimumSize: const Size.fromHeight(46),
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            shape: RoundedRectangleBorder(borderRadius: radius),
+            textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+          ),
+        ),
+      ),
+      child: actions.length == 2
+          ? Row(
+              children: [
+                Expanded(child: actions[0]),
+                const SizedBox(width: 10),
+                Expanded(child: actions[1]),
+              ],
+            )
+          : OverflowBar(
+              alignment: MainAxisAlignment.end,
+              overflowAlignment: OverflowBarAlignment.end,
+              spacing: 10,
+              overflowSpacing: 8,
+              children: actions,
+            ),
     );
   }
 }

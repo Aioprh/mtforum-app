@@ -133,6 +133,22 @@ void main() {
     expect(style.fontSize, greaterThanOrEqualTo(15));
   });
 
+  testWidgets('两个动作按钮等宽同高，不再一大一小', (tester) async {
+    await tester.pumpWidget(host((context) async {
+      await showGlassDialog<bool>(context: context, builder: confirmBody);
+    }));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('打开'));
+    await tester.pumpAndSettle();
+
+    final cancel = tester.getSize(find.widgetWithText(TextButton, '取消'));
+    final confirm = tester.getSize(find.widgetWithText(FilledButton, '删除'));
+    // 一个文字按钮配一个填充胶囊，宽度差一大截，视觉上像没对齐。
+    expect((cancel.width - confirm.width).abs(), lessThan(0.5));
+    expect(cancel.height, confirm.height);
+    expect(cancel.height, greaterThanOrEqualTo(44));
+  });
+
   testWidgets('全局玻璃调得再透，对话框也守住可读性下限', (tester) async {
     // 设置面板允许把不透明度拖到 0.05、模糊拖到 0——这时背后是一张彩色
     // 封面，文字等于直接印在图上。对话框必须自己兜底。
