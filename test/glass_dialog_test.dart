@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mt_forum/state/app_state.dart';
 import 'package:mt_forum/ui/widgets/glass_dialog.dart';
@@ -114,5 +115,20 @@ void main() {
     await tester.tapAt(const Offset(8, 8));
     await tester.pumpAndSettle();
     expect(find.text('请稍候'), findsOneWidget);
+  });
+
+  testWidgets('正文用高对比度前景色，不能是次级灰', (tester) async {
+    await tester.pumpWidget(host((context) async {
+      await showGlassDialog<bool>(context: context, builder: confirmBody);
+    }));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('打开'));
+    await tester.pumpAndSettle();
+
+    final paragraph = tester.renderObject<RenderParagraph>(find.text('同时删除本地文件？'));
+    final style = paragraph.text.style!;
+    // 玻璃是半透明的，底下还压着页面正文；次级灰在这种背景上几乎读不清。
+    expect(style.color!.a, greaterThanOrEqualTo(0.85), reason: '正文不能再用半透明的次级色');
+    expect(style.fontSize, greaterThanOrEqualTo(14));
   });
 }

@@ -50,9 +50,12 @@ class GlassDialog extends StatelessWidget {
         if (content != null)
           DefaultTextStyle.merge(
             style: TextStyle(
-              fontSize: 13.5,
-              height: 1.6,
-              color: scheme.onSurfaceVariant,
+              fontSize: 14,
+              height: 1.55,
+              // 原来用 onSurfaceVariant：它是给「实心卡片」配的次级色，
+              // 叠在这层半透明玻璃上再被背后的正文透上来一层，灰字几乎看不见。
+              // 对话框正文是要人逐字读的，直接用 onSurface 压住。
+              color: scheme.onSurface.withValues(alpha: 0.92),
             ),
             child: content!,
           ),
