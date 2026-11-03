@@ -1,7 +1,7 @@
 name: mt_forum
 description: "MT论坛原生客户端"
 publish_to: 'none'
-version: 2.3.6+2147000113
+version: 2.3.7+2147000114
 environment:
   sdk: ^3.13.7
 
