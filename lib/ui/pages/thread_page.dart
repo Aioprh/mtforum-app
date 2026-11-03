@@ -123,6 +123,7 @@ class _ThreadPageState extends State<ThreadPage> {
       _hasMore = preview.hasMore;
       _likes = preview.likes;
       _dislikes = preview.dislikes;
+      _liked = preview.liked;
       _favorited = preview.favorited;
     } else {
       _load();
@@ -163,6 +164,9 @@ class _ThreadPageState extends State<ThreadPage> {
         _hasMore = detail.hasMore;
         _likes = detail.likes;
         _dislikes = detail.dislikes;
+        // 页面解析是主来源；解析不出（模板没有状态类名）时保留本地已知状态，
+        // 不然刷新一次就把「已赞」抹掉，用户又取消不了了。
+        _liked = detail.liked || _liked;
         _favorited = detail.favorited;
         _pollSelected.clear();
         _loading = false;
@@ -511,7 +515,19 @@ class _ThreadPageState extends State<ThreadPage> {
       _toast(wasLiked ? '已取消点赞' : '点赞成功');
     } catch (e) {
       final message = _message(e);
-      if (mounted && message.contains('已经赞过')) setState(() => _liked = true);
+      if (mounted && message.contains('已经赞过')) {
+        // 服务端认为已赞，说明本地状态落后了。这里必须置位，否则用户每点
+        // 一次都只会收到同一句「已经赞过」，永远走不到取消。
+        setState(() => _liked = true);
+        _toast('你已经赞过，再点一次可取消');
+        return;
+      }
+      if (mounted && message.contains('还没有点赞')) {
+        // 反过来：服务端没有这条评价，本地却记着已赞，同样要把状态拉回来。
+        setState(() => _liked = false);
+        _toast('你还没有点赞');
+        return;
+      }
       _toast(message);
     }
   }

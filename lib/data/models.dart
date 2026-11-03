@@ -361,6 +361,7 @@ class ThreadDetail {
     required this.isLoggedIn,
     this.likes = 0,
     this.dislikes = 0,
+    this.liked = false,
     this.uploadHash = '',
     this.uid = 0,
     this.poll,
@@ -387,6 +388,10 @@ class ThreadDetail {
   final int likes;
   final int dislikes;
 
+  /// 当前账号是否已经赞过该主题。Discuz 没有查询接口，只能从页面按钮状态判断；
+  /// 判断不出来时按未赞处理，点赞成功后再本地置位。
+  final bool liked;
+
   /// 当前页面用于附件上传的 hash 与 uid（游客为 0）。
   final String uploadHash;
   final int uid;
@@ -408,6 +413,7 @@ class ThreadDetail {
     int? likes,
     int? dislikes,
     int? replies,
+    bool? liked,
   }) =>
       ThreadDetail(
         tid: tid,
@@ -424,6 +430,7 @@ class ThreadDetail {
         isLoggedIn: isLoggedIn,
         likes: likes ?? this.likes,
         dislikes: dislikes ?? this.dislikes,
+        liked: liked ?? this.liked,
         uploadHash: uploadHash,
         uid: uid,
         poll: poll,

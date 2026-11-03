@@ -310,6 +310,7 @@ class ForumRepository {
       isLoggedIn: loggedIn,
       likes: _intOf(doc.querySelector('.comiis_recommend_num')?.text ?? doc.querySelector('#recommendv_add')?.text),
       dislikes: _intOf(doc.querySelector('#recommendv_subtract')?.text),
+      liked: threadLiked(doc),
       uploadHash: findUploadHash(html),
       uid: findUploadUid(html),
       poll: _parsePoll(doc),
@@ -763,6 +764,23 @@ class ForumRepository {
     return RegExp(r'comiis_favorite_a_color[^"]*\bf_a\b').hasMatch(html);
   }
 
+  /// 当前账号是否已赞过该主题。
+  ///
+  /// Discuz 的 recommend 没有「查询」接口，只能读页面上的按钮状态：comiis 模板
+  /// 给激活态加 `f_a`（收藏用的也是这套），另一些模板则直接把按钮换成
+  /// `do=cancel` 链接。两个信号都认，都取不到就按未赞处理——点赞成功后页面
+  /// 侧会立刻置位，不影响当次会话。
+  @visibleForTesting
+  static bool threadLiked(Document doc) {
+    final add = doc.querySelector('#recommendv_add');
+    if (add != null) {
+      final cls = add.attributes['class'] ?? '';
+      if (RegExp(r'(?:^|\s)f_a(?:\s|$)').hasMatch(cls)) return true;
+      if ((add.attributes['href'] ?? '').contains('do=cancel')) return true;
+    }
+    return doc.querySelector('a[href*="action=recommend"][href*="do=cancel"]') != null;
+  }
+
   /// 点赞 / 踩。Discuz 的 recommend 接口要求 inajax=1，返回 CDATA 包裹的提示。
   Future<void> recommend({
     required int tid,
@@ -786,23 +804,40 @@ class ForumRepository {
       referer: _threadReferer(tid),
     );
     _ensureOk(result);
-    final message = _inajaxMessage(result.body);
-    if (message.contains('recommendv') ||
-        message.contains('投票成功') ||
-        message.contains('点赞成功') ||
-        message.contains('取消成功') ||
-        message.contains('已取消') ||
-        message.contains('感谢')) {
-      return;
+    final failure = recommendFailure(_inajaxMessage(result.body), up: up);
+    if (failure != null) throw SiteException(failure);
+  }
+
+  /// 判别 recommend 的回执：返回 null 表示成功，否则是给用户看的错误文案。
+  ///
+  /// 原来用白名单匹配「点赞成功」「感谢」这些词，站点模板一换文案就会误判：
+  /// 明明赞上了却提示「点赞失败」，而调用方因此没有置位「已赞」，用户再点
+  /// 仍然是 add，永远走不到取消。这里反过来只认明确的失败，其余当成功。
+  @visibleForTesting
+  static String? recommendFailure(String message, {bool up = true}) {
+    // 有的模板只回一段 script，CDATA 里没有中文，取出来是空串——这是成功。
+    if (message.isEmpty) return null;
+    final already = up ? '你已经赞过这个帖子' : '你已经踩过这个帖子';
+    final failures = <String, String>{
+      '已评价过': already,
+      '已经评价': already,
+      '已经赞过': already,
+      '不能评价自己': '不能点赞自己的帖子',
+      '自己的帖子': '不能点赞自己的帖子',
+      '关闭的主题': '该主题已关闭，无法点赞',
+      '评价机会已用完': '今天的点赞次数已用完',
+      '还没有评价': '你还没有点赞',
+      '没有权限': '没有权限执行该操作',
+      '无权': '没有权限执行该操作',
+      '非法操作': '操作被站点拒绝，请稍后重试',
+      '未登录': '登录状态已失效，请重新登录',
+      '请先登录': '登录状态已失效，请重新登录',
+      '主题不存在': '主题不存在或已被删除',
+    };
+    for (final entry in failures.entries) {
+      if (message.contains(entry.key)) return entry.value;
     }
-    if (message.contains('已评价过本主题') || message.contains('已经评价')) {
-      throw SiteException(up ? '你已经赞过这个帖子' : '你已经踩过这个帖子');
-    }
-    if (message.contains('不能评价自己的帖子')) throw SiteException('不能点赞自己的帖子');
-    if (message.contains('关闭的主题')) throw SiteException('该主题已关闭，无法点赞');
-    if (message.contains('今日评价机会已用完')) throw SiteException('今天的点赞次数已用完');
-    if (cancel) throw SiteException('取消点赞失败，请稍后重试');
-    throw SiteException(up ? '点赞失败，请稍后重试' : '操作失败，请稍后重试');
+    return null;
   }
 
   /// 供测试直接验证 inajax 回执的取文案逻辑。
