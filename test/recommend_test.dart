@@ -51,6 +51,20 @@ void main() {
       expect(ForumRepository.recommendFailure('非法操作'), isNotNull);
       expect(ForumRepository.recommendFailure('您没有权限进行此操作'), isNotNull);
     });
+
+    test('取消遇到没见过的提示要暴露出来，不能静默当成功', () {
+      // 站点不认取消动作时常常回 200 + 一句没见过的提示，宽松放行会让界面
+      // 显示已取消、服务端却仍然赞着。
+      expect(ForumRepository.recommendFailure('系统繁忙，请稍后再试', up: false), contains('取消失败'));
+      expect(ForumRepository.recommendFailure('请求来路不正确，请刷新页面', up: false), '站点校验未通过，请重试');
+      expect(ForumRepository.recommendFailure('未定义操作', up: false), '站点不支持取消点赞');
+    });
+
+    test('真正的取消成功不会被误判', () {
+      for (final message in <String>['取消成功', '已取消', '操作成功', '操作完成']) {
+        expect(ForumRepository.recommendFailure(message, up: false), isNull, reason: message);
+      }
+    });
   });
 
   group('从页面判断是否已赞', () {

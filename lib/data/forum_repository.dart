@@ -789,23 +789,58 @@ class ForumRepository {
     bool cancel = false,
   }) async {
     if (formhash.isEmpty) throw SiteException('操作凭证已失效，请下拉刷新后重试');
-    final result = await _http.get(
-      'forum.php',
-      query: {
-        'mod': 'misc',
-        'action': 'recommend',
-        // 取消点赞必须使用站点的取消动作，不能把 subtract（踩）当作取消。
-        'do': cancel ? 'cancel' : (up ? 'add' : 'subtract'),
-        'tid': '$tid',
-        'hash': formhash,
-        'inajax': '1',
-        'mobile': '2',
-      },
-      referer: _threadReferer(tid),
-    );
-    _ensureOk(result);
-    final failure = recommendFailure(_inajaxMessage(result.body), up: up);
-    if (failure != null) throw SiteException(failure);
+    final query = <String, String>{
+      'mod': 'misc',
+      'action': 'recommend',
+      'do': cancel ? 'cancel' : (up ? 'add' : 'subtract'),
+      'tid': '$tid',
+      'hash': formhash,
+      'inajax': '1',
+      'mobile': '2',
+    };
+
+    if (!cancel) {
+      final result = await _http.get(
+        'forum.php',
+        query: query,
+        referer: _threadReferer(tid),
+      );
+      _ensureOk(result);
+      final failure = recommendFailure(_inajaxMessage(result.body), up: up);
+      if (failure != null) throw SiteException(failure);
+      return;
+    }
+
+    // 取消单独处理。不少模板的取消动作是插件或改写过的 handler，用
+    // checkformhash() 校验，只认 formhash 字段；只带 hash 会被判「请求来路
+    // 不正确」，而站点返回的又是 200 + 一句提示，很容易被当成取消成功。
+    // 两种提交方式都试：先 POST（formhash 在表单里），再 GET（formhash 挂 query）。
+    String? lastFailure;
+    final attempts = <Future<HttpResult> Function()>[
+      () => _http.post(
+            'forum.php',
+            query: query,
+            form: <String, String>{
+              'formhash': formhash,
+              'tid': '$tid',
+              'handlekey': 'recommend',
+              'inajax': '1',
+            },
+            referer: _threadReferer(tid),
+          ),
+      () => _http.get(
+            'forum.php',
+            query: <String, String>{...query, 'formhash': formhash},
+            referer: _threadReferer(tid),
+          ),
+    ];
+    for (final attempt in attempts) {
+      final result = await attempt();
+      _ensureOk(result);
+      lastFailure = recommendFailure(_inajaxMessage(result.body), up: up);
+      if (lastFailure == null) return;
+    }
+    throw SiteException(lastFailure ?? '取消失败，请稍后重试');
   }
 
   /// 判别 recommend 的回执：返回 null 表示成功，否则是给用户看的错误文案。
@@ -830,12 +865,25 @@ class ForumRepository {
       '没有权限': '没有权限执行该操作',
       '无权': '没有权限执行该操作',
       '非法操作': '操作被站点拒绝，请稍后重试',
+      '来路不正确': '站点校验未通过，请重试',
+      '表单无法提交': '站点校验未通过，请重试',
+      '未定义操作': '站点不支持取消点赞',
+      'undefined_action': '站点不支持取消点赞',
       '未登录': '登录状态已失效，请重新登录',
       '请先登录': '登录状态已失效，请重新登录',
       '主题不存在': '主题不存在或已被删除',
     };
     for (final entry in failures.entries) {
       if (message.contains(entry.key)) return entry.value;
+    }
+    // 取消要比点赞严：站点不认这个动作时常常回 200 + 一句没见过的提示，
+    // 宽松放行会让界面显示「已取消」、服务端却仍然赞着，重进又亮。
+    if (!up &&
+        !message.contains('成功') &&
+        !message.contains('已取消') &&
+        !message.contains('完成')) {
+      final brief = message.length > 50 ? '${message.substring(0, 50)}…' : message;
+      return '取消失败：$brief';
     }
     return null;
   }
