@@ -311,6 +311,7 @@ class ForumRepository {
       likes: _intOf(doc.querySelector('.comiis_recommend_num')?.text ?? doc.querySelector('#recommendv_add')?.text),
       dislikes: _intOf(doc.querySelector('#recommendv_subtract')?.text),
       liked: threadLiked(doc),
+      likeHref: _absolute(recommendHref(doc)),
       uploadHash: findUploadHash(html),
       uid: findUploadUid(html),
       poll: _parsePoll(doc),
@@ -764,29 +765,65 @@ class ForumRepository {
     return RegExp(r'comiis_favorite_a_color[^"]*\bf_a\b').hasMatch(html);
   }
 
+  /// 页面上「赞」按钮的链接（原样，可能是相对路径）。
+  ///
+  /// 这里必须找 `<a>`，不能找 `#recommendv_add`：Discuz 原生模板里
+  /// `#recommendv_add` 是**显示数字的那个节点**，按钮是它前面的一颗链接。
+  /// 之前拿数字节点判断激活态，等于一直在看一个 span 的 class，自然永远读不到
+  /// 「已赞」，退出重进就回到未赞。
+  ///
+  /// 踩（do=subtract）要排除，否则会把踩的链接当成赞的。
+  @visibleForTesting
+  static String recommendHref(Document doc) {
+    String? fallback;
+    for (final link in doc.querySelectorAll('a[href]')) {
+      final href = (link.attributes['href'] ?? '').replaceAll('&amp;', '&');
+      if (href.isEmpty) continue;
+      if (!href.contains('action=recommend') && !href.contains('do=cancel')) continue;
+      if (href.contains('do=subtract')) continue;
+      final cls = link.attributes['class'] ?? '';
+      final text = link.text.trim();
+      if (text.contains('赞') || cls.contains('comiis_recommend_a')) return href;
+      fallback ??= href;
+    }
+    return fallback ?? '';
+  }
+
   /// 当前账号是否已赞过该主题。
   ///
-  /// Discuz 的 recommend 没有「查询」接口，只能读页面上的按钮状态：comiis 模板
-  /// 给激活态加 `f_a`（收藏用的也是这套），另一些模板则直接把按钮换成
-  /// `do=cancel` 链接。两个信号都认，都取不到就按未赞处理——点赞成功后页面
-  /// 侧会立刻置位，不影响当次会话。
+  /// Discuz 的 recommend 没有「查询」接口，只能读页面上按钮的链接：已赞时
+  /// 模板会把 `do=add` 换成取消动作（`do=cancel` 或 `cancel=1`），或者给按钮
+  /// 加激活类。链接优先，类名兜底。
   @visibleForTesting
   static bool threadLiked(Document doc) {
-    final add = doc.querySelector('#recommendv_add');
-    if (add != null) {
-      final cls = add.attributes['class'] ?? '';
-      if (RegExp(r'(?:^|\s)f_a(?:\s|$)').hasMatch(cls)) return true;
-      if ((add.attributes['href'] ?? '').contains('do=cancel')) return true;
+    final href = recommendHref(doc);
+    if (href.isNotEmpty) {
+      if (RegExp(r'do=(cancel|del|delete|remove|unrecommend)', caseSensitive: false).hasMatch(href)) {
+        return true;
+      }
+      if (RegExp(r'[?&](?:cancel|cancle)=1').hasMatch(href)) return true;
     }
-    return doc.querySelector('a[href*="action=recommend"][href*="do=cancel"]') != null;
+    for (final button in doc.querySelectorAll('a.comiis_recommend_a_color, a[href*="action=recommend"]')) {
+      final cls = button.attributes['class'] ?? '';
+      if (RegExp(r'(?:^|\s)(?:f_a|on|active|selected)(?:\s|$)').hasMatch(cls)) return true;
+    }
+    // 收藏用的也是这套激活类，说明模板确实敢用 class 表达状态；按收藏的写法
+    // 在整页里再兜一次（有的模板把 f_a 加在按钮外层）。
+    return RegExp(r'comiis_recommend_a_color[^"]*\bf_a\b')
+        .hasMatch(doc.documentElement?.outerHtml ?? '');
   }
 
   /// 点赞 / 踩。Discuz 的 recommend 接口要求 inajax=1，返回 CDATA 包裹的提示。
+  ///
+  /// [cancelHref] 是帖子页上「已赞」按钮自带的链接。取消动作各家模板不一样
+  /// （`do=cancel`、`cancel=1`、甚至换成了插件地址），自己拼参数只能靠猜；
+  /// 页面既然把取消地址写出来了，就先用它。
   Future<void> recommend({
     required int tid,
     required String formhash,
     required bool up,
     bool cancel = false,
+    String cancelHref = '',
   }) async {
     if (formhash.isEmpty) throw SiteException('操作凭证已失效，请下拉刷新后重试');
     final query = <String, String>{
@@ -811,11 +848,20 @@ class ForumRepository {
       return;
     }
 
-    // 取消单独处理。不少模板的取消动作是插件或改写过的 handler，用
-    // checkformhash() 校验，只认 formhash 字段；只带 hash 会被判「请求来路
-    // 不正确」，而站点返回的又是 200 + 一句提示，很容易被当成取消成功。
-    // 两种提交方式都试：先 POST（formhash 在表单里），再 GET（formhash 挂 query）。
     String? lastFailure;
+
+    // 第一优先：页面自己给的取消地址。
+    if (_looksLikeCancelHref(cancelHref)) {
+      final result = await _http.get(cancelHref, referer: _threadReferer(tid));
+      _ensureOk(result);
+      lastFailure = recommendFailure(_inajaxMessage(result.body), up: up);
+      if (lastFailure == null) return;
+    }
+
+    // 其次自己拼。有的模板取消走插件或改写过的 handler，用 checkformhash()
+    // 校验，只认 formhash 字段；只带 hash 会被判「请求来路不正确」，而站点
+    // 返回的又是 200 + 一句提示，很容易被当成取消成功。两种提交方式都试：
+    // 先 POST（formhash 在表单里），再 GET（formhash 挂 query）。
     final attempts = <Future<HttpResult> Function()>[
       () => _http.post(
             'forum.php',
@@ -841,6 +887,16 @@ class ForumRepository {
       if (lastFailure == null) return;
     }
     throw SiteException(lastFailure ?? '取消失败，请稍后重试');
+  }
+
+  /// 页面上的链接是不是「取消赞」。只认明确的取消动作，别把 `do=add`
+  /// 当成取消地址再打一遍。
+  static bool _looksLikeCancelHref(String href) {
+    if (href.isEmpty) return false;
+    if (RegExp(r'do=(?:cancel|del|delete|remove|unrecommend)', caseSensitive: false).hasMatch(href)) {
+      return true;
+    }
+    return RegExp(r'[?&](?:cancel|cancle)=1').hasMatch(href);
   }
 
   /// 判别 recommend 的回执：返回 null 表示成功，否则是给用户看的错误文案。

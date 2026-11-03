@@ -521,6 +521,7 @@ class _ThreadPageState extends State<ThreadPage> {
         formhash: detail.formhash,
         up: true,
         cancel: wasLiked,
+        cancelHref: detail.likeHref,
       );
       if (!mounted) return;
       _applyLiked(!wasLiked);
@@ -536,6 +537,7 @@ class _ThreadPageState extends State<ThreadPage> {
             formhash: detail.formhash,
             up: true,
             cancel: true,
+            cancelHref: detail.likeHref,
           );
           if (!mounted) return;
           setState(() {
@@ -549,8 +551,16 @@ class _ThreadPageState extends State<ThreadPage> {
           // 站点没开放取消（后台可关），只能如实告诉用户当前是已赞状态。
           setState(() => _liked = true);
           AppState.instance.markThreadLiked(widget.tid, true);
-          _toast(_message(cancelError));
+          _toast(_cancelFailed(cancelError));
         }
+        return;
+      }
+      if (mounted && wasLiked && message.contains('已经赞过')) {
+        // 取消请求没被站点接受，回的还是「已赞」。保持实心图标，别让用户
+        // 以为取消成功了、重进又亮起来。
+        setState(() => _liked = true);
+        AppState.instance.markThreadLiked(widget.tid, true);
+        _toast('站点未接受取消请求，当前仍是已赞');
         return;
       }
       if (mounted && message.contains('还没有点赞')) {
@@ -562,6 +572,16 @@ class _ThreadPageState extends State<ThreadPage> {
       }
       _toast(message);
     }
+  }
+
+  /// 取消失败时的提示。站点不认取消动作时，回的往往是「你已经赞过」，
+  /// 直接弹给用户会像是「操作成功」，这里翻译成状态说明。
+  String _cancelFailed(Object error) {
+    final message = _message(error);
+    if (message.contains('已经赞过') || message.contains('已评价')) {
+      return '站点未接受取消请求，当前仍是已赞';
+    }
+    return message;
   }
 
   Future<void> _toggleDislike() async {

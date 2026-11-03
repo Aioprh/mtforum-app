@@ -70,24 +70,48 @@ void main() {
   group('从页面判断是否已赞', () {
     test('按钮带 f_a 激活类', () {
       final doc = html_parser.parse(
-        '<a id="recommendv_add" class="comiis_recommend_a_color f_a">赞</a>',
+        '<a class="comiis_recommend_a_color f_a" href="forum.php?mod=misc&amp;action=recommend&amp;do=add&amp;tid=1">赞</a>',
       );
       expect(ForumRepository.threadLiked(doc), isTrue);
     });
 
     test('按钮已换成 do=cancel', () {
       final doc = html_parser.parse(
-        '<a id="recommendv_add" '
+        '<a class="comiis_recommend_a_color" '
         'href="forum.php?mod=misc&action=recommend&do=cancel&tid=1">取消</a>',
       );
       expect(ForumRepository.threadLiked(doc), isTrue);
     });
 
-    test('未赞的页面', () {
+    test('按钮换成 cancel=1 也算已赞', () {
       final doc = html_parser.parse(
-        '<a id="recommendv_add" class="comiis_recommend_a_color" '
+        '<a class="comiis_recommend_a_color" '
+        'href="forum.php?mod=misc&action=recommend&do=add&tid=1&cancel=1">赞</a>',
+      );
+      expect(ForumRepository.threadLiked(doc), isTrue);
+    });
+
+    test('真实结构：数字是独立节点，按钮在它前面', () {
+      // Discuz 原生模板里 #recommendv_add 只是数字，不是按钮。以前拿它判激活
+      // 态，等于一直在看一个 span 的 class，永远读不到「已赞」。
+      final doc = html_parser.parse(
+        '<span id="recommendv">'
+        '<a class="comiis_recommend_a_color" '
+        'href="forum.php?mod=misc&action=recommend&do=add&tid=1&hash=abc">赞</a>'
+        '<span id="recommendv_add">3</span>'
+        '</span>',
+      );
+      expect(ForumRepository.threadLiked(doc), isFalse);
+      expect(ForumRepository.recommendHref(doc), contains('do=add'));
+    });
+
+    test('踩的链接不会被当成赞', () {
+      final doc = html_parser.parse(
+        '<a href="forum.php?mod=misc&action=recommend&do=subtract&tid=1">踩</a>'
+        '<a class="comiis_recommend_a_color" '
         'href="forum.php?mod=misc&action=recommend&do=add&tid=1">赞</a>',
       );
+      expect(ForumRepository.recommendHref(doc), contains('do=add'));
       expect(ForumRepository.threadLiked(doc), isFalse);
     });
 

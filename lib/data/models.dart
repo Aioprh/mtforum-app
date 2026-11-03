@@ -362,6 +362,7 @@ class ThreadDetail {
     this.likes = 0,
     this.dislikes = 0,
     this.liked = false,
+    this.likeHref = '',
     this.uploadHash = '',
     this.uid = 0,
     this.poll,
@@ -391,6 +392,10 @@ class ThreadDetail {
   /// 当前账号是否已经赞过该主题。Discuz 没有查询接口，只能从页面按钮状态判断；
   /// 判断不出来时按未赞处理，点赞成功后再本地置位。
   final bool liked;
+
+  /// 页面上「赞」按钮的链接。已赞时它通常就是取消地址，取消时直接用，
+  /// 比自己拼 `do=cancel` 可靠。
+  final String likeHref;
 
   /// 当前页面用于附件上传的 hash 与 uid（游客为 0）。
   final String uploadHash;
@@ -431,6 +436,7 @@ class ThreadDetail {
         likes: likes ?? this.likes,
         dislikes: dislikes ?? this.dislikes,
         liked: liked ?? this.liked,
+        likeHref: likeHref,
         uploadHash: uploadHash,
         uid: uid,
         poll: poll,
