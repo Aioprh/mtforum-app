@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -48,6 +50,18 @@ class _PostHtmlViewState extends State<PostHtmlView> {
   final List<GestureRecognizer> _recognizers = <GestureRecognizer>[];
   List<Widget>? _cache;
 
+  /// 正文按块分批上屏，见 [_blocksPerChunk]。
+  List<List<Widget>>? _chunks;
+  int _visibleChunks = 1;
+  bool _chunkScheduled = false;
+
+  /// 每帧最多新铺多少个正文块。
+  ///
+  /// 长图文帖一楼就有三百多个 widget，一次性全铺开要 300ms 上下：点开帖子
+  /// 那一下正好撞上转场，画面会定住半秒。分帧铺开，每帧只多做一块，十来帧
+  /// 铺完；用户这时还在看顶部，看不出差别。
+  static const int _blocksPerChunk = 24;
+
   /// 正文配色改了要重排：[_cache] 里存的是已经带上色的 span。
   Color? _lastLinkColor;
   Color? _lastHintColor;
@@ -66,26 +80,50 @@ class _PostHtmlViewState extends State<PostHtmlView> {
     _lastLinkColor = state.readLinkColor;
     _lastHintColor = state.readHintColor;
     if (!mounted) return;
-    setState(() {
-      _disposeRecognizers();
-      _cache = null;
-    });
+    setState(_reset);
+  }
+
+  /// 丢掉已解析的内容，下一次 build 重新解析、重新分帧。
+  void _reset() {
+    _disposeRecognizers();
+    _cache = null;
+    _chunks = null;
+    _visibleChunks = 1;
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _disposeRecognizers();
-    _cache = null;
+    _reset();
   }
 
   @override
   void didUpdateWidget(covariant PostHtmlView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.html != widget.html) {
-      _disposeRecognizers();
-      _cache = null;
+    if (oldWidget.html != widget.html) _reset();
+  }
+
+  /// 排下一帧再铺一块。
+  ///
+  /// 只在还有没铺完的块时排队；[_chunks] 被重置后这里的回调会自行退出，
+  /// 不会拿旧的分块继续铺。
+  void _scheduleNextChunk() {
+    if (_chunkScheduled) return;
+    _chunkScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _chunkScheduled = false;
+      final chunks = _chunks;
+      if (!mounted || chunks == null || _visibleChunks >= chunks.length) return;
+      setState(() => _visibleChunks++);
+    });
+  }
+
+  List<List<Widget>> _split(List<Widget> blocks) {
+    final chunks = <List<Widget>>[];
+    for (var i = 0; i < blocks.length; i += _blocksPerChunk) {
+      chunks.add(blocks.sublist(i, math.min(i + _blocksPerChunk, blocks.length)));
     }
+    return chunks;
   }
 
   @override
@@ -1208,7 +1246,13 @@ class _PostHtmlViewState extends State<PostHtmlView> {
       final scheme = Theme.of(context).colorScheme;
       return Text('该楼层暂无内容', style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant));
     }
-    final content = Column(crossAxisAlignment: CrossAxisAlignment.start, children: cache);
+    final chunks = _chunks ??= _split(cache);
+    final visible = <Widget>[];
+    for (var i = 0; i < _visibleChunks && i < chunks.length; i++) {
+      visible.addAll(chunks[i]);
+    }
+    if (_visibleChunks < chunks.length) _scheduleNextChunk();
+    final content = Column(crossAxisAlignment: CrossAxisAlignment.start, children: visible);
     return widget.selectable ? SelectionArea(child: content) : content;
   }
 }
