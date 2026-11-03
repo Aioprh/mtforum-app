@@ -123,7 +123,7 @@ class _ThreadPageState extends State<ThreadPage> {
       _hasMore = preview.hasMore;
       _likes = preview.likes;
       _dislikes = preview.dislikes;
-      _liked = preview.liked;
+      _liked = preview.liked || AppState.instance.isThreadLiked(widget.tid);
       _favorited = preview.favorited;
     } else {
       _load();
@@ -165,8 +165,8 @@ class _ThreadPageState extends State<ThreadPage> {
         _likes = detail.likes;
         _dislikes = detail.dislikes;
         // 页面解析是主来源；解析不出（模板没有状态类名）时保留本地已知状态，
-        // 不然刷新一次就把「已赞」抹掉，用户又取消不了了。
-        _liked = detail.liked || _liked;
+        // 再用本机记录兜底——只靠页面的话，每次重进都会变回未赞。
+        _liked = detail.liked || _liked || AppState.instance.isThreadLiked(widget.tid);
         _favorited = detail.favorited;
         _pollSelected.clear();
         _loading = false;
@@ -495,6 +495,21 @@ class _ThreadPageState extends State<ThreadPage> {
 
   // ------------------------------------------------------------- 点赞 / 收藏
 
+  /// 更新点赞状态与计数，并把结果记到本机。
+  ///
+  /// 计数是乐观更新；状态必须落盘，否则退出重进又变回未赞，用户点一下只会
+  /// 再收到一句「已经赞过」。
+  void _applyLiked(bool liked) {
+    final before = _liked;
+    setState(() {
+      _liked = liked;
+      if (before != liked) {
+        _likes = (_likes + (liked ? 1 : -1)).clamp(0, 1 << 31);
+      }
+    });
+    AppState.instance.markThreadLiked(widget.tid, liked);
+  }
+
   Future<void> _toggleLike() async {
     final detail = _detail;
     if (detail == null) return;
@@ -508,23 +523,40 @@ class _ThreadPageState extends State<ThreadPage> {
         cancel: wasLiked,
       );
       if (!mounted) return;
-      setState(() {
-        _liked = !wasLiked;
-        _likes = (_likes + (wasLiked ? -1 : 1)).clamp(0, 1 << 31);
-      });
+      _applyLiked(!wasLiked);
       _toast(wasLiked ? '已取消点赞' : '点赞成功');
     } catch (e) {
       final message = _message(e);
-      if (mounted && message.contains('已经赞过')) {
-        // 服务端认为已赞，说明本地状态落后了。这里必须置位，否则用户每点
-        // 一次都只会收到同一句「已经赞过」，永远走不到取消。
-        setState(() => _liked = true);
-        _toast('你已经赞过，再点一次可取消');
+      if (mounted && !wasLiked && message.contains('已经赞过')) {
+        // 本地以为没赞、服务端说赞过：状态过期了。用户此刻点这一下就是想
+        // 取消，直接补发 cancel，而不是回一句「你已经赞过」让他再点一次。
+        try {
+          await _repo.recommend(
+            tid: widget.tid,
+            formhash: detail.formhash,
+            up: true,
+            cancel: true,
+          );
+          if (!mounted) return;
+          setState(() {
+            _liked = false;
+            _likes = (_likes - 1).clamp(0, 1 << 31);
+          });
+          AppState.instance.markThreadLiked(widget.tid, false);
+          _toast('这条已赞过，已为你取消');
+        } catch (cancelError) {
+          if (!mounted) return;
+          // 站点没开放取消（后台可关），只能如实告诉用户当前是已赞状态。
+          setState(() => _liked = true);
+          AppState.instance.markThreadLiked(widget.tid, true);
+          _toast(_message(cancelError));
+        }
         return;
       }
       if (mounted && message.contains('还没有点赞')) {
         // 反过来：服务端没有这条评价，本地却记着已赞，同样要把状态拉回来。
         setState(() => _liked = false);
+        AppState.instance.markThreadLiked(widget.tid, false);
         _toast('你还没有点赞');
         return;
       }

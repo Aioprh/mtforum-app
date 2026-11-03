@@ -23,6 +23,15 @@ class AppState extends ChangeNotifier {
   static const String _threadGlassOpacityKey = 'mt_forum_thread_glass_opacity';
   static const String _threadGlassBlurKey = 'mt_forum_thread_glass_blur';
   static const String _autoSignInDateKey = 'mt_forum_auto_signin_date';
+
+  /// 本机点过赞的主题 id（最多保留 200 条）。
+  ///
+  /// Discuz 的 recommend 只写不读，页面模板也未必把「已赞」渲染成可识别的
+  /// class，所以进入帖子时没法和站点核对状态。与其每次都显示未赞、点一下
+  /// 再收到「已评价过」，不如把本机的操作记下来，退出重进仍显示已赞。
+  static const String _likedThreadsKey = 'mt_forum_liked_threads';
+  static const int _likedThreadsLimit = 200;
+  final List<int> _likedThreads = <int>[];
   bool _autoSignInRunning = false;
   String? _autoSignInAttemptDate;
 
@@ -74,6 +83,28 @@ class AppState extends ChangeNotifier {
 
   bool get isLoggedIn => session.hasLoginCookie;
 
+  /// 本机是否记着这条主题已赞。
+  bool isThreadLiked(int tid) => _likedThreads.contains(tid);
+
+  /// 记录或清除一条主题的已赞状态。
+  ///
+  /// 只写失败也不该影响点赞本身，所以这里吞掉异常：界面状态已经更新过了。
+  Future<void> markThreadLiked(int tid, bool liked) async {
+    _likedThreads.remove(tid);
+    if (liked) {
+      _likedThreads.add(tid);
+      if (_likedThreads.length > _likedThreadsLimit) {
+        _likedThreads.removeRange(0, _likedThreads.length - _likedThreadsLimit);
+      }
+    }
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(_likedThreadsKey, _likedThreads.map((id) => '$id').toList());
+    } catch (_) {
+      // 本地记录丢了顶多下次显示未赞，不影响点赞结果。
+    }
+  }
+
   /// 今天是否已经签到。未登录时没有意义，卡片也不显示。
   bool get signedInToday => signedInOn(_signInDay, DateTime.now());
 
@@ -94,6 +125,13 @@ class AppState extends ChangeNotifier {
     threadGlassOpacity = (prefs.getDouble(_threadGlassOpacityKey) ?? 0.55).clamp(0.05, 0.85).toDouble();
     threadGlassBlur = (prefs.getDouble(_threadGlassBlurKey) ?? 22.0).clamp(0.0, 40.0).toDouble();
     _signInDay = prefs.getString(_autoSignInDateKey);
+    _likedThreads
+      ..clear()
+      ..addAll(
+        (prefs.getStringList(_likedThreadsKey) ?? const <String>[])
+            .map(int.tryParse)
+            .whereType<int>(),
+      );
     themeMode = switch (theme) {
       'light' => ThemeMode.light,
       'dark' => ThemeMode.dark,
