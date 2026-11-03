@@ -54,7 +54,7 @@ class AboutPage extends StatelessWidget {
           ),
           const SizedBox(height: 5),
           Text(
-            '版本 ${AppConfig.version} · 原生客户端',
+            '版本 ${AppConfig.versionLabel} · 原生客户端',
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
           ),

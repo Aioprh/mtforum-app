@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../ui/transitions/card_page_transitions.dart';
 import 'app_config.dart';
 
 class AppTheme {
@@ -126,7 +127,7 @@ class AppTheme {
           //    会按主题取 surface，浅色主题下半程整屏发白——之前为此专门
           //    退回过 Cupertino。
           // 3. 其它平台没有预测性返回，仍用 Cupertino 的横向位移。
-          TargetPlatform.android: PredictiveBackPageTransitionsBuilder(
+          TargetPlatform.android: CardPageTransitionsBuilder(
             fallbackColor: Colors.transparent,
           ),
           TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),

@@ -6,7 +6,13 @@ class AppConfig {
   static const String host = 'bbs.binmt.cc';
   static const String base = 'https://bbs.binmt.cc/';
   static const String siteName = 'MT论坛';
-  static const String version = '1.0.0';
+  /// 版本号由 CI 用 `--dart-define=APP_VERSION=x.y.z` 从 pubspec 注入，
+  /// 本地 `flutter run` 没传就落到 `dev`。早先这里写死 1.0.0，关于页
+  /// 显示的版本和实际安装包永远差着十几版。
+  static const String version = String.fromEnvironment('APP_VERSION', defaultValue: 'dev');
+
+  /// 给人看的版本号：本地构建不编个假版本号出来。
+  static String get versionLabel => version == 'dev' ? '本地构建' : version;
 
   /// 移动端模板 UA（Discuz 会根据 mobile=2 返回原生布局）。
   static const String userAgent =
