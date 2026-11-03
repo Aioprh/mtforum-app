@@ -64,11 +64,7 @@ class _AppShellState extends State<AppShell> {
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      // AppShell 是 MaterialApp.home，永远压在路由栈底，不存在「还能再退
-      // 一层」。写死 false 而不是去问 Navigator：子页面压在栈上时 AppShell
-      // 不会重建，那个值会停在打开前的旧结果上，反而让预测性返回的手势
-      // 在根页面和子页面之间来回抖。
-      canPop: false,
+      canPop: Navigator.of(context).canPop(),
       onPopInvokedWithResult: (didPop, result) {
         _handleBack(didPop);
       },

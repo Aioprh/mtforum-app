@@ -2,7 +2,6 @@ import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../ui/transitions/card_page_transitions.dart';
 import 'app_config.dart';
 
 class AppTheme {
@@ -106,30 +105,15 @@ class AppTheme {
           textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
         ),
       ),
-      // 页面转场。
-      //
-      // 早先全平台都用 Cupertino 横向位移，是为了躲开 Zoom 转场：它把旧页
-      // 缩成圆角卡片、再垫一层 surface 遮罩，入场又把新页从 0.85 缩放淡入，
-      // 半程整屏发白，前后两页同时半透明叠在一起，浅色主题像糊了层毛玻璃。
-      //
-      // 现在 Android 要接系统的预测性返回（手势跟手），改用它自己的转场
-      // builder；其余平台仍保持 Cupertino。
+      // 页面转场：Android 默认是 PredictiveBack（不支持系统预测返回时退化成
+      // Zoom）。两者的退场都是「旧页缩成圆角卡片 + 垫一层 surface 遮罩」，
+      // 入场再把新页从 0.85 缩放淡入——转场半程整屏发白，前后两页同时半透明
+      // 地叠在一起，浅色主题里像糊了一层毛玻璃，深色主题里是一团灰雾。
+      // 换成 Cupertino 的横向滑动：新页始终不透明，旧页只做视差后退，
+      // 没有遮罩、没有淡入，也就不会出现叠影。
       pageTransitionsTheme: const PageTransitionsTheme(
         builders: <TargetPlatform, PageTransitionsBuilder>{
-          // Android 走系统的预测性返回：手势往右拖时页面跟着缩、跟着挪，
-          // 松手才决定是返回还是取消。三个细节：
-          //
-          // 1. 只有「手势进行中」才播跟手动画，普通 push（点按钮、代码里
-          //    push）交给 FadeForwards 兜底——这是 3.32 之后的 Android 默认
-          //    转场，新页从左滑入，旧页不动，不像旧的 Zoom 那样把旧页缩成
-          //    圆角卡片再盖一层白膜。
-          // 2. fallbackColor 必须是透明：它就是这个兜底转场的遮罩色，留空
-          //    会按主题取 surface，浅色主题下半程整屏发白——之前为此专门
-          //    退回过 Cupertino。
-          // 3. 其它平台没有预测性返回，仍用 Cupertino 的横向位移。
-          TargetPlatform.android: CardPageTransitionsBuilder(
-            fallbackColor: Colors.transparent,
-          ),
+          TargetPlatform.android: CupertinoPageTransitionsBuilder(),
           TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
           TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
           TargetPlatform.linux: CupertinoPageTransitionsBuilder(),
