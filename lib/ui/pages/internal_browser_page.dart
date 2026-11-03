@@ -30,6 +30,14 @@ class _InternalBrowserPageState extends State<InternalBrowserPage> {
   bool _loading = true;
   final Set<String> _activeDownloads = <String>{};
 
+  /// 网页自己还能不能后退一层。
+  ///
+  /// 系统的返回手势（含预测性返回）在 PopScope 上是同步决策的，而
+  /// `canGoBack()` 是异步的，所以这里维护一份镜像：每次页面加载完刷新。
+  /// 不这么做的话，手势一滑就把整个浏览器页关掉，站内点进去的三四层链接
+  /// 全丢，得重新打开。
+  bool _canGoBack = false;
+
   @override
   void initState() {
     super.initState();
@@ -121,13 +129,36 @@ class _InternalBrowserPageState extends State<InternalBrowserPage> {
     final controller = _controller;
     if (controller != null && await controller.canGoBack()) {
       await controller.goBack();
+      await _refreshBackState();
     } else if (mounted) {
       Navigator.pop(context);
     }
   }
 
+  /// 把 WebView 的后退能力同步到 [_canGoBack]。
+  Future<void> _refreshBackState() async {
+    final controller = _controller;
+    if (controller == null) return;
+    final canGoBack = await controller.canGoBack();
+    if (!mounted || canGoBack == _canGoBack) return;
+    setState(() => _canGoBack = canGoBack);
+  }
+
   @override
   Widget build(BuildContext context) {
+    return PopScope(
+      // 能后退网页就先退网页，退到底了才关这个页面。这样系统返回手势、
+      // 预测性返回的预览、标题栏左上角那颗箭头，三者走的是同一套判断。
+      canPop: !_canGoBack,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        unawaited(_back());
+      },
+      child: _buildScaffold(context),
+    );
+  }
+
+  Widget _buildScaffold(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(onPressed: _back, icon: const Icon(Icons.arrow_back_rounded)),
@@ -210,6 +241,8 @@ class _InternalBrowserPageState extends State<InternalBrowserPage> {
                   _progress = 100;
                 });
               }
+              // 加载完成后才知道这页之后还能不能退，同步给 PopScope。
+              await _refreshBackState();
             },
             onDownloadStarting: (controller, request) async {
               unawaited(_startDownload(
