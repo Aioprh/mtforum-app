@@ -848,45 +848,131 @@ class ForumRepository {
       return;
     }
 
+    await _cancelRecommend(tid: tid, formhash: formhash, cancelHref: cancelHref);
+  }
+
+  /// 上一次确认有效的取消动作。试对一次就记住，下次直接用，省掉一轮试探。
+  static String? _workingCancelAction;
+
+  /// 取消动作的候选。Discuz 原生只有 add / subtract，取消是模板自己加的，
+  /// 动作名各家不同（cancel / del / unrecommend / delete），挨个试。
+  static const List<String> _cancelActions = <String>['cancel', 'del', 'unrecommend', 'delete'];
+
+  /// 取消点赞。
+  ///
+  /// 回执文案靠不住：模板对不认识的动作也回 200，取不到提示文字时
+  /// [_inajaxMessage] 给的是空串，会被当成「取消成功」——上一版就是这样把
+  /// 失败当成了成功，界面灭了、服务端还赞着，重进又亮。这里改成看页面上的
+  /// 赞数：取消前后各拉一次，数字没降下来就是没生效。
+  Future<void> _cancelRecommend({
+    required int tid,
+    required String formhash,
+    required String cancelHref,
+  }) async {
+    final referer = _threadReferer(tid);
+    final before = await fetchLikeCount(tid);
     String? lastFailure;
 
-    // 第一优先：页面自己给的取消地址。
-    if (_looksLikeCancelHref(cancelHref)) {
-      final result = await _http.get(cancelHref, referer: _threadReferer(tid));
-      _ensureOk(result);
-      lastFailure = recommendFailure(_inajaxMessage(result.body), up: up);
-      if (lastFailure == null) return;
+    Future<bool> settle(Future<HttpResult> Function() send) async {
+      try {
+        final result = await send();
+        _ensureOk(result);
+        final failure = recommendFailure(_inajaxMessage(result.body), up: true);
+        if (failure != null) {
+          lastFailure = failure;
+          return false;
+        }
+      } catch (error) {
+        lastFailure = error is SiteException ? error.message : '取消请求未送达';
+        return false;
+      }
+      if (before == null) return true;
+      final after = await fetchLikeCount(tid);
+      // 页面拉不到就退回信回执；数字确实降了才算数。
+      if (after == null || after < before) return true;
+      lastFailure = '取消失败：站点未移除这条赞';
+      return false;
     }
 
-    // 其次自己拼。有的模板取消走插件或改写过的 handler，用 checkformhash()
-    // 校验，只认 formhash 字段；只带 hash 会被判「请求来路不正确」，而站点
-    // 返回的又是 200 + 一句提示，很容易被当成取消成功。两种提交方式都试：
-    // 先 POST（formhash 在表单里），再 GET（formhash 挂 query）。
-    final attempts = <Future<HttpResult> Function()>[
-      () => _http.post(
-            'forum.php',
-            query: query,
-            form: <String, String>{
-              'formhash': formhash,
-              'tid': '$tid',
-              'handlekey': 'recommend',
-              'inajax': '1',
-            },
-            referer: _threadReferer(tid),
-          ),
-      () => _http.get(
-            'forum.php',
-            query: <String, String>{...query, 'formhash': formhash},
-            referer: _threadReferer(tid),
-          ),
-    ];
-    for (final attempt in attempts) {
-      final result = await attempt();
-      _ensureOk(result);
-      lastFailure = recommendFailure(_inajaxMessage(result.body), up: up);
-      if (lastFailure == null) return;
+    // 页面自己给出的取消地址最可信，先打它。
+    if (_looksLikeCancelHref(cancelHref)) {
+      if (await settle(() => _http.get(cancelHref, referer: referer))) return;
     }
-    throw SiteException(lastFailure ?? '取消失败，请稍后重试');
+
+    final actions = <String>[
+      if (_workingCancelAction != null) _workingCancelAction!,
+      ..._cancelActions,
+    ];
+    for (final action in actions) {
+      final query = <String, String>{
+        'mod': 'misc',
+        'action': 'recommend',
+        'do': action,
+        'tid': '$tid',
+        'hash': formhash,
+        'inajax': '1',
+        'mobile': '2',
+      };
+      // 先 POST：模板改写过的 handler 通常用 checkformhash()，只认表单里的
+      // formhash，只带 hash 会被判「请求来路不正确」。
+      final posted = await settle(
+        () => _http.post(
+          'forum.php',
+          query: query,
+          form: <String, String>{
+            'formhash': formhash,
+            'tid': '$tid',
+            'handlekey': 'recommend',
+            'inajax': '1',
+          },
+          referer: referer,
+        ),
+      );
+      if (posted) {
+        _workingCancelAction = action;
+        return;
+      }
+      final got = await settle(
+        () => _http.get(
+          'forum.php',
+          query: <String, String>{...query, 'formhash': formhash},
+          referer: referer,
+        ),
+      );
+      if (got) {
+        _workingCancelAction = action;
+        return;
+      }
+    }
+    throw SiteException(lastFailure ?? '取消失败，站点没有接受任何一种取消方式');
+  }
+
+  /// 只取主题页上的「赞」数字。
+  ///
+  /// 用来核对取消有没有真的生效：Discuz 没有「我赞没赞」的查询接口，各家模板
+  /// 的回执文案也不一样，页面上的数字是唯一硬证据。取不到时返回 null，调用方
+  /// 只能退回去信回执。
+  Future<int?> fetchLikeCount(int tid) async {
+    try {
+      final result = await _http.get(
+        'forum.php',
+        query: <String, String>{
+          'mod': 'viewthread',
+          'tid': '$tid',
+          'mobile': '2',
+          'page': '1',
+        },
+        referer: _threadReferer(tid),
+      );
+      if (result.statusCode != 200) return null;
+      final doc = parser.parse(result.body);
+      final node = doc.querySelector('.comiis_recommend_num') ??
+          doc.querySelector('#recommendv_add');
+      final digits = RegExp(r'\d+').firstMatch(_clean(node?.text ?? ''))?.group(0);
+      return digits == null ? null : int.tryParse(digits);
+    } catch (_) {
+      return null;
+    }
   }
 
   /// 页面上的链接是不是「取消赞」。只认明确的取消动作，别把 `do=add`
