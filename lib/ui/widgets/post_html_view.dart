@@ -299,6 +299,14 @@ class _PostHtmlViewState extends State<PostHtmlView> {
         continue;
       }
 
+      // [hide] 的壳子跟引用块长得一样，先认出来，否则会被当引用渲染成一片
+      // 灰字纯文本，链接也点不了。
+      if (_isHiddenContentBlock(node)) {
+        flush();
+        widgets.add(_hiddenContentCard(context, node));
+        continue;
+      }
+
       // 引用块要优先于普通容器处理：站点皮肤常把 [quote] 渲染成
       // div.quote（没有 blockquote），不拦截就会退化成一整段正文。
       if (_isQuoteContainer(tag, node.classes) || _looksLikeQuotedBlock(node, tag)) {
@@ -420,6 +428,7 @@ class _PostHtmlViewState extends State<PostHtmlView> {
     final classes = element.classes;
 
     if (tag == 'blockquote') {
+      if (_isHiddenContentBlock(element)) return [_hiddenContentCard(context, element)];
       return [_quoteCard(context, element)];
     }
 
@@ -617,6 +626,84 @@ class _PostHtmlViewState extends State<PostHtmlView> {
     if (text.isEmpty || text.length > 1500) return false;
     final head = text.length > 48 ? text.substring(0, 48) : text;
     return RegExp(r'^[^。！？]{1,40}?发表于').hasMatch(head);
+  }
+
+  /// 「本帖隐藏的内容」区块。
+  ///
+  /// Discuz 的 [hide] 在各套模板里的外壳不一样（blockquote、div.quote、fieldset
+  /// 都见过），但正文一定以这句话开头。以前整块落进引用卡当纯文本渲染：字是
+  /// 灰的、里面的链接也点不了，长帖里一划就过去了。这里单独认出来，做成浅色底
+  /// 加色条的卡片，标题用提示色加粗，正文保留行内链接。
+  static final RegExp _hideContentLabel = RegExp(r'^本帖隐藏的内容');
+
+  bool _isHiddenContentBlock(dom.Element element) {
+    final tag = element.localName ?? '';
+    if (!const {'div', 'section', 'article', 'blockquote', 'fieldset'}.contains(tag)) {
+      return false;
+    }
+    final text = _cleanInline(element.text).trim();
+    if (text.isEmpty || text.length > 800) return false;
+    if (!_hideContentLabel.hasMatch(text)) return false;
+    // 引用别人的楼层里也会出现这句话，带「发表于」头的还是按引用走。
+    return !text.contains('发表于');
+  }
+
+  /// 去掉开头那句「本帖隐藏的内容」：它已经提到卡片标题上，正文再留一遍就重复了。
+  List<dom.Node> _withoutHideLabel(List<dom.Node> nodes) {
+    final kept = <dom.Node>[];
+    var stripped = false;
+    for (final node in nodes) {
+      if (!stripped && node is dom.Text && _hideContentLabel.hasMatch(_cleanInline(node.text).trim())) {
+        stripped = true;
+        final rest = node.text.replaceFirst(
+          RegExp(r'^\s*本帖隐藏的内容\s*[：:，,。、]?\s*'),
+          '',
+        );
+        if (rest.trim().isNotEmpty) kept.add(dom.Text(rest));
+        continue;
+      }
+      kept.add(node);
+    }
+    return kept;
+  }
+
+  Widget _hiddenContentCard(BuildContext context, dom.Element element) {
+    final accent = _hintColor(context);
+    return Container(
+      key: const ValueKey('post-hidden-content'),
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 2, bottom: 10),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: accent.withValues(alpha: 0.28)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Row(
+              children: [
+                Icon(Icons.lock_outline_rounded, size: 15, color: accent),
+                const SizedBox(width: 5),
+                Text(
+                  '本帖隐藏的内容',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    height: 1.4,
+                    fontWeight: FontWeight.w700,
+                    color: accent,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          ..._blocks(context, _withoutHideLabel(element.nodes)),
+        ],
+      ),
+    );
   }
 
   /// 引用按网页端 .quote 的样子渲染：左边一条灰竖线 + 浅灰底，
