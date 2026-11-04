@@ -807,10 +807,15 @@ class ForumRepository {
       final cls = button.attributes['class'] ?? '';
       if (RegExp(r'(?:^|\s)(?:f_a|on|active|selected)(?:\s|$)').hasMatch(cls)) return true;
     }
-    // 收藏用的也是这套激活类，说明模板确实敢用 class 表达状态；按收藏的写法
-    // 在整页里再兜一次（有的模板把 f_a 加在按钮外层）。
-    return RegExp(r'comiis_recommend_a_color[^"]*\bf_a\b')
-        .hasMatch(doc.documentElement?.outerHtml ?? '');
+    final html = doc.documentElement?.outerHtml ?? '';
+    // 站点在用的克米手机模板：点赞图标是
+    // `<i class="comiis_font comiis_recommend_color f_a">`，取消后换回 f_b。
+    // 它既不是链接、也不叫 `comiis_recommend_a_color`（那是收藏），所以只按
+    // 旧的两条找，永远是「未赞」——进帖子看到空心，点一下发 add，服务端回
+    // 「已评价过」，取消更是无从谈起。
+    if (RegExp(r'comiis_recommend_color[^"]*\bf_a\b').hasMatch(html)) return true;
+    // 同一套激活类，有的模板把 f_a 加在按钮外层。
+    return RegExp(r'comiis_recommend_a_color[^"]*\bf_a\b').hasMatch(html);
   }
 
   /// 点赞 / 踩。Discuz 的 recommend 接口要求 inajax=1，返回 CDATA 包裹的提示。
@@ -858,43 +863,54 @@ class ForumRepository {
   /// 动作名各家不同（cancel / del / unrecommend / delete），挨个试。
   static const List<String> _cancelActions = <String>['cancel', 'del', 'unrecommend', 'delete'];
 
+  /// 站点自己的取消入口。
+  ///
+  /// 赞走的是 Discuz 的 recommend，取消却不在 Discuz 里：克米模板的 JS 在收到
+  /// 「您已评价过本主题」之后，改调这个插件动作，回 `ok`，并把图标从 f_a 换回
+  /// f_b。原生 Discuz 只有 add / subtract，所以此前挨个试 cancel / del /
+  /// unrecommend / delete 全是空转，服务端一次也没真的删过。
+  String _pluginCancelUrl(int tid) =>
+      'plugin.php?id=comiis_app&comiis=re_recommend&tid=$tid&inajax=1';
+
   /// 取消点赞。
   ///
-  /// 回执文案靠不住：模板对不认识的动作也回 200，取不到提示文字时
-  /// [_inajaxMessage] 给的是空串，会被当成「取消成功」——上一版就是这样把
-  /// 失败当成了成功，界面灭了、服务端还赞着，重进又亮。这里改成看页面上的
-  /// 赞数：取消前后各拉一次，数字没降下来就是没生效。
+  /// 判定只看页面状态：这个模板取消之后「赞数」并不回落（实测取消前后都是 2），
+  /// 拿数字当证据会把成功判成失败；而它对不认识的动作也回 200，空回执会被当成
+  /// 成功。唯一靠得住的是重新拉一次帖子页，看图标还是不是 f_a。
   Future<void> _cancelRecommend({
     required int tid,
     required String formhash,
     required String cancelHref,
   }) async {
     final referer = _threadReferer(tid);
-    final before = await fetchLikeCount(tid);
     String? lastFailure;
 
     Future<bool> settle(Future<HttpResult> Function() send) async {
       try {
         final result = await send();
         _ensureOk(result);
-        final failure = recommendFailure(_inajaxMessage(result.body), up: true);
+        final message = _inajaxMessage(result.body);
+        final failure = recommendFailure(message, up: true);
         if (failure != null) {
           lastFailure = failure;
           return false;
         }
+        final liked = await fetchLikedState(tid);
+        // 页面拉不下来就只能信回执（ok / 空串都是站点认了这次请求）。
+        if (liked == null) return true;
+        if (!liked) return true;
+        lastFailure = '取消失败：站点未移除这条赞';
+        return false;
       } catch (error) {
         lastFailure = error is SiteException ? error.message : '取消请求未送达';
         return false;
       }
-      if (before == null) return true;
-      final after = await fetchLikeCount(tid);
-      // 页面拉不到就退回信回执；数字确实降了才算数。
-      if (after == null || after < before) return true;
-      lastFailure = '取消失败：站点未移除这条赞';
-      return false;
     }
 
-    // 页面自己给出的取消地址最可信，先打它。
+    // 模板自己的取消动作，先打它。
+    if (await settle(() => _http.get(_pluginCancelUrl(tid), referer: referer))) return;
+
+    // 页面自己给出的取消地址次之。
     if (_looksLikeCancelHref(cancelHref)) {
       if (await settle(() => _http.get(cancelHref, referer: referer))) return;
     }
@@ -947,11 +963,33 @@ class ForumRepository {
     throw SiteException(lastFailure ?? '取消失败，站点没有接受任何一种取消方式');
   }
 
-  /// 只取主题页上的「赞」数字。
+  /// 重新拉一次帖子页，读「已赞」标记；页面拉不下来返回 null。
   ///
-  /// 用来核对取消有没有真的生效：Discuz 没有「我赞没赞」的查询接口，各家模板
-  /// 的回执文案也不一样，页面上的数字是唯一硬证据。取不到时返回 null，调用方
-  /// 只能退回去信回执。
+  /// 取消和点赞都拿它当裁判：Discuz 没有「我赞没赞」的查询接口，模板的回执
+  /// 文案又各不相同，只有页面上的 f_a / f_b 是硬证据。
+  Future<bool?> fetchLikedState(int tid) async {
+    try {
+      final result = await _http.get(
+        'forum.php',
+        query: <String, String>{
+          'mod': 'viewthread',
+          'tid': '$tid',
+          'mobile': '2',
+          'page': '1',
+        },
+        referer: _threadReferer(tid),
+      );
+      if (result.statusCode != 200) return null;
+      return threadLiked(parser.parse(result.body));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 只取主题页上的「赞」数字，给界面显示用。
+  ///
+  /// 别拿它判断取消有没有生效：克米模板取消之后这个数字不会回落（实测请求前后
+  /// 都是 2），判断状态一律走 [fetchLikedState]。取不到时返回 null。
   Future<int?> fetchLikeCount(int tid) async {
     try {
       final result = await _http.get(

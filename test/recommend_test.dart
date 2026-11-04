@@ -119,4 +119,30 @@ void main() {
       expect(ForumRepository.threadLiked(html_parser.parse('<div>请登录</div>')), isFalse);
     });
   });
+
+    test('克米模板：点赞图标 f_a 就是已赞', () {
+      // 站点在用的手机模板，底栏那颗赞长这样。它既不是链接、也不叫
+      // comiis_recommend_a_color，取消后图标换成 f_b。之前只按旧两条找，
+      // 进帖子永远显示未赞，点一下发 add，服务端回「已评价过」，取消更没门。
+      const liked = '<li><a href="javascript:;" class="comiis_recommend_addkey comiis_recommend_new">'
+          '<i class="comiis_font comiis_recommend_color f_a">&#xe63b;</i>'
+          '<span class="bg_del f_f comiis_kmvnum comiis_recommend_num" id="comiis_recommend_num">2</span>'
+          '</a></li>';
+      expect(ForumRepository.threadLiked(html_parser.parse(liked)), isTrue);
+
+      const unliked = '<li><a href="javascript:;" class="comiis_recommend_addkey comiis_recommend_new">'
+          '<i class="comiis_font comiis_recommend_color f_b">&#xe63b;</i>'
+          '<span class="bg_del f_f comiis_kmvnum comiis_recommend_num" id="comiis_recommend_num">2</span>'
+          '</a></li>';
+      expect(ForumRepository.threadLiked(html_parser.parse(unliked)), isFalse);
+    });
+
+    test('收藏的 f_a 不会被当成点赞', () {
+      final doc = html_parser.parse(
+        '<a href="javascript:;" id="comiis_favorite_a">'
+        '<i class="comiis_favorite_a_color comiis_font f_a">&#xe617;</i></a>'
+        '<i class="comiis_font comiis_recommend_color f_b">&#xe63b;</i>',
+      );
+      expect(ForumRepository.threadLiked(doc), isFalse);
+    });
 }

@@ -529,30 +529,13 @@ class _ThreadPageState extends State<ThreadPage> {
     } catch (e) {
       final message = _message(e);
       if (mounted && !wasLiked && message.contains('已经赞过')) {
-        // 本地以为没赞、服务端说赞过：状态过期了。用户此刻点这一下就是想
-        // 取消，直接补发 cancel，而不是回一句「你已经赞过」让他再点一次。
-        try {
-          await _repo.recommend(
-            tid: widget.tid,
-            formhash: detail.formhash,
-            up: true,
-            cancel: true,
-            cancelHref: detail.likeHref,
-          );
-          if (!mounted) return;
-          setState(() {
-            _liked = false;
-            _likes = (_likes - 1).clamp(0, 1 << 31);
-          });
-          AppState.instance.markThreadLiked(widget.tid, false);
-          _toast('这条已赞过，已为你取消');
-        } catch (cancelError) {
-          if (!mounted) return;
-          // 站点没开放取消（后台可关），只能如实告诉用户当前是已赞状态。
-          setState(() => _liked = true);
-          AppState.instance.markThreadLiked(widget.tid, true);
-          _toast(_cancelFailed(cancelError));
-        }
+        // 本地以为没赞、服务端说赞过：状态过期了。这一下用户点的是空心图标，
+        // 想要的是「赞」，那就如实把图标点亮——以前读不到服务端状态，只能把
+        // 这一下当成「其实你想取消」代劳，现在 [ThreadDetail.liked] 能读准，
+        // 不需要再替用户做决定。真要取消，再点一次就走取消分支。
+        setState(() => _liked = true);
+        AppState.instance.markThreadLiked(widget.tid, true);
+        _toast('这条你已经赞过了');
         return;
       }
       if (mounted && wasLiked && message.contains('已经赞过')) {
@@ -572,16 +555,6 @@ class _ThreadPageState extends State<ThreadPage> {
       }
       _toast(message);
     }
-  }
-
-  /// 取消失败时的提示。站点不认取消动作时，回的往往是「你已经赞过」，
-  /// 直接弹给用户会像是「操作成功」，这里翻译成状态说明。
-  String _cancelFailed(Object error) {
-    final message = _message(error);
-    if (message.contains('已经赞过') || message.contains('已评价')) {
-      return '站点未接受取消请求，当前仍是已赞';
-    }
-    return message;
   }
 
   Future<void> _toggleDislike() async {
