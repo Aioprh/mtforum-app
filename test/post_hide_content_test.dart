@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mt_forum/state/app_state.dart';
 import 'package:mt_forum/ui/widgets/post_html_view.dart';
 
 /// 「本帖隐藏的内容」以前会跟着引用块一起被当纯文本渲染：一片灰字、链接
@@ -17,7 +18,9 @@ void main() {
     await tester.pump();
   }
 
-  final card = find.byKey(const ValueKey('post-hidden-content'));
+  // 一栋楼里可能同时有「未解锁提示」和「已解锁内容」两张卡，不能用固定 Key
+  // （同层重复 key 会直接让整楼渲染失败），拿锁图标当锚点正好一张卡一个。
+  final card = find.byIcon(Icons.lock_outline_rounded);
 
   bool hasLink(WidgetTester tester, String text) {
     var found = false;
@@ -84,5 +87,31 @@ void main() {
 
     expect(card, findsNothing);
     expect(find.textContaining('发表于'), findsOneWidget);
+  });
+
+  testWidgets('未解锁的「请回复」提示也套同一张卡片', (tester) async {
+    // 真站上的文案：<blockquote>某某，如果您要查看本帖隐藏内容请回复</blockquote>
+    // 以前落进引用卡，灰底灰字，跟正文没区别。
+    AppState.instance.readHintColor = const Color(0xFF7C3AED);
+    await pumpHtml(tester, '''
+      <blockquote class="blockquote">Aiopr·皇者，如果您要查看本帖隐藏内容请回复</blockquote>
+    ''');
+
+    expect(card, findsOneWidget);
+    final hint = tester.widget<Text>(find.text('Aiopr·皇者，如果您要查看本帖隐藏内容请回复'));
+    expect(hint.style?.color, const Color(0xFF7C3AED));
+    expect(hint.style?.fontWeight, FontWeight.w600);
+    expect(AppState.instance.readHintColor, const Color(0xFF7C3AED));
+    AppState.instance.readHintColor = null;
+  });
+
+  testWidgets('引用里讨论「隐藏内容」不算提示', (tester) async {
+    await pumpHtml(tester, '''
+      <blockquote class="blockquote">
+        <font><a href="space-uid-1.html">某人</a> 发表于 2026-11-2 17:59</font><br>
+        这条隐藏内容请回复之后才能看到吧
+      </blockquote>
+    ''');
+    expect(card, findsNothing);
   });
 }

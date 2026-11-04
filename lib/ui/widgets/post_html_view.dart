@@ -636,13 +636,22 @@ class _PostHtmlViewState extends State<PostHtmlView> {
     return RegExp(r'^[^。！？]{1,40}?发表于').hasMatch(head);
   }
 
-  /// 「本帖隐藏的内容」区块。
+  /// 「本帖隐藏的内容」区块，含已解锁和还没解锁两种形态。
   ///
   /// Discuz 的 [hide] 在各套模板里的外壳不一样（blockquote、div.quote、fieldset
-  /// 都见过），但正文一定以这句话开头。以前整块落进引用卡当纯文本渲染：字是
-  /// 灰的、里面的链接也点不了，长帖里一划就过去了。这里单独认出来，做成浅色底
-  /// 加色条的卡片，标题用提示色加粗，正文保留行内链接。
+  /// 都见过）：解锁后正文以「本帖隐藏的内容」开头，没解锁时整段是一句提示
+  /// （「某某，如果您要查看本帖隐藏内容请回复」）。以前两种都落进引用卡当纯文本
+  /// 渲染：灰字灰底、里面的链接也点不了，长帖里一划就过去。
   static final RegExp _hideContentLabel = RegExp(r'^本帖隐藏的内容');
+
+  /// 未解锁的提示句。抓的是「隐藏内容 + 请回复」这种搭配，而不是只要出现
+  /// 「隐藏内容」——回帖里正常讨论这四个字的句子不能被算成提示。
+  static final RegExp _hideHintPattern = RegExp(
+    r'(?:本帖)?隐藏内容?\s*[，,]?\s*(?:请回复|需要回复|回复后|回复才能)'
+    r'|如果您?要查看本帖隐藏内容'
+    r'|回复(?:后|才能)(?:查看|浏览|可见)',
+    caseSensitive: false,
+  );
 
   bool _isHiddenContentBlock(dom.Element element) {
     final tag = element.localName ?? '';
@@ -651,9 +660,12 @@ class _PostHtmlViewState extends State<PostHtmlView> {
     }
     final text = _cleanInline(element.text).trim();
     if (text.isEmpty || text.length > 800) return false;
-    if (!_hideContentLabel.hasMatch(text)) return false;
     // 引用别人的楼层里也会出现这句话，带「发表于」头的还是按引用走。
-    return !text.contains('发表于');
+    if (text.contains('发表于')) return false;
+    if (_hideContentLabel.hasMatch(text)) return true;
+    // 未解锁提示就是一整句话，长段落里夹带的不算。
+    if (text.length > 100) return false;
+    return _hideHintPattern.hasMatch(text);
   }
 
   /// 去掉开头那句「本帖隐藏的内容」：它已经提到卡片标题上，正文再留一遍就重复了。
@@ -675,13 +687,18 @@ class _PostHtmlViewState extends State<PostHtmlView> {
     return kept;
   }
 
+  /// 一栋楼里可能同时出现「未解锁提示」和「已解锁内容」，所以别给这张卡加
+  /// 固定 Key：同层出现两个相同 Key 会直接断言失败，整楼降级成纯文本。
   Widget _hiddenContentCard(BuildContext context, dom.Element element) {
     final accent = _hintColor(context);
+    final raw = _cleanInline(element.text).trim();
+    // 已经解锁：正文以「本帖隐藏的内容」开头，这句提到标题上，剩下的才是内容。
+    final unlocked = _hideContentLabel.hasMatch(raw);
+    final lock = Icon(Icons.lock_outline_rounded, size: 15, color: accent);
     return Container(
-      key: const ValueKey('post-hidden-content'),
       width: double.infinity,
       margin: const EdgeInsets.only(top: 2, bottom: 10),
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+      padding: EdgeInsets.fromLTRB(12, 10, 12, unlocked ? 4 : 12),
       decoration: BoxDecoration(
         color: accent.withValues(alpha: 0.07),
         borderRadius: BorderRadius.circular(10),
@@ -689,27 +706,50 @@ class _PostHtmlViewState extends State<PostHtmlView> {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(bottom: 6),
-            child: Row(
-              children: [
-                Icon(Icons.lock_outline_rounded, size: 15, color: accent),
-                const SizedBox(width: 5),
-                Text(
-                  '本帖隐藏的内容',
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    height: 1.4,
-                    fontWeight: FontWeight.w700,
-                    color: accent,
+        children: unlocked
+            ? [
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Row(
+                    children: [
+                      lock,
+                      const SizedBox(width: 5),
+                      Text(
+                        '本帖隐藏的内容',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          height: 1.4,
+                          fontWeight: FontWeight.w700,
+                          color: accent,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
+                ..._blocks(context, _withoutHideLabel(element.nodes)),
+              ]
+            : [
+                // 还没解锁：整句就是一条提示，拆成标题会把话截断，索性整句加粗，
+                // 前面挂把锁，跟已解锁的卡片是同一套颜色。
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(padding: const EdgeInsets.only(top: 2), child: lock),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        raw,
+                        style: TextStyle(
+                          fontSize: 14,
+                          height: 1.6,
+                          fontWeight: FontWeight.w600,
+                          color: accent,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ],
-            ),
-          ),
-          ..._blocks(context, _withoutHideLabel(element.nodes)),
-        ],
       ),
     );
   }
