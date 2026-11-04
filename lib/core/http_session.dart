@@ -101,6 +101,12 @@ class HttpSession {
 
   String get cookieHeader => _cookies.entries.map((e) => '${e.key}=${e.value}').join('; ');
 
+  /// Cookie 条数，给「复制 Cookie」页面显示用。
+  int get cookieCount => _cookies.length;
+
+  /// 按名字排序的 Cookie 名，只读快照。
+  List<String> get cookieNames => _cookies.keys.toList()..sort();
+
   String? cookie(String name) => _cookies[name];
 
   void clear() {

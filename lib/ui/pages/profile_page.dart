@@ -25,6 +25,7 @@ import 'mcp_page.dart';
 import 'offline_cache_page.dart';
 import 'user_page.dart';
 import '../navigation/app_routes.dart';
+import '../widgets/cookie_dialog.dart';
 import '../widgets/glass_dialog.dart';
 import '../widgets/read_palette_sheet.dart';
 
@@ -60,6 +61,14 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
     if (ok == true && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('登录成功')));
     }
+  }
+
+  Future<void> _copyCookie() async {
+    final copied = await showCookieDialog(context);
+    if (!mounted || !copied) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(const SnackBar(content: Text('Cookie 已复制到剪贴板')));
   }
 
   Future<void> _logout() async {
@@ -793,6 +802,7 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
                 if (state.isLoggedIn) ...[
                   const SizedBox(height: 14),
                   _menuGroup(scheme, [
+                    _MenuItem(Icons.key_outlined, '复制 Cookie', _copyCookie),
                     _MenuItem(Icons.logout_rounded, '退出登录', _logout, danger: true),
                   ]),
                 ],
