@@ -76,6 +76,42 @@ void main() {
     expect(body?.style?.fontWeight, isNot(FontWeight.w600));
   });
 
+  testWidgets('正文里随口提到「回复」不会被染成提示色', (tester) async {
+    // 站内真实回帖：请求把「回复」和链接分开配色，句子本身不是提示。
+    await tester.pumpWidget(host(
+      '<p>能申请添加一下颜色调节吗？，把需要回复和链接改个颜色吗，不好识别</p>'
+      '<p>且建议增加帖子隐藏内容中检测链接并自动标记为超文本链接</p>'
+      '<p>帖子里面，的隐藏贴，回复才能看，但是app渲染的背景都一样</p>',
+    ));
+    await tester.pumpAndSettle();
+
+    final hintColor = AppState.instance.readHintColorOf(
+      Theme.of(tester.element(find.byType(PostHtmlView))).colorScheme,
+    );
+    for (final line in <String>[
+      '能申请添加一下颜色调节吗？，把需要回复和链接改个颜色吗，不好识别',
+      '且建议增加帖子隐藏内容中检测链接并自动标记为超文本链接',
+      '帖子里面，的隐藏贴，回复才能看，但是app渲染的背景都一样',
+    ]) {
+      expect(spanOf(tester, line)?.style?.color, isNot(hintColor), reason: line);
+      expect(spanOf(tester, line)?.style?.fontWeight, isNot(FontWeight.w600), reason: line);
+    }
+  });
+
+  testWidgets('真正的提示照样染色：段首提示与句尾「回复可见」', (tester) async {
+    await tester.pumpWidget(host(
+      '<p>本帖隐藏内容需要回复才能查看</p>'
+      '<p>下载地址回复可见</p>',
+    ));
+    await tester.pumpAndSettle();
+
+    final hintColor = AppState.instance.readHintColorOf(
+      Theme.of(tester.element(find.byType(PostHtmlView))).colorScheme,
+    );
+    expect(spanOf(tester, '本帖隐藏内容需要回复才能查看')?.style?.color, hintColor);
+    expect(spanOf(tester, '下载地址回复可见')?.style?.color, hintColor);
+  });
+
   testWidgets('配色弹层改色会立刻生效', (tester) async {
     // 真机宽度下量一遍，色板换行或长文案挤爆都会在这里抛 overflow。
     tester.view.physicalSize = const Size(1170, 2532);

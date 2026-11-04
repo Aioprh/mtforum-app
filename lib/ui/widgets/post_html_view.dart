@@ -385,13 +385,21 @@ class _PostHtmlViewState extends State<PostHtmlView> {
   ///
   /// 论坛帖子动辄几十上百行，这类提示夹在正文里和普通文字一个颜色，长文
   /// 很容易划过去。命中就整行换成提示色并加粗，颜色由「阅读配色」决定。
+  ///
+  /// 匹配必须卡在段首：以前只要句子里出现「回复」「隐藏内容」就整段染色，
+  /// 于是「把需要回复和链接改个颜色吗」这种正常讨论、以及「且建议增加帖子
+  /// 隐藏内容中检测链接」这类建议，全被染成提示色，一屏花花绿绿反而更难看。
+  /// 现在只认「这段本身就是提示」——提示语在开头，或整句以「回复可见」收尾。
   static final RegExp _replyHintPattern = RegExp(
-    r'回复可见|需要回复|请回复|回复后|回复才能|回复方可|回复本帖|'
-    r'隐藏内容|隐藏部分|查看本帖隐藏|登录后查看|登录可见',
+    r'^(?:(?:本帖)?(?:隐藏的内容|隐藏内容|隐藏部分|以下内容|附件|内容)\s*[：:，,。]?\s*)?'
+    r'(?:需要)?(?:回复|登录)(?:后|才能|方可|即可|可见|浏览|查看)'
+    r'|^(?:请先)?回复本帖'
+    r'|^查看本帖隐藏'
+    r'|(?:回复可见|回复后可见|登录可见)$',
     caseSensitive: false,
   );
 
-  bool _isReplyHint(String line) => _replyHintPattern.hasMatch(line);
+  bool _isReplyHint(String line) => _replyHintPattern.hasMatch(line.trim());
 
   Widget _videoCard(BuildContext context, VideoLink video, {String? title}) {
     return VideoCard(
