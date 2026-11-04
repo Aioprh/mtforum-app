@@ -8,7 +8,7 @@
 import math
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
 
 ROOT = Path(__file__).resolve().parents[1]
 CANVAS = 1024
@@ -66,11 +66,11 @@ def vertical_gradient(top, bottom):
 
 def dither(image):
     """给底色加一点随机抖动，避免大面积渐变出现色带。"""
-    import numpy as np
-    arr = np.array(image).astype("int16")
-    noise = np.random.default_rng(7).integers(-2, 3, arr.shape[:2] + (3,))
-    arr[..., :3] = np.clip(arr[..., :3] + noise, 0, 255)
-    return Image.fromarray(arr.astype("uint8"), "RGBA")
+    noise = Image.effect_noise(image.size, 0.7).convert("RGB")
+    rgb = ImageChops.add(image.convert("RGB"), noise, 1.0, -128)
+    if image.mode == "RGBA":
+        rgb.putalpha(image.getchannel("A"))
+    return rgb
 
 
 def rounded_poly(pts, radii, steps=18):
