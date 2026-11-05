@@ -160,6 +160,34 @@ class ForumRepository {
 
   // ---------------------------------------------------------------- 详情
 
+  /// 楼层链接（`mod=redirect&goto=findpost&pid=x`）→ 主题编号。
+  ///
+  /// 这类链接只带楼号，Discuz 收到后会 302 到 `mod=viewthread&tid=x&page=n`，
+  /// 跟随后从最终地址里取 tid；站点若直接渲染、地址还停在 redirect 上，
+  /// 就退回页面里的 canonical / 楼层链接再认一次。
+  Future<int> resolveThreadIdByPid(int pid) async {
+    if (pid <= 0) return 0;
+    final result = await _http.get('forum.php', query: {
+      'mod': 'redirect',
+      'goto': 'findpost',
+      'pid': '$pid',
+      'mobile': '2',
+    });
+    final fromUri = _threadIdOf(result.uri.toString());
+    if (fromUri > 0) return fromUri;
+    final doc = parser.parse(result.body);
+    final canonical = doc.querySelector('link[rel="canonical"]')?.attributes['href'] ?? '';
+    final fromCanonical = _threadIdOf(canonical);
+    if (fromCanonical > 0) return fromCanonical;
+    return 0;
+  }
+
+  int _threadIdOf(String href) {
+    final match = RegExp(r'[?&](?:amp;)?(?:ptid|tid)=(\d+)').firstMatch(href) ??
+        RegExp(r'thread-(\d+)-').firstMatch(href);
+    return int.tryParse(match?.group(1) ?? '') ?? 0;
+  }
+
   Future<ThreadDetail> fetchThread(
     int tid, {
     int page = 1,
@@ -181,6 +209,20 @@ class ForumRepository {
     _ensureOk(result);
     final html = result.body;
     final doc = parser.parse(html);
+
+    // 带 pid 时服务端会 302 到该楼所在的那一页，返回的已经是第 N 页。
+    // 页码不纠正的话，「上一页 / 下一页」还按 1 算，翻一页就跳错；
+    // 首条回复也会被当成主题正文排版。
+    var currentPage = page;
+    if (pid != null && pid > 0) {
+      final fromUri = int.tryParse(result.uri.queryParameters['page'] ?? '') ?? 0;
+      final fromDoc = _currentPageOf(doc);
+      if (fromUri > 0) {
+        currentPage = fromUri;
+      } else if (fromDoc > 0) {
+        currentPage = fromDoc;
+      }
+    }
 
     final title = _clean(
       (doc.querySelector('title')?.text ?? '').replaceAll(RegExp(r'\s*-\s*MT论坛\s*$'), ''),
@@ -216,7 +258,7 @@ class ForumRepository {
     }
     // 只有主题第一页、正常正序且未筛选作者时，首条才是主题正文。
     // 每页解析时 floor 都从 1 重新计数，不能据此把后续页面第一条回复误标为正文。
-    final hasThreadOpener = page == 1 && !orderDesc && authorId == null;
+    final hasThreadOpener = currentPage == 1 && !orderDesc && authorId == null;
     for (var i = 0; i < posts.length; i++) {
       final isOpener = hasThreadOpener && i == 0;
       // 主题正文不参与置顶：主题被版内置顶时首楼也会带「置顶」字样，
@@ -300,13 +342,14 @@ class ForumRepository {
       posts: posts,
       formhash: formhash,
       hasMore: ThreadPaging.hasNextPage(
-        page: page,
+        page: currentPage,
         postCount: posts.length,
         total: total,
         totalKnown: totalKnown,
-        linksSayMore: _hasNextThreadPage(doc, page, tid),
+        linksSayMore: _hasNextThreadPage(doc, currentPage, tid),
         perPage: AppConfig.postsPerPage,
       ),
+      page: currentPage,
       isLoggedIn: loggedIn,
       likes: _intOf(doc.querySelector('.comiis_recommend_num')?.text ?? doc.querySelector('#recommendv_add')?.text),
       dislikes: _intOf(doc.querySelector('#recommendv_subtract')?.text),
@@ -322,6 +365,26 @@ class ForumRepository {
       kickVotes: int.tryParse(kickLabel?.group(1) ?? '') ?? 0,
       kickLimit: int.tryParse(kickLabel?.group(2) ?? '') ?? 5,
     );
+  }
+
+  /// 页面上标着「当前是第几页」的节点。
+  ///
+  /// 只在带 pid 请求时用来兜底：站点通常 302 到 `...&page=N`，地址里就有；
+  /// 少数模板直接渲染、地址仍只带 pid，这时只能读分页控件。
+  int _currentPageOf(Document doc) {
+    const selectors = <String>[
+      '.pg strong',
+      '.pg b',
+      '.pg .cur',
+      '.comiis_page strong',
+      '.comiis_page .cur',
+      '.pgb strong',
+    ];
+    for (final selector in selectors) {
+      final value = int.tryParse(_clean(doc.querySelector(selector)?.text ?? ''));
+      if (value != null && value > 0) return value;
+    }
+    return 0;
   }
 
   /// 优先读取 Discuz 页面实际分页链接；部分主题页的回复总数节点并不可靠，
@@ -1226,10 +1289,16 @@ class ForumRepository {
     // 那个页面上有一条「本帖最后由 xxx 于 … 编辑 …」的记录，若继续按「页面消息」
     // 解析，会因为它引用了正文里的「登录」「审核」之类的字眼被判成错误。
     if (_landedOnThread(response)) return '编辑成功';
-    final msg = _pageMessage(parser.parse(response.body));
-    if (msg != null && _looksLikeError(msg)) throw SiteException(msg);
-    return '编辑成功';
+    final msg = _pageMessage(parser.parse(response.body)) ?? '';
+    if (_looksLikeError(msg)) throw SiteException(msg);
+    // 还停在编辑页又没有明确的成功提示，就是没提交上去。早先这里直接
+    // 返回「编辑成功」，服务端把表单退回来（凭证过期、被拦截）时用户会
+    // 以为已经改好，回头一看正文根本没变。
+    if (_editAccepted.hasMatch(msg)) return '编辑成功';
+    throw SiteException(msg.isNotEmpty ? msg : '保存未生效，请稍后重试或到网页端修改');
   }
+
+  static final RegExp _editAccepted = RegExp(r'(编辑成功|保存成功|修改成功)');
 
   /// 请求最终落在帖子页（`mod=viewthread`），说明提交被服务端接受了。
   bool _landedOnThread(HttpResult response) {
@@ -1259,12 +1328,56 @@ class ForumRepository {
       form: request.form,
       referer: _threadReferer(tid),
     );
-    // 删成功后服务端 302 回帖子页，页面里随手一条「感谢分享」之类的站点提示
-    // 并不是结果；只有明确的拒绝语才算失败，删没删由调用方重载核对。
-    final message = _pageMessage(parser.parse(response.body)) ?? '';
-    if (_deleteRejected.hasMatch(message)) throw SiteException(message);
+    final message = _pageMessage(parser.parse(response.body));
+    final failure = deleteFailure(
+      finalUrl: response.uri.toString(),
+      body: response.body,
+      pid: pid,
+      message: message,
+    );
+    if (failure != null) throw SiteException(failure);
     return '删除成功';
   }
+
+  /// 删除到底成没成。
+  ///
+  /// 光看提示语不够：站点常在帖子页挂一条「感谢分享」之类的公告，
+  /// 早先只要没读到拒绝语就当成功，删不掉也会提示成功；
+  /// 反过来只看「刷新后这楼还在」又会被一次刷新失败冤枉。
+  /// 这里按三个硬信号判断：
+  /// 1. 提示语里出现拒绝字样；
+  /// 2. 地址还停在编辑页（`action=edit`）——服务端把表单原样退回来了；
+  /// 3. 落在帖子页但这一楼的节点还在。
+  @visibleForTesting
+  static String? deleteFailure({
+    required String finalUrl,
+    required String body,
+    required int pid,
+    String? message,
+  }) {
+    final text = (message ?? '').trim();
+    if (text.isNotEmpty && _deleteRejected.hasMatch(text)) return text;
+    const fallback = '删除未生效，请稍后重试或到网页端删除';
+    if (finalUrl.contains('action=edit')) {
+      return text.isNotEmpty ? text : fallback;
+    }
+    if (pid > 0 && _mentionsPost(body, pid)) {
+      return text.isNotEmpty ? text : fallback;
+    }
+    return null;
+  }
+
+  /// 页面里还能不能找到这一楼。
+  ///
+  /// 只认楼层容器的 id，不认 `pid=` 参数：别的楼层引用它时也会出现 pid，
+  /// 那样删成功反而会被判成失败。
+  static bool _mentionsPost(String html, int pid) =>
+      html.contains('id="post_$pid"') ||
+      html.contains("id='post_$pid'") ||
+      html.contains('id="pid$pid"') ||
+      html.contains("id='pid$pid'") ||
+      html.contains('id="postmessage_$pid"') ||
+      html.contains("id='postmessage_$pid'");
 
   static final RegExp _deleteRejected =
       RegExp(r'(不允许|没有权限|无权|抱歉|失败|无效|来路不正确|审核|不存在|已关闭|不能删除)');

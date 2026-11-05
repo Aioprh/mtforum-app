@@ -31,7 +31,7 @@ import '../widgets/glass_dialog.dart';
 
 /// 帖子详情：楼层流 + 分页加载 + 点赞 / 收藏 / 回复 / 楼中楼。
 class ThreadPage extends StatefulWidget {
-  const ThreadPage({super.key, required this.tid, this.title = ''})
+  const ThreadPage({super.key, required this.tid, this.title = '', this.initialPid = 0})
       : previewDetail = null,
         previewPosts = null;
 
@@ -46,11 +46,18 @@ class ThreadPage extends StatefulWidget {
     required List<ForumPost> posts,
   })  : tid = detail.tid,
         title = '',
+        initialPid = 0,
         previewDetail = detail,
         previewPosts = posts;
 
   final int tid;
   final String title;
+
+  /// 从楼层链接（`mod=redirect&goto=findpost`）进来时要定位的楼层。
+  ///
+  /// 服务端收到 pid 会直接返回该楼所在的那一页，所以只要把 pid 带进首次
+  /// 请求就够了；没有 pid（从列表、搜索进来）时是 0。
+  final int initialPid;
   final ThreadDetail? previewDetail;
   final List<ForumPost>? previewPosts;
 
@@ -97,6 +104,9 @@ class _ThreadPageState extends State<ThreadPage> {
   String? _error;
   int _page = 1;
   bool _hasMore = false;
+
+  /// 楼层定位只做一次：之后「只看楼主」重载不该把用户再拽回那一楼。
+  bool _initialPidHandled = false;
 
   /// 当前这一页里已经显示过的楼层 pid，用来识别「站点把最后一页又发了一遍」。
   final Set<int> _shownPids = <int>{};
@@ -150,6 +160,8 @@ class _ThreadPageState extends State<ThreadPage> {
     try {
       final detail = await _repo.fetchThread(
         widget.tid,
+        // 带 pid 时服务端会 302 到该楼所在页，page 参数让位给 pid。
+        pid: widget.initialPid > 0 ? widget.initialPid : null,
         authorId: _onlyOp ? _opUid : null,
         orderDesc: _orderDesc,
       );
@@ -160,7 +172,8 @@ class _ThreadPageState extends State<ThreadPage> {
         _posts
           ..clear()
           ..addAll(ThreadPaging.withoutPinnedDuplicates(detail.posts, _pinnedPids));
-        _page = 1;
+        // 按 pid 进来时这一份其实是第 N 页，翻页要从 N 继续。
+        _page = detail.page;
         _hasMore = detail.hasMore;
         _likes = detail.likes;
         _dislikes = detail.dislikes;
@@ -172,6 +185,7 @@ class _ThreadPageState extends State<ThreadPage> {
         _loading = false;
       });
       _recordHistory(detail);
+      _locateInitialPid(detail);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -185,6 +199,29 @@ class _ThreadPageState extends State<ThreadPage> {
     final uid = _detail?.uid ?? 0;
     if (uid > 0) return uid;
     return _posts.isNotEmpty ? _posts.first.uid : 0;
+  }
+
+  /// 从楼层链接进来时滚到目标楼。
+  ///
+  /// 列表是懒构建的：目标楼不在首屏时根本拿不到它的 context，这时就停在
+  /// 页顶，只提示一句「已定位到第 N 页」——至少翻页起点是对的。
+  Future<void> _locateInitialPid(ThreadDetail detail) async {
+    final pid = widget.initialPid;
+    if (_initialPidHandled || pid <= 0) return;
+    _initialPidHandled = true;
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) return;
+    final target = _floorKeys[pid]?.currentContext;
+    if (target != null && target.mounted) {
+      await Scrollable.ensureVisible(
+        target,
+        alignment: 0.1,
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOut,
+      );
+      return;
+    }
+    if (detail.page > 1) _toast('已定位到第 ${detail.page} 页');
   }
 
   Future<void> _setOnlyOp(bool value) async {
@@ -208,11 +245,11 @@ class _ThreadPageState extends State<ThreadPage> {
   Future<void> _loadPrevious() => _loadPage(_page - 1);
 
   /// 刷新当前页但不把用户甩回第一页顶部；回复、编辑、删除和下拉刷新都用它。
-  Future<void> _refreshKeepPosition() async {
+  Future<void> _refreshKeepPosition({bool quiet = false}) async {
     final page = _page;
     final offset = _scroll.hasClients ? _scroll.offset : 0.0;
     // 统一走分页加载：page 1 也用它，避免 _load() 把整页切换成骨架屏而丢掉位置。
-    await _loadPage(page, jumpToTop: false);
+    await _loadPage(page, jumpToTop: false, quiet: quiet);
     await WidgetsBinding.instance.endOfFrame;
     if (!mounted || !_scroll.hasClients) return;
     _scroll.jumpTo(offset.clamp(0.0, _scroll.position.maxScrollExtent));
@@ -241,7 +278,7 @@ class _ThreadPageState extends State<ThreadPage> {
 
   /// 显式分页：每页显示站点返回的 10 条楼层，切页时替换当前列表，
   /// 不再滚动到底自动追加，避免不同页的楼层和评论混在一起。
-  Future<void> _loadPage(int page, {bool jumpToTop = true}) async {
+  Future<void> _loadPage(int page, {bool jumpToTop = true, bool quiet = false}) async {
     if (_loadingMore || page < 1 || (page > _page && !_hasMore)) return;
     setState(() => _loadingMore = true);
     try {
@@ -257,12 +294,14 @@ class _ThreadPageState extends State<ThreadPage> {
       // 分页链接一旦解析偏了，这里就会拿到和上一页一模一样的楼：
       // 页码跳到 2、内容纹丝不动，点多少次都到不了底。按 pid 认重，
       // 认出来就停在当前页并收掉「下一页」。
-      if (page > 1 && ThreadPaging.isRepeatedPage(_shownPids, detail.posts)) {
+      // 只在往下一页翻时判重：刷新当前页（编辑、删除后用）楼号集合本来就
+      // 一样，判重会把刚保存的新正文丢掉，看起来就像「改完没生效」。
+      if (page > _page && ThreadPaging.isRepeatedPage(_shownPids, detail.posts)) {
         setState(() {
           _loadingMore = false;
           _hasMore = false;
         });
-        _toast('已经到底了');
+        if (!quiet) _toast('已经到底了');
         return;
       }
       // 第 1 页顶部那条置顶只是站点的额外副本，它原本所在的页
@@ -289,7 +328,7 @@ class _ThreadPageState extends State<ThreadPage> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _loadingMore = false);
-      _toast(_message(e));
+      if (!quiet) _toast(_message(e));
     }
   }
 
@@ -795,9 +834,12 @@ class _ThreadPageState extends State<ThreadPage> {
   }
 
   void _copyFloor(ForumPost post) {
+    // 带上 ptid：落地页自己也知道属于哪个主题，在 App 里点开能直接进原生
+    // 帖子页，不用再为「这条楼号属于谁」多发一次请求。
     final url = AppConfig.uri('forum.php', {
       'mod': 'redirect',
       'goto': 'findpost',
+      'ptid': '${widget.tid}',
       'pid': '${post.pid}',
     }).toString();
     Clipboard.setData(ClipboardData(text: url));
@@ -940,17 +982,14 @@ class _ThreadPageState extends State<ThreadPage> {
         formhash: detail.formhash,
         page: _page,
       );
-      if (post.isOp && mounted) {
+      if (!mounted) return;
+      if (post.isOp) {
         Navigator.of(context).maybePop();
         return;
       }
-      await _refreshKeepPosition();
-      if (!mounted) return;
-      // 提示语不能当结果：楼层还在就说明没删掉。
-      if (_posts.any((item) => item.pid == post.pid)) {
-        _toast('删除未生效，请稍后重试或到网页端删除');
-        return;
-      }
+      // 服务端已经确认删掉了，本地直接跟着移除。刷新只为补齐删楼后的
+      // 楼号位移，失败也不能把结论翻回「未生效」——早先按刷新结果判定，
+      // 一次刷新出错就会对着已删除的楼层报错。
       _floorKeys.remove(post.pid);
       setState(() {
         _posts.removeWhere((item) => item.pid == post.pid);
@@ -962,7 +1001,10 @@ class _ThreadPageState extends State<ThreadPage> {
       // 删掉的是本页最后一条时，当前页已经空了，退回上一页。
       if (_posts.isEmpty && _page > 1) {
         await _loadPage(_page - 1);
+      } else {
+        await _refreshKeepPosition(quiet: true);
       }
+      if (!mounted) return;
       _toast(message);
     } catch (e) {
       _toast(_message(e));

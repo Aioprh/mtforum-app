@@ -70,6 +70,11 @@ class ThreadPaging {
       if (!shownPids.contains(post.pid)) return false;
       counted++;
     }
-    return counted > 0;
+    if (counted == 0) return false;
+    // 少了一条就不是「同一页又回来」：删掉一层之后本页会短一截，
+    // 内容是真的变了。早先只要「这一页的楼都见过」就判重复，删完楼
+    // 刷新时新页被当成旧页丢掉，列表里还留着刚删掉的那条，
+    // 上层据此报「删除未生效」——服务端其实早删干净了。
+    return counted == shownPids.length;
   }
 }

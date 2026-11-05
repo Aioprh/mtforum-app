@@ -147,5 +147,15 @@ void main() {
     test('pid 取不到时不下结论，宁可多翻一次', () {
       expect(ThreadPaging.isRepeatedPage({1, 2}, [post(0)]), isFalse);
     });
+
+    test('删掉一层后本页少一条：不算重复，得让新内容进来', () {
+      // 线上现象：服务端已经删成功，App 却提示「删除未生效」。
+      // 根因是这一页剩下的楼全在旧集合里，被判成「同一页又回来了」，
+      // 新页被丢掉，列表里还留着刚删掉的那条。
+      expect(
+        ThreadPaging.isRepeatedPage({1, 2, 3}, [post(1), post(2)]),
+        isFalse,
+      );
+    });
   });
 }

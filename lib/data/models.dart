@@ -358,6 +358,7 @@ class ThreadDetail {
     required this.posts,
     required this.formhash,
     required this.hasMore,
+    this.page = 1,
     required this.isLoggedIn,
     this.likes = 0,
     this.dislikes = 0,
@@ -385,6 +386,13 @@ class ThreadDetail {
   final List<ForumPost> posts;
   final String formhash;
   final bool hasMore;
+
+  /// 这一份数据其实是第几页。
+  ///
+  /// 平时就等于请求的页码；按 pid 定位楼层时服务端会 302 到该楼所在页，
+  /// 请求写的 `page=1` 已经不作数，翻页得从这个真实页码继续。
+  final int page;
+
   final bool isLoggedIn;
   final int likes;
   final int dislikes;

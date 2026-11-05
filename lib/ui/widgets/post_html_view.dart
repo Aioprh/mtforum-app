@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:html/parser.dart' as parser;
 
 import '../../core/app_config.dart';
+import '../../core/forum_link.dart';
 import '../../core/http_session.dart';
 import '../../core/video_link.dart';
 import '../../state/app_state.dart';
@@ -1260,49 +1261,57 @@ class _PostHtmlViewState extends State<PostHtmlView> {
     return spans;
   }
 
-  void _openLink(BuildContext context, String url) {
+  Future<void> _openLink(BuildContext context, String url) async {
     // 视频链接统一进应用内播放，不再丢给系统浏览器。
     final video = parseVideoLink(url);
     if (video != null) {
       _openVideo(context, video);
       return;
     }
-    final thread = RegExp(r'thread-(\d+)-1-1\.html').firstMatch(url);
-    if (thread != null) {
-      Navigator.of(context).push(appRoute(builder: (_) => ThreadPage(tid: int.parse(thread.group(1)!))));
-      return;
-    }
-    final board = RegExp(r'forum-(\d+)-1\.html').firstMatch(url);
-    if (board != null) {
+
+    final target = ForumLink.parse(url);
+    if (target is ThreadLink) {
+      // 楼层链接常常只带 pid，得先问服务端它属于哪个主题。
+      final tid = target.needsLookup ? await _lookupTid(target.pid) : target.tid;
+      if (tid > 0) {
+        if (!context.mounted) return;
+        Navigator.of(context).push(appRoute(
+          builder: (_) => ThreadPage(tid: tid, initialPid: target.pid),
+        ));
+        return;
+      }
+      // 楼层被删、链接过期时认不出主题号，退回内置浏览器看站点提示。
+    } else if (target is BoardLink) {
       Navigator.of(context).push(appRoute(
-        builder: (_) => BoardThreadsPage(fid: int.parse(board.group(1)!), name: '版块'),
+        builder: (_) => BoardThreadsPage(fid: target.fid, name: '版块'),
       ));
       return;
+    } else if (target is UserLink) {
+      _openUser(context, target.uid, '');
+      return;
     }
+
     final uri = Uri.tryParse(url);
     if (uri != null && AppConfig.isForumHost(uri.host)) {
       final mod = uri.queryParameters['mod'];
-      // 楼层里的「@某人」、引用头的作者名都是空间链接，直接进原生主页。
-      final spaceUid = _uidFromHref(url);
-      if (spaceUid > 0 && (mod == 'space' || url.contains('space-uid-'))) {
-        _openUser(context, spaceUid, '');
-        return;
-      }
       if (mod == 'post' && uri.queryParameters['action'] == 'reply') {
         widget.onReply?.call();
         return;
       }
-      if (mod == 'forumdisplay') {
-        final fid = int.tryParse(uri.queryParameters['fid'] ?? '');
-        if (fid != null) {
-          Navigator.of(context).push(appRoute(
-            builder: (_) => BoardThreadsPage(fid: fid, name: '版块'),
-          ));
-          return;
-        }
-      }
     }
+    if (!context.mounted) return;
     Navigator.of(context).push(appRoute(builder: (_) => InternalBrowserPage(url: url)));
+  }
+
+  /// 只有 pid 的楼层链接要先问服务端这楼属于哪个主题。失败就返回 0，
+  /// 由调用方回退到内置浏览器。
+  Future<int> _lookupTid(int pid) async {
+    if (pid <= 0) return 0;
+    try {
+      return await AppState.instance.repo.resolveThreadIdByPid(pid);
+    } catch (_) {
+      return 0;
+    }
   }
 
   Map<String, String> _headers() {
