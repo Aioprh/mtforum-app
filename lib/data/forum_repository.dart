@@ -1928,9 +1928,36 @@ class ForumRepository {
         'message': message,
       },
     );
-    final msg = _pageMessage(parser.parse(response.body));
-    if (msg != null && _looksLikeError(msg)) throw SiteException(msg);
+    final failure = sendPmFailure(response.body);
+    if (failure != null) throw SiteException(failure);
     return '私信已发送';
+  }
+
+  /// 私信到底发出去没有。
+  ///
+  /// `inajax=1` 的响应是一段 `succeedhandle_pm('…')` / `errorhandle_pm('…')`
+  /// 脚本，页面上那些提示容器一个都匹配不上。早先拿 `_pageMessage` 去读，
+  /// 读到的永远是 null，于是无论发没发出去都提示「已发送」。
+  @visibleForTesting
+  static String? sendPmFailure(String body) {
+    final failed = body.contains('errorhandle') ||
+        RegExp(r'(发送失败|抱歉|不能|无权|禁止|超出|太频繁|非法)').hasMatch(_inajaxText(body));
+    if (!failed) return null;
+    final message = _inajaxText(body);
+    return message.isEmpty ? '私信发送失败，请稍后重试' : message;
+  }
+
+  static String _inajaxText(String body) {
+    final cdata = RegExp(r'<!\[CDATA\[(.*?)\]\]>', dotAll: true).firstMatch(body)?.group(1) ?? body;
+    final call = RegExp(r'''(?:succeedhandle|errorhandle)_\w+\s*\((.{0,300}?)\)\s*;''', dotAll: true)
+        .firstMatch(cdata);
+    if (call != null) {
+      final quoted = RegExp(r'''['"]([^'"]*)['"]''').allMatches(call.group(1)!).map((m) => m.group(1) ?? '');
+      for (final text in quoted) {
+        if (text.trim().isNotEmpty) return _clean(text);
+      }
+    }
+    return _clean(cdata.replaceAll(RegExp(r'<[^>]+>'), ' '));
   }
 
   /// 他人主页资料。`hash` 为关注操作所需的 formhash。
