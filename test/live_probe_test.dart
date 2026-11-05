@@ -4,7 +4,6 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mt_forum/core/app_config.dart';
 import 'package:mt_forum/core/http_session.dart';
-import 'package:mt_forum/core/upload_result.dart';
 import 'package:mt_forum/data/forum_repository.dart';
 
 const String _cookieRaw = String.fromEnvironment('MT_COOKIE');
@@ -23,14 +22,37 @@ void _loadCookies() {
   }
 }
 
+Future<String> _editHtml() async {
+  final r = await HttpSession.instance.get('forum.php', query: {
+    'mod': 'post',
+    'action': 'edit',
+    'fid': '$_fid',
+    'tid': '$_tid',
+    'pid': '$_pid',
+    'mobile': 'no',
+  });
+  return r.body;
+}
+
+Set<int> _aids(String html) {
+  final out = <int>{};
+  for (final p in [r'imageattach(\d+)', r'attachname(\d+)', r'id="attach_(\d+)"']) {
+    for (final m in RegExp(p).allMatches(html)) {
+      final v = int.tryParse(m.group(1)!);
+      if (v != null) out.add(v);
+    }
+  }
+  return out;
+}
+
 void main() {
-  test('raw upload response', () async {
+  test('upload then locate aid from page', () async {
     _loadCookies();
     final repo = ForumRepository.instance;
+
     final draft = await repo.fetchEditDraft(tid: _tid, pid: _pid, fid: _fid);
-    for (final a in draft.attachments) {
-      print('ATT ${a.aid} img=${a.isImage} del=${a.deletable} name=${a.name}');
-    }
+    final before = _aids(await _editHtml());
+    print('AIDS_BEFORE $before');
 
     final png = base64Decode(
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
@@ -44,7 +66,6 @@ void main() {
       'mobile': 'no',
     }).toString();
     final name = 'probe_del_${DateTime.now().millisecondsSinceEpoch}.png';
-
     final res = await HttpSession.instance.postFile(
       'misc.php',
       query: {
@@ -73,10 +94,19 @@ void main() {
       },
       referer: referer,
     );
-    print('RAW status=${res.statusCode} body=${res.body.replaceAll('\n', ' ').replaceAll('\r', ' ')}');
+    print('RAW ${res.body.replaceAll('\n', ' ').replaceAll('\r', ' ')}');
 
-    final parsed = parseUploadResult(res.body);
-    print('PARSED aid=${parsed?.aid} err=${parsed?.errorCode} file=${parsed?.attachment} name=${parsed?.filename}');
+    final html = await _editHtml();
+    final after = _aids(html);
+    print('AIDS_AFTER $after');
+    print('NEW_AIDS ${after.difference(before)}');
+
+    final idx = html.indexOf('unusedattach');
+    if (idx > 0) {
+      final end = idx + 1200 > html.length ? html.length : idx + 1200;
+      print('UNUSED ${html.substring(idx, end).replaceAll('\n', ' ')}');
+    }
+    print('DRAFT_ATT ${draft.attachments.map((a) => a.aid).toList()}');
     exit(0);
   });
 }
