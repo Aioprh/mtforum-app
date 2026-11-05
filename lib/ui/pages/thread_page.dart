@@ -641,7 +641,9 @@ class _ThreadPageState extends State<ThreadPage> {
   }
 
   Future<void> _share() async {
-    final title = widget.title.isEmpty ? _detail?.title ?? '帖子' : widget.title;
+    // 标题可能刚被编辑过，详情里的比列表页带进来的新。
+    final detailTitle = _detail?.title ?? '';
+    final title = detailTitle.isNotEmpty ? detailTitle : (widget.title.isEmpty ? '帖子' : widget.title);
     final text = '$title\n$_link';
     final shared = await NativeBridge.shareText(text);
     if (shared) return;
@@ -957,8 +959,10 @@ class _ThreadPageState extends State<ThreadPage> {
         ),
       ),
     );
-    if (result == true && mounted) {
-      _toast('已保存修改');
+    if (result is String && result.isNotEmpty && mounted) {
+      // 用服务端给的原话：需要审核的板块会返回「等待审核通过」，
+      // 统一说「已保存修改」会让人以为马上就生效。
+      _toast(result == '编辑成功' ? '已保存修改' : result);
       await _refreshKeepPosition();
     }
   }
@@ -970,7 +974,7 @@ class _ThreadPageState extends State<ThreadPage> {
       context: context,
       builder: (dialogContext) => GlassDialog(
         title: const Text('删除确认'),
-        content: Text('确定删除${post.isOp ? '整篇主题' : '第 ${post.floor} 楼的回复'}吗？删除后不可恢复。'),
+        content: Text('确定删除${post.isOp ? '整篇主题' : (post.floorLabel.isEmpty ? '这条回复' : post.floorLabel)}吗？删除后不可恢复。'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('取消')),
           FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('删除')),
@@ -1731,7 +1735,8 @@ class _ThreadPageState extends State<ThreadPage> {
           GlassMenuItem(value: 'close', label: '关闭主题', icon: Icons.lock_outline_rounded),
           GlassMenuItem(value: 'warn', label: '警告', icon: Icons.gavel_rounded),
         ],
-        if (_isMine(post)) ...const [
+        // 版主在网页端同样能改、能删别人的楼层，这里一并放开。
+        if (_isMine(post) || _isModerator) ...const [
           GlassMenuItem(value: 'edit', label: '编辑', icon: Icons.edit_outlined),
           GlassMenuItem(value: 'delete', label: '删除', icon: Icons.delete_outline_rounded, danger: true),
         ],
@@ -2186,7 +2191,20 @@ class _EditAttachment {
 class _EditPostPageState extends State<_EditPostPage> {
   late final TextEditingController _subject = TextEditingController(text: widget.subject);
   late final TextEditingController _message = TextEditingController(text: widget.message);
+
+  /// 打开页面时的文本。判断「用户动没动过」要拿它比，不能拿草稿文本比：
+  /// 列表页转出来的纯文本和服务端原文的空白本来就不一样，一比对就会
+  /// 误判成「用户已修改」，草稿回填不了，保存时整篇 BBCode 被纯文本盖掉。
+  late final String _initialMessage = widget.message;
+  late final String _initialSubject = widget.subject;
+
   late String _formhash = widget.formhash;
+
+  /// 回复没有标题框，但编辑页表单里可能带着 `Re: …`，保存时要原样交回去。
+  String _draftSubject = '';
+
+  /// 编辑页原表单的其它字段（分类、标签、售价、投票、已有附件描述）。
+  Map<String, String> _extraForm = const <String, String>{};
 
   /// 编辑页自己的上传凭证。没有时才回落到发帖页去借。
   String _uploadHash = '';
@@ -2229,6 +2247,7 @@ class _EditPostPageState extends State<_EditPostPage> {
       setState(() {
         _loadingDraft = true;
         _draftError = null;
+        _error = null;
       });
     }
     try {
@@ -2242,14 +2261,17 @@ class _EditPostPageState extends State<_EditPostPage> {
         if (draft.formhash.isNotEmpty) _formhash = draft.formhash;
         _uploadHash = draft.uploadHash;
         _uid = draft.uid;
-        // 用户在加载期间已经动过输入框就不再覆盖，免得把正在写的内容冲掉。
-        if (draft.message.trim().isNotEmpty && _message.text.trim() == widget.message.trim()) {
+        _extraForm = draft.extraForm;
+        _draftSubject = draft.subject;
+        // 加载期间输入框是只读的，这里正常都会覆盖；仍留一道判断是为了
+        // 防止将来放开只读后把用户刚敲的内容冲掉。
+        if (_message.text == _initialMessage) {
           _message.text = stripEditNote(draft.message);
+          _message.selection = TextSelection.collapsed(offset: _message.text.length);
         }
-        if (widget.isOp &&
-            draft.subject.trim().isNotEmpty &&
-            _subject.text.trim() == widget.subject.trim()) {
+        if (widget.isOp && _subject.text == _initialSubject && draft.subject.isNotEmpty) {
           _subject.text = draft.subject;
+          _subject.selection = TextSelection.collapsed(offset: _subject.text.length);
         }
         _loadingDraft = false;
       });
@@ -2315,8 +2337,14 @@ class _EditPostPageState extends State<_EditPostPage> {
     if (_uploadHash.isNotEmpty && _uid > 0) {
       return (hash: _uploadHash, uid: _uid);
     }
-    final info = await AppState.instance.repo.fetchComposeInfo(widget.fid);
-    return (hash: info.uploadHash, uid: info.uid);
+    try {
+      final info = await AppState.instance.repo.fetchComposeInfo(widget.fid);
+      return (hash: info.uploadHash, uid: info.uid);
+    } on SiteException catch (e) {
+      // 兜底页是「发新主题」，在没有发主题权限的板块会直接报「请先登录」，
+      // 那句话放在编辑图片的语境里只会让人误判。
+      throw SiteException('没取到编辑页的上传凭证，退出去重进再试（${e.message}）');
+    }
   }
 
   Future<void> _uploadFiles({required bool image}) async {
@@ -2337,7 +2365,7 @@ class _EditPostPageState extends State<_EditPostPage> {
         for (final file in picked) {
           if (!mounted) return;
           final item = _EditAttachment(name: file.name, image: true);
-          setState(() { _attachments.add(item); _uploading = true; _error = null; });
+          setState(() { item.uploading = true; _attachments.add(item); _uploading = true; _error = null; });
           try {
             final aid = await AppState.instance.repo.uploadAttachment(
               bytes: await file.readAsBytes(), filename: file.name,
@@ -2353,6 +2381,7 @@ class _EditPostPageState extends State<_EditPostPage> {
             if (!mounted) return;
             item.error = e is SiteException ? e.message : '图片上传失败';
             setState(() => _error = item.error);
+            ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(item.error!)));
           } finally {
             if (mounted) setState(() { item.uploading = false; _uploading = false; });
           }
@@ -2365,7 +2394,7 @@ class _EditPostPageState extends State<_EditPostPage> {
         for (final file in files) {
           if (!mounted) return;
           final item = _EditAttachment(name: file.name, image: false);
-          setState(() { _attachments.add(item); _uploading = true; _error = null; });
+          setState(() { item.uploading = true; _attachments.add(item); _uploading = true; _error = null; });
           try {
             final bytes = await file.readAsBytes();
             final aid = await AppState.instance.repo.uploadAttachment(
@@ -2382,13 +2411,17 @@ class _EditPostPageState extends State<_EditPostPage> {
             if (!mounted) return;
             item.error = e is SiteException ? e.message : '附件上传失败';
             setState(() => _error = item.error);
+            ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(item.error!)));
           } finally {
             if (mounted) setState(() { item.uploading = false; _uploading = false; });
           }
         }
       }
     } catch (e) {
-      if (mounted) setState(() => _error = e is SiteException ? e.message : '上传失败，请重试');
+      if (!mounted) return;
+      final message = e is SiteException ? e.message : '上传失败，请重试';
+      setState(() => _error = message);
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(message)));
     }
   }
 
@@ -2444,7 +2477,14 @@ class _EditPostPageState extends State<_EditPostPage> {
   }
 
   /// 正文里引用到的图片和附件，按出现顺序去重。
-  List<BbcodeMediaRef> _bodyImages() => parseBbcodeMedia(_message.text);
+  List<BbcodeMediaRef> _bodyImages() {
+    final text = _message.text;
+    // 纯文字正文占大多数，先按子串短路，省掉每次按键跑三遍正则。
+    if (!text.contains('[attach') && !text.contains('[img')) {
+      return const <BbcodeMediaRef>[];
+    }
+    return parseBbcodeMedia(text);
+  }
 
   void _previewBodyImage(BbcodeMediaRef target) {
     final images = _bodyImages().where((item) => item.image).toList();
@@ -2462,7 +2502,7 @@ class _EditPostPageState extends State<_EditPostPage> {
 
   /// 删掉缩略图时把正文里对应的标记一起摘掉，否则保存后图还在。
   void _removeBodyImage(BbcodeMediaRef target) {
-    final text = _message.text.replaceFirst(target.tag, '').trim();
+    final text = _message.text.replaceAll(target.tag, '').trim();
     _message.value = TextEditingValue(
       text: text,
       selection: TextSelection.collapsed(offset: text.length),
@@ -2473,8 +2513,10 @@ class _EditPostPageState extends State<_EditPostPage> {
   }
 
   Future<void> _save() async {
-    // 只有主题正文有标题；回帖保持空标题，别把 `Re: 主题` 写进楼层。
-    final subject = widget.isOp ? _subject.text.trim() : '';
+    if (_saving || _uploading || _loadingDraft || _draftError != null) return;
+    // 主题用标题框；回复没有标题框，但要把编辑页表单里的原标题原样交回去，
+    // 交空串在部分模板上会把楼层标题清掉。
+    final subject = widget.isOp ? _subject.text.trim() : _draftSubject;
     final message = _message.text.trim();
     if (widget.isOp && subject.isEmpty) {
       setState(() => _error = '标题不能为空');
@@ -2490,23 +2532,32 @@ class _EditPostPageState extends State<_EditPostPage> {
       _error = null;
     });
     try {
-      await AppState.instance.repo.editPost(
+      final referencedAids = ForumRepository.attachmentIdsIn(message).toSet();
+      final result = await AppState.instance.repo.editPost(
         fid: widget.fid,
         tid: widget.tid,
         pid: widget.pid,
         subject: subject,
         message: message,
         formhash: _formhash,
-        attachmentIds: ForumRepository.attachmentIdsIn(message),
+        // 只交这次传上去、且正文里还留着的图。手动把标签删掉就不该再绑，
+        // 否则附件会孤零零挂在帖子的附件列表里。
+        attachmentIds: [
+          for (final item in _attachments)
+            if (item.aid != null && referencedAids.contains(item.aid)) item.aid!,
+        ],
+        extraForm: _extraForm,
       );
       if (!mounted) return;
-      Navigator.of(context).pop(true);
+      Navigator.of(context).pop(result);
     } catch (e) {
       if (!mounted) return;
+      final errorText = e is SiteException ? e.message : '保存失败，请稍后重试';
       setState(() {
         _saving = false;
-        _error = e is SiteException ? e.message : '保存失败，请稍后重试';
+        _error = errorText;
       });
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(errorText)));
     }
   }
 
@@ -2561,6 +2612,24 @@ class _EditPostPageState extends State<_EditPostPage> {
                       onPressed: _loadDraft,
                       child: const Text('重试'),
                     ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+            if (_error != null) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: scheme.errorContainer.withValues(alpha: 0.55),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.error_outline_rounded, size: 18, color: scheme.error),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(_error!, style: TextStyle(fontSize: 12.5, color: scheme.error))),
                   ],
                 ),
               ),
@@ -2623,17 +2692,27 @@ class _EditPostPageState extends State<_EditPostPage> {
                     ),
                   ),
                   if (_panel != null) _editPanelContent(scheme),
+                  _bodyImageStrip(scheme),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
                     child: TextField(
                       controller: _message,
+                      // 原文没回来之前只能看不能改：此时框里是渲染后的纯文本，
+                      // 一改就无法再用服务端原文覆盖，保存会把 BBCode 全冲掉。
+                      readOnly: _loadingDraft || _draftError != null,
                       minLines: 12,
                       maxLines: null,
                       keyboardType: TextInputType.multiline,
                       textCapitalization: TextCapitalization.sentences,
+                      // 手动删改 [attachimg] 标签时，上面的缩略图要跟着变。
+                      onChanged: (_) => setState(() {}),
                       style: const TextStyle(fontSize: 15.5, height: 1.65),
                       decoration: InputDecoration(
-                        hintText: '在这里编辑正文…',
+                        hintText: _loadingDraft
+                            ? '正在读取正文原文…'
+                            : _draftError != null
+                                ? '原文读取失败，请点上方重试'
+                                : '在这里编辑正文…',
                         border: InputBorder.none,
                         enabledBorder: InputBorder.none,
                         focusedBorder: InputBorder.none,
@@ -2642,7 +2721,6 @@ class _EditPostPageState extends State<_EditPostPage> {
                       ),
                     ),
                   ),
-                  _bodyImageStrip(scheme),
                 ],
               ),
             ),
@@ -2651,24 +2729,6 @@ class _EditPostPageState extends State<_EditPostPage> {
               const LinearProgressIndicator(minHeight: 2),
               const SizedBox(height: 4),
               Text('正在上传图片…', style: TextStyle(fontSize: 12, color: scheme.primary)),
-            ],
-            if (_error != null) ...[
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: scheme.errorContainer.withValues(alpha: 0.55),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(Icons.error_outline_rounded, size: 18, color: scheme.error),
-                    const SizedBox(width: 8),
-                    Expanded(child: Text(_error!, style: TextStyle(fontSize: 12.5, color: scheme.error))),
-                  ],
-                ),
-              ),
             ],
           ],
         ),
@@ -2706,7 +2766,7 @@ class _EditPostPageState extends State<_EditPostPage> {
 
   /// 正文中已引用的图片 / 附件缩略图。
   ///
-  /// 编辑框只显示 BBCode，图片看不见；这里把它们铺在正文下方，点开能看大图，
+  /// 编辑框只显示 BBCode，图片看不见；这里把它们铺在正文上方，点开能看大图，
   /// 点右上角叉号会同时去掉正文里的标记，避免保存后图还挂在帖子里。
   Widget _bodyImageStrip(ColorScheme scheme) {
     final items = _bodyImages();
@@ -2732,7 +2792,7 @@ class _EditPostPageState extends State<_EditPostPage> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  '点击看大图',
+                  imageCount > 0 ? '点击看大图' : '附件仍保留在正文中',
                   textAlign: TextAlign.right,
                   style: TextStyle(fontSize: 11, color: scheme.outline),
                 ),
@@ -2763,6 +2823,7 @@ class _EditPostPageState extends State<_EditPostPage> {
                                   height: 78,
                                   radius: BorderRadius.circular(12),
                                   placeholderHeight: 78,
+                                  cacheWidth: 234,
                                 )
                               : Container(
                                   decoration: BoxDecoration(
@@ -2944,7 +3005,7 @@ class _EditPostPageState extends State<_EditPostPage> {
 
   Widget _editorTool(IconData icon, String label, VoidCallback? onPressed) {
     final scheme = Theme.of(context).colorScheme;
-    final disabled = _saving || _uploading || _loadingDraft;
+    final disabled = _saving || _uploading || _loadingDraft || _draftError != null;
     return Tooltip(
       message: label,
       child: InkWell(

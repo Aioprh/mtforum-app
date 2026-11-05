@@ -1678,6 +1678,7 @@ class ForumRepository {
         String formhash,
         String uploadHash,
         int uid,
+        Map<String, String> extraForm,
       })> fetchEditDraft({
     required int tid,
     required int pid,
@@ -1713,11 +1714,12 @@ class ForumRepository {
       _ensureOk(page);
       final doc = parser.parse(page.body);
       final textarea = doc.querySelector('textarea[name="message"]');
-      final message = (textarea?.text ?? '').trim();
-      if (message.isEmpty) {
+      if (textarea == null) {
         lastMessage = _pageMessage(doc);
         continue;
       }
+      // 正文可以本来就是空的（只有标题的帖子），不能因为空就当成没权限。
+      final message = textarea.text.trim();
       final subjectInput = doc.querySelector('input[name="subject"]');
       final subject = (subjectInput?.attributes['value'] ?? '').trim();
 
@@ -1748,6 +1750,7 @@ class ForumRepository {
         formhash: _findFormhash(page.body),
         uploadHash: uploadHash,
         uid: uid,
+        extraForm: editFormFields(doc),
       );
     }
     throw SiteException(
@@ -1755,6 +1758,56 @@ class ForumRepository {
           ? lastMessage
           : '打不开编辑页：可能没有编辑权限，或楼主已关闭编辑',
     );
+  }
+
+  /// 编辑页里除正文、标题、凭证之外的表单字段。
+  ///
+  /// 浏览器点「保存」时提交的是整张表单：主题分类、标签、售价、阅读权限、
+  /// 投票选项、已有附件的描述，全在这些字段里。只交 message + formhash
+  /// 会把这些设置一并抹掉（有的板块还会因为缺分类直接拒绝保存）。
+  @visibleForTesting
+  static Map<String, String> editFormFields(Document doc) {
+    // delete 一定要排除：编辑页上要是有个隐藏的 delete=1，原样带回就成了删帖。
+    const skip = {'message', 'subject', 'formhash', 'posttime', 'save', 'editsubmit', 'delete'};
+    const ignoredTypes = {'submit', 'button', 'image', 'file', 'reset'};
+    final result = <String, String>{};
+
+    for (final input in doc.querySelectorAll('input[name]')) {
+      final name = (input.attributes['name'] ?? '').trim();
+      if (name.isEmpty || skip.contains(name)) continue;
+      final type = (input.attributes['type'] ?? 'text').toLowerCase();
+      if (ignoredTypes.contains(type)) continue;
+      // 未勾选的 checkbox / radio 浏览器根本不会提交，这里也跳过。
+      // `usesig` 例外：它没被提交就意味着「不要签名」，得留个空值标记，
+      // 否则调用方分不清「表单里没这个开关」和「用户把它关了」。
+      if ((type == 'checkbox' || type == 'radio') &&
+          !input.attributes.containsKey('checked')) {
+        if (name == 'usesig') result[name] = '';
+        continue;
+      }
+      result[name] = input.attributes['value'] ?? '';
+    }
+
+    for (final select in doc.querySelectorAll('select[name]')) {
+      final name = (select.attributes['name'] ?? '').trim();
+      if (name.isEmpty) continue;
+      final options = select.querySelectorAll('option');
+      if (options.isEmpty) continue;
+      final selected = options.firstWhere(
+        (option) => option.attributes.containsKey('selected'),
+        orElse: () => options.first,
+      );
+      result[name] = selected.attributes['value'] ?? '';
+    }
+
+    // 投票选项这类多行字段放在 textarea 里，不带上会丢选项。
+    for (final area in doc.querySelectorAll('textarea[name]')) {
+      final name = (area.attributes['name'] ?? '').trim();
+      if (name.isEmpty || skip.contains(name)) continue;
+      result[name] = area.text;
+    }
+
+    return result;
   }
 
   /// 编辑自己的帖子 / 回复。
@@ -1766,7 +1819,11 @@ class ForumRepository {
     required String message,
     required String formhash,
     List<int> attachmentIds = const [],
+    Map<String, String> extraForm = const {},
   }) async {
+    // 编辑页有这个开关：勾了用 1、没勾用 0；表单里压根没有时才沿用默认的 1。
+    final usesig = extraForm['usesig'];
+    final usesigValue = usesig == null ? '1' : (usesig.isEmpty ? '0' : usesig);
     final response = await _http.post(
       'forum.php',
       query: {
@@ -1780,11 +1837,14 @@ class ForumRepository {
       },
       referer: _threadReferer(tid),
       form: {
+        // 先铺编辑页原表单，再用这次改过的值覆盖同名键。
+        ...extraForm,
         'formhash': formhash,
         'subject': subject,
         'message': message,
         'posttime': '${DateTime.now().millisecondsSinceEpoch ~/ 1000}',
-        'usesig': '1',
+        // 编辑页没勾「使用签名」时浏览器不会提交这个字段，这里也不该替用户打开。
+        'usesig': usesigValue,
         // 编辑时新传的图还挂在「未使用附件」上，必须把这些 aid 交回去，
         // Discuz 才会把它们绑到本帖。少了这一段，正文里的 [attachimg]
         // 保存后指不到任何附件，帖子上的图就凭空消失了。
@@ -1797,11 +1857,16 @@ class ForumRepository {
     // 解析，会因为它引用了正文里的「登录」「审核」之类的字眼被判成错误。
     if (_landedOnThread(response)) return '编辑成功';
     final msg = _pageMessage(parser.parse(response.body)) ?? '';
-    if (_looksLikeError(msg)) throw SiteException(msg);
+    // 进了审核队列也算提交成功。它的提示里带「审核」两个字，先认成功再判
+    // 错误，否则需要审核的板块每次编辑都会弹成失败。
+    if (response.body.contains('需要审核') || response.body.contains('审核通过')) {
+      return '修改已提交，等待审核通过';
+    }
     // 还停在编辑页又没有明确的成功提示，就是没提交上去。早先这里直接
     // 返回「编辑成功」，服务端把表单退回来（凭证过期、被拦截）时用户会
     // 以为已经改好，回头一看正文根本没变。
     if (_editAccepted.hasMatch(msg)) return '编辑成功';
+    if (_looksLikeError(msg)) throw SiteException(msg);
     throw SiteException(msg.isNotEmpty ? msg : '保存未生效，请稍后重试或到网页端修改');
   }
 
