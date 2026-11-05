@@ -40,6 +40,17 @@ void main() {
     expect(r.aid, 0);
   });
 
+  test('aid 在第 3 段（实测站点格式）', () {
+    // 2026-11 从 bbs.binmt.cc 实际拿到的返回：类型 1、aid 9、pid 0、cid 1。
+    // 旧解析会把 9 当成错误码、aid 读成 0，图传上去了却报失败。
+    const body = 'DISCUZUPLOAD|1|9|0|1|202611/06/020936us.png|p.png|0';
+    final r = parseUploadResult(body)!;
+    expect(r.ok, isTrue);
+    expect(r.aid, 9);
+    expect(r.errorCode, 0);
+    expect(r.attachment, '202611/06/020936us.png');
+  });
+
   test('hash 校验不过时服务端 exit()，空响应要能识别', () {
     expect(parseUploadResult(''), isNull);
     expect(parseUploadResult('   '), isNull);

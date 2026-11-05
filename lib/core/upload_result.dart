@@ -39,11 +39,30 @@ UploadResult? parseUploadResult(String body) {
   final parts = _clean(body.substring(start)).split('|');
   // parts[0] 是 DISCUZUPLOAD 本身，后面才是字段。
   if (parts.length >= 8) {
-    // 带 type：|type|error|aid|isimage|attachment|filename|sizelimit
+    // 8 段里 aid 的位置随模板/插件版本漂移，实测两种：
+    //
+    //   DISCUZUPLOAD|type|error|aid|isimage|attachment|filename|sizelimit
+    //   DISCUZUPLOAD|type|aid|pid|cid|attachment|filename|remote
+    //
+    // 拿 `|type|error|aid|` 硬套第二种会把 error 当成错误码：真实返回
+    // `DISCUZUPLOAD|1|9|0|1|202611/06/xxx.png|p.png|0`（aid=9、还没绑帖子），
+    // 按旧写法读成「错误码 9、aid 0」，图明明传上去了却报上传失败。
+    //
+    // 第六段是落盘相对路径，成功才非空，先用它判成败，再取两段里非零的那个当 aid。
+    final attachment = parts[5];
+    if (attachment.isEmpty) {
+      return UploadResult(
+        errorCode: int.tryParse(parts[2]) ?? -1,
+        aid: 0,
+        filename: parts[6],
+      );
+    }
+    final byError = int.tryParse(parts[2]) ?? 0;
+    final byPid = int.tryParse(parts[3]) ?? 0;
     return UploadResult(
-      errorCode: int.tryParse(parts[2]) ?? -1,
-      aid: int.tryParse(parts[3]) ?? 0,
-      attachment: parts[5],
+      errorCode: 0,
+      aid: byError > 0 ? byError : byPid,
+      attachment: attachment,
       filename: parts[6],
     );
   }

@@ -194,6 +194,27 @@ class HttpSession {
         referer: referer,
       );
 
+  /// 去掉 `mobile` 查询参数。
+  ///
+  /// Discuz 收到「POST + mobile」时会先把整个请求 302 到 `misc.php?mod=mobile`
+  /// （手机版导流页），原来的写操作一行都不执行。2026-11 实测：编辑帖子带
+  /// `mobile=2` 提交后跳到「手机版」首页，帖子一个字没变；同样的表单去掉这个
+  /// 参数立刻 301 回 `mod=viewthread`，编辑生效。写操作的结果靠落点与提示文本
+  /// 判断，用不到手机模板，所以 POST 一律不带它。
+  static Uri stripMobile(Uri uri) {
+    if (!uri.queryParameters.containsKey('mobile')) return uri;
+    final params = Map<String, String>.from(uri.queryParameters)..remove('mobile');
+    return Uri(
+      scheme: uri.scheme,
+      userInfo: uri.userInfo.isEmpty ? null : uri.userInfo,
+      host: uri.host,
+      port: uri.hasPort ? uri.port : null,
+      path: uri.path,
+      queryParameters: params.isEmpty ? null : params,
+      fragment: uri.fragment.isEmpty ? null : uri.fragment,
+    );
+  }
+
   Future<HttpResult> _request(
     String method,
     Uri uri, {
@@ -203,6 +224,8 @@ class HttpSession {
     String? userAgent,
     bool retryWaf = true,
   }) async {
+    final target = method.toUpperCase() == 'POST' ? stripMobile(uri) : uri;
+    uri = target;
     for (var attempt = 0; attempt < 3; attempt++) {
       try {
         final result = await _send(method, uri, form: form, upload: upload, referer: referer, userAgent: userAgent);

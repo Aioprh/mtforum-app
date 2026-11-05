@@ -1714,7 +1714,19 @@ class ForumRepository {
     ]) {
       final HttpResult page;
       try {
-        page = await _http.get('forum.php', query: query, referer: _threadReferer(tid));
+        final desktop = query['mobile'] == 'no';
+        page = await _http.get(
+          'forum.php',
+          query: query,
+          referer: _threadReferer(tid),
+          // 注意：光加 `mobile=no` 不够。站点先按 UA 判端，App 的移动 UA 会
+          // 直接拿到手机模板，分类、标签、售价这些字段一个都不在表单里，
+          // 保存时就被抹掉了。只有桌面 UA + mobile=no 才是真桌面页。
+          userAgent: desktop ? _desktopUserAgent : null,
+        );
+        // 桌面请求会让服务端把 `mobile` 写进 cookie，留着之后所有页面都会
+        // 变成桌面模板，列表解析全部对不上。用完立刻摘掉。
+        if (desktop) _http.removeCookie('mobile');
         _ensureOk(page);
       } catch (e) {
         // 桌面页可能被 WAF 或模板拦住；换个入口再试，别一次失败就放弃。
@@ -1780,7 +1792,19 @@ class ForumRepository {
   @visibleForTesting
   static Map<String, String> editFormFields(Document doc) {
     // delete 一定要排除：编辑页上要是有个隐藏的 delete=1，原样带回就成了删帖。
-    const skip = {'message', 'subject', 'formhash', 'posttime', 'save', 'editsubmit', 'delete', 'hash'};
+    // wysiwyg 也要排除：App 交的是 BBCode 原文，带上这个开关服务端会按所见即
+    // 所得（HTML）去处理，标点和换行都会被转义成实体。
+    const skip = {
+      'message',
+      'subject',
+      'formhash',
+      'posttime',
+      'save',
+      'editsubmit',
+      'delete',
+      'hash',
+      'wysiwyg',
+    };
     const ignoredTypes = {'submit', 'button', 'image', 'file', 'reset'};
     final result = <String, String>{};
 
@@ -1891,10 +1915,16 @@ class ForumRepository {
   /// 两种都要带上，否则保存时那一段附件不会被绑到本帖。
   static List<int> attachmentIdsIn(String message) => bbcode.attachmentIdsIn(message);
 
-  /// 请求最终落在帖子页（`mod=viewthread`），说明提交被服务端接受了。
+  /// 请求最终落在帖子页，说明提交被服务端接受了。
+  ///
+  /// 编辑主题回 `mod=viewthread`；编辑某一楼回的是
+  /// `mod=redirect&goto=findpost`（跳到那一层），两种都算成功，否则编辑回复
+  /// 永远被判成「保存未生效」。
   bool _landedOnThread(HttpResult response) {
     final uri = response.uri.toString();
-    return uri.contains('mod=viewthread') || uri.contains('thread-');
+    return uri.contains('mod=viewthread') ||
+        uri.contains('thread-') ||
+        (uri.contains('goto=findpost') && uri.contains('pid='));
   }
 
   /// 删除自己的帖子 / 回复。
