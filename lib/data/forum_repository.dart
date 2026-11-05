@@ -1685,7 +1685,17 @@ class ForumRepository {
     required int fid,
   }) async {
     String? lastMessage;
+    // 先走桌面模板：只有它会把分类、标签、售价、投票这些字段完整放进表单，
+    // 手机模板常常省掉，保存时就会把这些设置清空。桌面页拿不到再退手机版。
     for (final query in <Map<String, String>>[
+      {
+        'mod': 'post',
+        'action': 'edit',
+        'fid': '$fid',
+        'tid': '$tid',
+        'pid': '$pid',
+        'mobile': 'no',
+      },
       {
         'mod': 'post',
         'action': 'edit',
@@ -1701,17 +1711,16 @@ class ForumRepository {
         'tid': '$tid',
         'pid': '$pid',
       },
-      {
-        'mod': 'post',
-        'action': 'edit',
-        'fid': '$fid',
-        'tid': '$tid',
-        'pid': '$pid',
-        'mobile': 'no',
-      },
     ]) {
-      final page = await _http.get('forum.php', query: query, referer: _threadReferer(tid));
-      _ensureOk(page);
+      final HttpResult page;
+      try {
+        page = await _http.get('forum.php', query: query, referer: _threadReferer(tid));
+        _ensureOk(page);
+      } catch (e) {
+        // 桌面页可能被 WAF 或模板拦住；换个入口再试，别一次失败就放弃。
+        lastMessage = e is SiteException ? e.message : lastMessage;
+        continue;
+      }
       final doc = parser.parse(page.body);
       final textarea = doc.querySelector('textarea[name="message"]');
       if (textarea == null) {
@@ -1730,7 +1739,8 @@ class ForumRepository {
       // 于是编辑一张图都传不上去。这里优先用编辑页的，顺带带回 uid。
       var uploadHash = findUploadHash(page.body);
       var uid = findUploadUid(page.body);
-      if (uploadHash.isEmpty || uid <= 0) {
+      // 当前就是桌面页时别再请求一遍同一个地址。
+      if ((uploadHash.isEmpty || uid <= 0) && query['mobile'] != 'no') {
         try {
           final desktop = await _http.get(
             'forum.php',
