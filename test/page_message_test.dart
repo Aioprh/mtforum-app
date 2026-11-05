@@ -48,6 +48,11 @@ void main() {
       expect(cleaned.contains('正文内容'), isTrue);
     });
 
+    test('编辑记录和正文同一行时只删记录', () {
+      const text = '本帖最后由 某人 于 2026-11-6 01:00 编辑 正文第一句\n第二句';
+      expect(stripEditNote(text), '正文第一句\n第二句');
+    });
+
     test('正文里恰好写到「编辑」二字不误删整段', () {
       const text = '这个帖子我要编辑一下，晚点补充\n正文';
       expect(stripEditNote(text), text);
