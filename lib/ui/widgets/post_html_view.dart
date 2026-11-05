@@ -10,6 +10,7 @@ import 'package:html/parser.dart' as parser;
 import '../../core/app_config.dart';
 import '../../core/forum_link.dart';
 import '../../core/http_session.dart';
+import '../../core/page_message.dart';
 import '../../core/video_link.dart';
 import '../../state/app_state.dart';
 import '../pages/board_threads_page.dart';
@@ -1366,12 +1367,12 @@ class _PostHtmlViewState extends State<PostHtmlView> {
     var cache = _cache;
     if (cache == null) {
       try {
-        cache = _blocks(context, parser.parseFragment(widget.html).nodes);
+        cache = _blocks(context, parser.parseFragment(stripEditNote(widget.html)).nodes);
       } catch (error) {
         // 楼层 HTML 千奇百怪，渲染偶尔会踩到没预料到的标签组合。
         // 不能让一处异常把整楼吞成空白：退回纯文本，至少内容读得到。
         debugPrint('PostHtmlView 渲染失败，降级为纯文本：$error');
-        final text = parser.parseFragment(widget.html).text?.trim() ?? '';
+        final text = stripEditNote(parser.parseFragment(widget.html).text ?? '');
         cache = <Widget>[
           if (text.isNotEmpty)
             Text(

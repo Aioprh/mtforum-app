@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_config.dart';
 import '../../core/http_session.dart';
+import '../../core/page_message.dart';
 import '../../core/native_bridge.dart';
 import '../../core/reply_notice.dart';
 import '../../core/thread_paging.dart';
@@ -948,7 +949,7 @@ class _ThreadPageState extends State<ThreadPage> {
           // 回复没有标题，编辑页也不显示标题框；传空串让服务端留空，
           // 早先这里塞了 `Re: 主题`，结果楼层正文顶上多出一行重复标题。
           subject: post.isOp ? detail.title : '',
-          message: _stripEditNotice(_plainText(post.html)),
+          message: stripEditNote(_plainText(post.html)),
           isOp: post.isOp,
         ),
       ),
@@ -2041,19 +2042,6 @@ class _ThreadPageState extends State<ThreadPage> {
     );
   }
 
-  /// 仅移除 Discuz 自动插入的编辑记录，保留帖子正文。
-/// 不按标记位置截断整段文本：部分模板会把编辑记录放在正文开头，
-/// 截断会导致编辑器里的正文被清空。
-String _stripEditNotice(String text) {
-  var result = text;
-  result = result.replaceAll(
-    RegExp(r'本帖最后由\s*.+?\s+于\s+\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}\s+编辑', dotAll: true),
-    '',
-  );
-  result = result.replaceAll(RegExp(r'帖子编辑\s*'), '');
-  return result.trim();
-}
-
 String _plainText(String html) => html
       .replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n')
       .replaceAll(RegExp(r'</(div|p|li|blockquote)>', caseSensitive: false), '\n')
@@ -2194,8 +2182,12 @@ class _EditAttachment {
 class _EditPostPageState extends State<_EditPostPage> {
   late final TextEditingController _subject = TextEditingController(text: widget.subject);
   late final TextEditingController _message = TextEditingController(text: widget.message);
+  late String _formhash = widget.formhash;
   bool _saving = false;
   bool _uploading = false;
+
+  /// 正在从服务端取原文。取到之前保存按钮先别让人点，免得拿旧 formhash 提交。
+  bool _loadingDraft = true;
   String? _error;
   final ImagePicker _imagePicker = ImagePicker();
   _EditPanel? _panel;
@@ -2207,6 +2199,45 @@ class _EditPostPageState extends State<_EditPostPage> {
   bool _friendsLoading = false;
   String? _friendsError;
   final List<_EditAttachment> _attachments = <_EditAttachment>[];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDraft();
+  }
+
+  /// 正文以服务端编辑页的 textarea 为准。
+  ///
+  /// 那是数据库里的原始内容：带 BBCode，也不含「本帖最后由…编辑」。列表页
+  /// 那份 HTML 是渲染结果，转纯文本既丢格式，又会把编辑记录带进输入框，
+  /// 保存后这条记录就变成了正文，下次编辑再叠一条。
+  Future<void> _loadDraft() async {
+    try {
+      final draft = await AppState.instance.repo.fetchEditDraft(
+        fid: widget.fid,
+        tid: widget.tid,
+        pid: widget.pid,
+      );
+      if (!mounted) return;
+      setState(() {
+        if (draft.formhash.isNotEmpty) _formhash = draft.formhash;
+        // 用户在加载期间已经动过输入框就不再覆盖，免得把正在写的内容冲掉。
+        if (draft.message.trim().isNotEmpty && _message.text.trim() == widget.message.trim()) {
+          _message.text = stripEditNote(draft.message);
+        }
+        if (widget.isOp &&
+            draft.subject.trim().isNotEmpty &&
+            _subject.text.trim() == widget.subject.trim()) {
+          _subject.text = draft.subject;
+        }
+        _loadingDraft = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      // 草稿打不开就退回列表页那份文本，编辑功能不能因此不可用。
+      setState(() => _loadingDraft = false);
+    }
+  }
 
   @override
   void dispose() {
@@ -2392,7 +2423,7 @@ class _EditPostPageState extends State<_EditPostPage> {
         pid: widget.pid,
         subject: subject,
         message: message,
-        formhash: widget.formhash,
+        formhash: _formhash,
       );
       if (!mounted) return;
       Navigator.of(context).pop(true);
@@ -2408,7 +2439,7 @@ class _EditPostPageState extends State<_EditPostPage> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final isBusy = _saving || _uploading;
+    final isBusy = _saving || _uploading || _loadingDraft;
     return Scaffold(
       backgroundColor: scheme.surface,
       appBar: AppBar(
@@ -2431,6 +2462,10 @@ class _EditPostPageState extends State<_EditPostPage> {
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           padding: const EdgeInsets.fromLTRB(18, 10, 18, 20),
           children: [
+            if (_loadingDraft) ...[
+              const LinearProgressIndicator(minHeight: 2),
+              const SizedBox(height: 12),
+            ],
             if (widget.isOp) ...[
               GlassField(
                 controller: _subject,
