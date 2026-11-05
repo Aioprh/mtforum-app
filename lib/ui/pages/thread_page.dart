@@ -2650,6 +2650,7 @@ class _EditPostPageState extends State<_EditPostPage> {
                 hintText: '请输入主题标题',
                 leading: Icons.title_rounded,
                 maxLength: 80,
+                enabled: !_saving,
                 textCapitalization: TextCapitalization.sentences,
               ),
               const SizedBox(height: 24),
@@ -2707,7 +2708,7 @@ class _EditPostPageState extends State<_EditPostPage> {
                       controller: _message,
                       // 原文没回来之前只能看不能改：此时框里是渲染后的纯文本，
                       // 一改就无法再用服务端原文覆盖，保存会把 BBCode 全冲掉。
-                      readOnly: _loadingDraft || _draftError != null,
+                      readOnly: _loadingDraft || _draftError != null || _saving,
                       minLines: 12,
                       maxLines: null,
                       keyboardType: TextInputType.multiline,
