@@ -1830,18 +1830,22 @@ class ForumRepository {
         isImage: image,
         thumbUrl: thumb.isNotEmpty ? thumb : (image ? bbcode.attachmentMediaUrl(aid) : ''),
         sizeText: size,
-        // 有权限删的附件，行尾才有 `onclick="delAttach(aid,0)"` 那个「删除」。
-        deletable: deleteLinks.contains('delAttach($aid'),
+        // 有权限删的附件，行尾才有 `onclick="delAttach(aid,0)"`（图片是
+        // `delImgAttach(aid,0)`）那个「删除」。
+        deletable: deleteLinks.contains('delAttach($aid') || deleteLinks.contains('delImgAttach($aid'),
       ));
     }
     return result;
   }
 
   /// 把编辑页里所有删除附件的 `delAttach(aid…)` 调用拼起来，供权限判断。
+  ///
+  /// 普通附件行用 `delAttach(aid,0)`，图片附件用 `delImgAttach(aid,0)`
+  /// （见 `static/js/forum_post.js`），两种都要认，否则图片永远删不了。
   static String _deleteLinks(Document doc) => doc
       .querySelectorAll('a[onclick]')
       .map((a) => (a.attributes['onclick'] ?? '').replaceAll(' ', ''))
-      .where((js) => js.contains('delAttach('))
+      .where((js) => js.contains('delAttach(') || js.contains('delImgAttach('))
       .join('|');
 
   /// 删除本帖已挂着的一个附件。

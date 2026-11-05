@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mt_forum/core/app_config.dart';
 import 'package:mt_forum/core/http_session.dart';
+import 'package:mt_forum/core/upload_result.dart';
 import 'package:mt_forum/data/forum_repository.dart';
 
 const String _cookieRaw = String.fromEnvironment('MT_COOKIE');
@@ -22,21 +23,15 @@ void _loadCookies() {
   }
 }
 
-void dump(String tag, List<dynamic> list) {
-  print('$tag n=${list.length} ${list.map((a) => '${a.aid}:${a.name}:del=${a.deletable}').join(' | ')}');
-}
-
 void main() {
-  test('delete existing attachment end to end', () async {
+  test('raw upload response', () async {
     _loadCookies();
     final repo = ForumRepository.instance;
+    final draft = await repo.fetchEditDraft(tid: _tid, pid: _pid, fid: _fid);
+    for (final a in draft.attachments) {
+      print('ATT ${a.aid} img=${a.isImage} del=${a.deletable} name=${a.name}');
+    }
 
-    var draft = await repo.fetchEditDraft(tid: _tid, pid: _pid, fid: _fid);
-    final original = draft.message;
-    print('ORIG len=${original.length} b64=${base64Encode(utf8.encode(original))}');
-    dump('BEFORE', draft.attachments);
-
-    // 1x1 png
     final png = base64Decode(
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
     );
@@ -48,69 +43,40 @@ void main() {
       'pid': '$_pid',
       'mobile': 'no',
     }).toString();
-    final aid = await repo.uploadAttachment(
+    final name = 'probe_del_${DateTime.now().millisecondsSinceEpoch}.png';
+
+    final res = await HttpSession.instance.postFile(
+      'misc.php',
+      query: {
+        'mod': 'swfupload',
+        'action': 'swfupload',
+        'operation': 'upload',
+        'type': 'image',
+        'fid': '$_fid',
+        'tid': '$_tid',
+        'pid': '$_pid',
+        'uid': '${draft.uid}',
+        'hash': draft.uploadHash,
+        'simple': '2',
+        'inajax': 'yes',
+        'infloat': 'yes',
+      },
+      field: 'Filedata',
+      filename: name,
       bytes: png,
-      filename: 'probe_del_${DateTime.now().millisecondsSinceEpoch}.png',
-      uploadHash: draft.uploadHash,
-      uid: draft.uid,
+      fields: {
+        'uid': '${draft.uid}',
+        'hash': draft.uploadHash,
+        'fid': '$_fid',
+        'tid': '$_tid',
+        'pid': '$_pid',
+      },
       referer: referer,
-      image: true,
-      fid: _fid,
-      tid: _tid,
-      pid: _pid,
     );
-    print('UPLOAD aid=$aid');
+    print('RAW status=${res.statusCode} body=${res.body.replaceAll('\n', ' ').replaceAll('\r', ' ')}');
 
-    final tagged = '${original.trim()}\n\n[attachimg]$aid[/attachimg]';
-    final save1 = await repo.editPost(
-      fid: _fid,
-      tid: _tid,
-      pid: _pid,
-      subject: draft.subject,
-      message: tagged,
-      formhash: draft.formhash,
-      attachmentIds: [aid],
-      extraForm: draft.extraForm,
-    );
-    print('SAVE1 $save1');
-
-    draft = await repo.fetchEditDraft(tid: _tid, pid: _pid, fid: _fid);
-    dump('AFTER_UPLOAD', draft.attachments);
-    final target = draft.attachments.indexWhere((a) => a.aid == aid);
-    if (target < 0) {
-      print('TEMP ATTACHMENT NOT FOUND, abort');
-      exit(0);
-    }
-
-    try {
-      final msg = await repo.deleteAttachment(
-        aid: aid,
-        tid: _tid,
-        pid: _pid,
-        formhash: draft.formhash,
-      );
-      print('DELETE $msg');
-    } catch (e) {
-      print('DELETE FAILED $e');
-    }
-
-    draft = await repo.fetchEditDraft(tid: _tid, pid: _pid, fid: _fid);
-    dump('AFTER_DELETE', draft.attachments);
-    print('STILL_HAS ${draft.attachments.any((a) => a.aid == aid)}');
-
-    final save2 = await repo.editPost(
-      fid: _fid,
-      tid: _tid,
-      pid: _pid,
-      subject: draft.subject,
-      message: original,
-      formhash: draft.formhash,
-      extraForm: draft.extraForm,
-    );
-    print('SAVE2 $save2');
-    draft = await repo.fetchEditDraft(tid: _tid, pid: _pid, fid: _fid);
-    print('FINAL len=${draft.message.length} same=${draft.message.trim() == original.trim()}');
-    dump('FINAL', draft.attachments);
+    final parsed = parseUploadResult(res.body);
+    print('PARSED aid=${parsed?.aid} err=${parsed?.errorCode} file=${parsed?.attachment} name=${parsed?.filename}');
     exit(0);
   });
 }
