@@ -7,6 +7,7 @@ import '../../services/offline_thread_cache.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_config.dart';
+import '../../core/bbcode_media.dart';
 import '../../core/http_session.dart';
 import '../../core/page_message.dart';
 import '../../core/native_bridge.dart';
@@ -22,8 +23,10 @@ import '../widgets/measure_height.dart';
 import '../widgets/emoji_panel.dart';
 import '../widgets/post_html_view.dart';
 import '../widgets/reply_composer.dart';
+import '../widgets/smart_image.dart';
 import '../widgets/state_views.dart';
 import '../widgets/user_avatar.dart';
+import 'image_viewer_page.dart';
 import 'login_page.dart';
 import 'pm_page.dart';
 import 'user_page.dart';
@@ -2179,15 +2182,24 @@ class _EditAttachment {
   String? error;
 }
 
+
 class _EditPostPageState extends State<_EditPostPage> {
   late final TextEditingController _subject = TextEditingController(text: widget.subject);
   late final TextEditingController _message = TextEditingController(text: widget.message);
   late String _formhash = widget.formhash;
+
+  /// 编辑页自己的上传凭证。没有时才回落到发帖页去借。
+  String _uploadHash = '';
+  int _uid = 0;
   bool _saving = false;
   bool _uploading = false;
 
   /// 正在从服务端取原文。取到之前保存按钮先别让人点，免得拿旧 formhash 提交。
   bool _loadingDraft = true;
+
+  /// 原文没取回来时保存必须锁死：此时编辑器里只有渲染后的纯文本，
+  /// 一保存就会把 BBCode、图片、附件全部覆盖掉。
+  String? _draftError;
   String? _error;
   final ImagePicker _imagePicker = ImagePicker();
   _EditPanel? _panel;
@@ -2212,6 +2224,13 @@ class _EditPostPageState extends State<_EditPostPage> {
   /// 那份 HTML 是渲染结果，转纯文本既丢格式，又会把编辑记录带进输入框，
   /// 保存后这条记录就变成了正文，下次编辑再叠一条。
   Future<void> _loadDraft() async {
+    // 首帧本来就是 loading，不用再 setState；只有点「重试」才需要切回来。
+    if (mounted && (!_loadingDraft || _draftError != null)) {
+      setState(() {
+        _loadingDraft = true;
+        _draftError = null;
+      });
+    }
     try {
       final draft = await AppState.instance.repo.fetchEditDraft(
         fid: widget.fid,
@@ -2221,6 +2240,8 @@ class _EditPostPageState extends State<_EditPostPage> {
       if (!mounted) return;
       setState(() {
         if (draft.formhash.isNotEmpty) _formhash = draft.formhash;
+        _uploadHash = draft.uploadHash;
+        _uid = draft.uid;
         // 用户在加载期间已经动过输入框就不再覆盖，免得把正在写的内容冲掉。
         if (draft.message.trim().isNotEmpty && _message.text.trim() == widget.message.trim()) {
           _message.text = stripEditNote(draft.message);
@@ -2232,10 +2253,14 @@ class _EditPostPageState extends State<_EditPostPage> {
         }
         _loadingDraft = false;
       });
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
-      // 草稿打不开就退回列表页那份文本，编辑功能不能因此不可用。
-      setState(() => _loadingDraft = false);
+      // 打不开编辑页就别假装能改：退回列表页那份纯文本再保存，
+      // 帖子里的 BBCode 和图片会被整段抹掉。
+      setState(() {
+        _loadingDraft = false;
+        _draftError = e is SiteException ? e.message : '读取正文原文失败';
+      });
     }
   }
 
@@ -2285,10 +2310,27 @@ class _EditPostPageState extends State<_EditPostPage> {
     }
   }
 
+  /// 上传凭证优先用编辑页自己的；读草稿时没带回来才去发帖页借一份。
+  Future<({String hash, int uid})> _uploadCredentials() async {
+    if (_uploadHash.isNotEmpty && _uid > 0) {
+      return (hash: _uploadHash, uid: _uid);
+    }
+    final info = await AppState.instance.repo.fetchComposeInfo(widget.fid);
+    return (hash: info.uploadHash, uid: info.uid);
+  }
+
   Future<void> _uploadFiles({required bool image}) async {
-    if (_uploading || _saving) return;
+    if (_uploading || _saving || _loadingDraft) return;
+    final referer = AppConfig.uri('forum.php', {
+      'mod': 'post',
+      'action': 'edit',
+      'fid': '${widget.fid}',
+      'tid': '${widget.tid}',
+      'pid': '${widget.pid}',
+      'mobile': '2',
+    }).toString();
     try {
-      final info = await AppState.instance.repo.fetchComposeInfo(widget.fid);
+      final info = await _uploadCredentials();
       if (!mounted) return;
       if (image) {
         final picked = await _imagePicker.pickMultiImage(maxWidth: 1600, imageQuality: 78);
@@ -2299,13 +2341,14 @@ class _EditPostPageState extends State<_EditPostPage> {
           try {
             final aid = await AppState.instance.repo.uploadAttachment(
               bytes: await file.readAsBytes(), filename: file.name,
-              uploadHash: info.uploadHash, uid: info.uid, fid: widget.fid,
-              referer: AppConfig.uri('forum.php', {'mod':'post','action':'edit','fid':'${widget.fid}','tid':'${widget.tid}','pid':'${widget.pid}','mobile':'2'}).toString(),
+              uploadHash: info.hash, uid: info.uid, fid: widget.fid,
+              tid: widget.tid, pid: widget.pid,
+              referer: referer,
               image: true,
             );
             if (!mounted) return;
             item.aid = aid;
-            _insertAtCursor('\\n[attachimg]$aid[/attachimg]\\n');
+            _insertAtCursor('\n[attachimg]$aid[/attachimg]\n');
           } catch (e) {
             if (!mounted) return;
             item.error = e is SiteException ? e.message : '图片上传失败';
@@ -2327,13 +2370,14 @@ class _EditPostPageState extends State<_EditPostPage> {
             final bytes = await file.readAsBytes();
             final aid = await AppState.instance.repo.uploadAttachment(
               bytes: bytes, filename: file.name,
-              uploadHash: info.uploadHash, uid: info.uid, fid: widget.fid,
-              referer: AppConfig.uri('forum.php', {'mod':'post','action':'edit','fid':'${widget.fid}','tid':'${widget.tid}','pid':'${widget.pid}','mobile':'2'}).toString(),
+              uploadHash: info.hash, uid: info.uid, fid: widget.fid,
+              tid: widget.tid, pid: widget.pid,
+              referer: referer,
               image: false,
             );
             if (!mounted) return;
             item.aid = aid;
-            _insertAtCursor('\\n[attach]$aid[/attach]\\n');
+            _insertAtCursor('\n[attach]$aid[/attach]\n');
           } catch (e) {
             if (!mounted) return;
             item.error = e is SiteException ? e.message : '附件上传失败';
@@ -2399,6 +2443,35 @@ class _EditPostPageState extends State<_EditPostPage> {
     );
   }
 
+  /// 正文里引用到的图片和附件，按出现顺序去重。
+  List<BbcodeMediaRef> _bodyImages() => parseBbcodeMedia(_message.text);
+
+  void _previewBodyImage(BbcodeMediaRef target) {
+    final images = _bodyImages().where((item) => item.image).toList();
+    if (images.isEmpty) return;
+    final index = images.indexWhere((item) => item.tag == target.tag);
+    Navigator.of(context).push(
+      appRoute(
+        builder: (_) => ImageViewerPage(
+          images: images.map((item) => AppConfig.uri(item.url).toString()).toList(),
+          initialIndex: index < 0 ? 0 : index,
+        ),
+      ),
+    );
+  }
+
+  /// 删掉缩略图时把正文里对应的标记一起摘掉，否则保存后图还在。
+  void _removeBodyImage(BbcodeMediaRef target) {
+    final text = _message.text.replaceFirst(target.tag, '').trim();
+    _message.value = TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
+    setState(() {
+      _attachments.removeWhere((item) => item.aid == target.aid && target.aid > 0);
+    });
+  }
+
   Future<void> _save() async {
     // 只有主题正文有标题；回帖保持空标题，别把 `Re: 主题` 写进楼层。
     final subject = widget.isOp ? _subject.text.trim() : '';
@@ -2424,6 +2497,7 @@ class _EditPostPageState extends State<_EditPostPage> {
         subject: subject,
         message: message,
         formhash: _formhash,
+        attachmentIds: ForumRepository.attachmentIdsIn(message),
       );
       if (!mounted) return;
       Navigator.of(context).pop(true);
@@ -2439,7 +2513,7 @@ class _EditPostPageState extends State<_EditPostPage> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final isBusy = _saving || _uploading || _loadingDraft;
+    final isBusy = _saving || _uploading || _loadingDraft || _draftError != null;
     return Scaffold(
       backgroundColor: scheme.surface,
       appBar: AppBar(
@@ -2464,6 +2538,32 @@ class _EditPostPageState extends State<_EditPostPage> {
           children: [
             if (_loadingDraft) ...[
               const LinearProgressIndicator(minHeight: 2),
+              const SizedBox(height: 12),
+            ],
+            if (_draftError != null) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: scheme.errorContainer.withValues(alpha: 0.55),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.sync_problem_rounded, size: 18, color: scheme.error),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '取不到正文原文，先别保存，否则帖子里原有的格式和图片会丢失。${_draftError ?? ''}',
+                        style: TextStyle(fontSize: 12.5, color: scheme.error),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: _loadDraft,
+                      child: const Text('重试'),
+                    ),
+                  ],
+                ),
+              ),
               const SizedBox(height: 12),
             ],
             if (widget.isOp) ...[
@@ -2542,6 +2642,7 @@ class _EditPostPageState extends State<_EditPostPage> {
                       ),
                     ),
                   ),
+                  _bodyImageStrip(scheme),
                 ],
               ),
             ),
@@ -2599,6 +2700,111 @@ class _EditPostPageState extends State<_EditPostPage> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  /// 正文中已引用的图片 / 附件缩略图。
+  ///
+  /// 编辑框只显示 BBCode，图片看不见；这里把它们铺在正文下方，点开能看大图，
+  /// 点右上角叉号会同时去掉正文里的标记，避免保存后图还挂在帖子里。
+  Widget _bodyImageStrip(ColorScheme scheme) {
+    final items = _bodyImages();
+    if (items.isEmpty) return const SizedBox.shrink();
+    final imageCount = items.where((item) => item.image).length;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.photo_library_outlined, size: 15, color: scheme.onSurfaceVariant),
+              const SizedBox(width: 6),
+              Text(
+                imageCount == 0 ? '正文中的附件 ${items.length}' : '正文中的图片 $imageCount',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '点击看大图',
+                  textAlign: TextAlign.right,
+                  style: TextStyle(fontSize: 11, color: scheme.outline),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 78,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: items.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 8),
+              itemBuilder: (context, index) {
+                final item = items[index];
+                return SizedBox(
+                  width: 78,
+                  height: 78,
+                  child: Stack(
+                    children: [
+                      Positioned.fill(
+                        child: GestureDetector(
+                          onTap: item.image ? () => _previewBodyImage(item) : null,
+                          child: item.image
+                              ? SmartImage(
+                                  url: AppConfig.uri(item.url).toString(),
+                                  width: 78,
+                                  height: 78,
+                                  radius: BorderRadius.circular(12),
+                                  placeholderHeight: 78,
+                                )
+                              : Container(
+                                  decoration: BoxDecoration(
+                                    color: scheme.surfaceContainerHighest,
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.insert_drive_file_outlined,
+                                          size: 22, color: scheme.onSurfaceVariant),
+                                      const SizedBox(height: 4),
+                                      Text('附件 ${item.aid}',
+                                          style: TextStyle(fontSize: 10, color: scheme.onSurfaceVariant)),
+                                    ],
+                                  ),
+                                ),
+                        ),
+                      ),
+                      Positioned(
+                        top: 2,
+                        right: 2,
+                        child: Material(
+                          color: Colors.black.withValues(alpha: 0.55),
+                          shape: const CircleBorder(),
+                          child: InkWell(
+                            customBorder: const CircleBorder(),
+                            onTap: () => _removeBodyImage(item),
+                            child: const Padding(
+                              padding: EdgeInsets.all(4),
+                              child: Icon(Icons.close_rounded, size: 13, color: Colors.white),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -2738,22 +2944,23 @@ class _EditPostPageState extends State<_EditPostPage> {
 
   Widget _editorTool(IconData icon, String label, VoidCallback? onPressed) {
     final scheme = Theme.of(context).colorScheme;
+    final disabled = _saving || _uploading || _loadingDraft;
     return Tooltip(
       message: label,
       child: InkWell(
-        onTap: (_saving || _uploading) ? null : onPressed,
+        onTap: disabled ? null : onPressed,
         borderRadius: BorderRadius.circular(10),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 8),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 19, color: (_saving || _uploading) ? scheme.outline : scheme.onSurfaceVariant),
+              Icon(icon, size: 19, color: disabled ? scheme.outline : scheme.onSurfaceVariant),
               const SizedBox(width: 5),
               Text(label, style: TextStyle(
                 fontSize: 11.5,
                 fontWeight: FontWeight.w600,
-                color: (_saving || _uploading) ? scheme.outline : scheme.onSurfaceVariant,
+                color: disabled ? scheme.outline : scheme.onSurfaceVariant,
               )),
             ],
           ),

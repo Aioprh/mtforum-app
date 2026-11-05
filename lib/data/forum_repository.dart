@@ -6,6 +6,7 @@ import 'package:html/dom.dart';
 import 'package:html/parser.dart' as parser;
 
 import '../core/app_config.dart';
+import '../core/bbcode_media.dart' as bbcode;
 import '../core/http_session.dart';
 import '../core/page_message.dart';
 import '../core/pending_upload.dart';
@@ -1210,6 +1211,8 @@ class ForumRepository {
     required String referer,
     bool image = true,
     int? fid,
+    int? tid,
+    int? pid,
   }) async {
     if (uid <= 0 || uploadHash.isEmpty) {
       // 服务端校验 `hash == md5(salt + uid)`，缺一个必定 exit() 成空白响应。
@@ -1227,6 +1230,8 @@ class ForumRepository {
         'operation': 'upload',
         'type': image ? 'image' : 'attach',
         if (fid != null && fid > 0) 'fid': '$fid',
+        if (tid != null && tid > 0) 'tid': '$tid',
+        if (pid != null && pid > 0) 'pid': '$pid',
         // 关键：forum_upload 类校验的是 $_GET['uid'] / $_GET['hash']，
         // 只放在 POST 里会直接判成「非法操作」（错误码 10）。
         'uid': '$uid',
@@ -1240,7 +1245,13 @@ class ForumRepository {
       field: 'Filedata',
       filename: filename,
       bytes: bytes,
-      fields: {'uid': '$uid', 'hash': uploadHash, if (fid != null && fid > 0) 'fid': '$fid'},
+      fields: {
+        'uid': '$uid',
+        'hash': uploadHash,
+        if (fid != null && fid > 0) 'fid': '$fid',
+        if (tid != null && tid > 0) 'tid': '$tid',
+        if (pid != null && pid > 0) 'pid': '$pid',
+      },
       referer: referer,
     );
     final parsed = parseUploadResult(result.body);
@@ -1660,7 +1671,14 @@ class ForumRepository {
   ///
   /// 手机模板个别主题不渲染编辑表单，回落到桌面版再试一次；
   /// 两次都拿不到就认为没有编辑权限（或帖子已关闭编辑）。
-  Future<({String subject, String message, String formhash})> fetchEditDraft({
+  Future<
+      ({
+        String subject,
+        String message,
+        String formhash,
+        String uploadHash,
+        int uid,
+      })> fetchEditDraft({
     required int tid,
     required int pid,
     required int fid,
@@ -1682,6 +1700,14 @@ class ForumRepository {
         'tid': '$tid',
         'pid': '$pid',
       },
+      {
+        'mod': 'post',
+        'action': 'edit',
+        'fid': '$fid',
+        'tid': '$tid',
+        'pid': '$pid',
+        'mobile': 'no',
+      },
     ]) {
       final page = await _http.get('forum.php', query: query, referer: _threadReferer(tid));
       _ensureOk(page);
@@ -1694,10 +1720,34 @@ class ForumRepository {
       }
       final subjectInput = doc.querySelector('input[name="subject"]');
       final subject = (subjectInput?.attributes['value'] ?? '').trim();
+
+      // 编辑页自己就是上传凭证的出处。早先编辑时借的是「发新主题」页的
+      // 凭证，可那个页面在只允许回复、或者板块限制发主题时会直接给错误页，
+      // 于是编辑一张图都传不上去。这里优先用编辑页的，顺带带回 uid。
+      var uploadHash = findUploadHash(page.body);
+      var uid = findUploadUid(page.body);
+      if (uploadHash.isEmpty || uid <= 0) {
+        try {
+          final desktop = await _http.get(
+            'forum.php',
+            query: {...query, 'mobile': 'no'},
+            referer: _threadReferer(tid),
+          );
+          if (desktop.statusCode == 200) {
+            if (uploadHash.isEmpty) uploadHash = findUploadHash(desktop.body);
+            if (uid <= 0) uid = findUploadUid(desktop.body);
+          }
+        } catch (_) {
+          // 拿不到凭证不影响读正文，上传时会再兜底一次。
+        }
+      }
+
       return (
         subject: subject,
         message: message,
         formhash: _findFormhash(page.body),
+        uploadHash: uploadHash,
+        uid: uid,
       );
     }
     throw SiteException(
@@ -1715,6 +1765,7 @@ class ForumRepository {
     required String subject,
     required String message,
     required String formhash,
+    List<int> attachmentIds = const [],
   }) async {
     final response = await _http.post(
       'forum.php',
@@ -1734,6 +1785,10 @@ class ForumRepository {
         'message': message,
         'posttime': '${DateTime.now().millisecondsSinceEpoch ~/ 1000}',
         'usesig': '1',
+        // 编辑时新传的图还挂在「未使用附件」上，必须把这些 aid 交回去，
+        // Discuz 才会把它们绑到本帖。少了这一段，正文里的 [attachimg]
+        // 保存后指不到任何附件，帖子上的图就凭空消失了。
+        for (final aid in attachmentIds) 'attachnew[$aid][description]': '',
         'save': '',
       },
     );
@@ -1751,6 +1806,12 @@ class ForumRepository {
   }
 
   static final RegExp _editAccepted = RegExp(r'(编辑成功|保存成功|修改成功)');
+
+  /// 正文里引用到的附件 aid。
+  ///
+  /// 图片是 `[attachimg]123[/attachimg]`，普通附件是 `[attach]123[/attach]`，
+  /// 两种都要带上，否则保存时那一段附件不会被绑到本帖。
+  static List<int> attachmentIdsIn(String message) => bbcode.attachmentIdsIn(message);
 
   /// 请求最终落在帖子页（`mod=viewthread`），说明提交被服务端接受了。
   bool _landedOnThread(HttpResult response) {
