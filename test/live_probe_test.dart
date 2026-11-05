@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mt_forum/core/http_session.dart';
+import 'package:mt_forum/data/forum_repository.dart';
 
 const String _cookieRaw = String.fromEnvironment('MT_COOKIE');
 
@@ -16,21 +17,49 @@ void _loadCookies() {
   }
 }
 
+String clip(String html, int idx, int before, int after) {
+  final s = idx - before < 0 ? 0 : idx - before;
+  final e = idx + after > html.length ? html.length : idx + after;
+  return html.substring(s, e).replaceAll('\n', ' ');
+}
+
 void main() {
-  test('probe thread page markers', () async {
+  test('edit page attach markup', () async {
     _loadCookies();
     final http = HttpSession.instance;
-    final r = await http.get('forum.php', query: {'mod': 'viewthread', 'tid': '176076'});
-    print('URL ${r.uri}');
-    print('LEN ${r.body.length}');
-    final title = RegExp(r'<title>(.*?)</title>', dotAll: true).firstMatch(r.body)?.group(1);
-    print('TITLE $title');
-    for (final p in [r'id="post_(\d+)"', r'id="pid(\d+)"', r'pid=(\d+)', r'postmessage_(\d+)']) {
-      final ms = RegExp(p).allMatches(r.body).map((m) => m.group(1)).take(6).toList();
-      print('MATCH $p => $ms');
+    const tid = 176076;
+    const pid = 12089521;
+
+    final page = await http.get('forum.php', query: {
+      'mod': 'post',
+      'action': 'edit',
+      'fid': '42',
+      'tid': '$tid',
+      'pid': '$pid',
+      'mobile': 'no',
+    });
+    final html = page.body;
+    print('EDIT status=${page.statusCode} len=${html.length} url=${page.uri}');
+    print('TITLE ${RegExp(r'<title>(.*?)</title>', dotAll: true).firstMatch(html)?.group(1)}');
+
+    print('HAS_ATTDEL ${html.contains('attachdel')}');
+    for (final m in RegExp(r'attachdel').allMatches(html)) {
+      print('DELCTX ${clip(html, m.start, 240, 240)}');
     }
-    final login = r.body.contains('登录') ? 'has-login-word' : 'no-login-word';
-    print('LOGIN $login');
+    for (final m in RegExp(r'<input[^>]*name="[^"]*attach[^"]*"[^>]*>').allMatches(html)) {
+      print('INPUT ${m.group(0)}');
+    }
+    for (final key in ['imageattach', 'attachname', 'attachlist', 'delete']) {
+      final idx = html.indexOf(key);
+      print('SEC $key at $idx');
+      if (idx > 0 && key != 'delete') print('SEC_BODY ${clip(html, idx, 300, 1400)}');
+    }
+
+    final draft = await ForumRepository.instance.fetchEditDraft(tid: tid, pid: pid, fid: 42);
+    print('DRAFT attach=${draft.attachments.length} formhash=${draft.formhash} uid=${draft.uid} upHash=${draft.uploadHash.length} extra=${draft.extraForm.length}');
+    for (final a in draft.attachments) {
+      print('ATT ${a.aid} img=${a.isImage} name=${a.name} size=${a.sizeText}');
+    }
     exit(0);
   });
 }
