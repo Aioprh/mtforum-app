@@ -16,23 +16,10 @@ void _loadCookies() {
   }
 }
 
-String clip(String s, int idx, int before, int after) {
-  final a = idx - before < 0 ? 0 : idx - before;
-  final b = idx + after > s.length ? s.length : idx + after;
-  return s.substring(a, b).replaceAll('\n', ' ');
-}
-
 void main() {
-  test('delAttach implementation', () async {
+  test('attach row + post.js', () async {
     _loadCookies();
     final http = HttpSession.instance;
-
-    final js = await http.get('static/js/post.js');
-    print('JS status=${js.statusCode} len=${js.body.length}');
-    final k = js.body.indexOf('delAttach');
-    print('JS_HAS ${k > 0}');
-    if (k > 0) print('JS_BODY ${clip(js.body, k, 200, 1800)}');
-
     final page = await http.get('forum.php', query: {
       'mod': 'post',
       'action': 'edit',
@@ -42,11 +29,37 @@ void main() {
       'mobile': 'no',
     });
     final html = page.body;
-    final a = html.indexOf('attach_382585');
-    print('MARK attach_382585 at $a');
-    if (a > 0) print('CARD ${clip(html, a, 900, 900)}');
-    final b = html.indexOf('attachlist');
-    print('ATTACHLIST ${clip(html, b, 100, 2600)}');
+
+    final start = html.indexOf('<tbody id="attach_382585">');
+    final end = html.indexOf('</tbody>', start);
+    print('ROW ${html.substring(start, end + 8).replaceAll('\n', ' ')}');
+
+    // 页面引用的脚本
+    for (final m in RegExp(r'<script[^>]*src="([^"]+)"[^>]*>').allMatches(html)) {
+      final src = m.group(1)!;
+      if (src.contains('post') || src.contains('common')) print('SCRIPT $src');
+    }
+
+    for (final name in ['post.js', 'common.js']) {
+      for (final base in ['static/js/', 'https://cdn.binmt.cc/static/js/']) {
+        final r = await http.get('$base$name');
+        if (r.statusCode != 200) continue;
+        final body = r.body;
+        print('JS $base$name len=${body.length}');
+        for (final key in ['delattachop', 'attachupdate', 'function delAttach']) {
+          var i = body.indexOf(key);
+          var n = 0;
+          while (i > 0 && n < 2) {
+            final a = i - 260 < 0 ? 0 : i - 260;
+            final b = i + 420 > body.length ? body.length : i + 420;
+            print('JSCTX $key ${body.substring(a, b).replaceAll('\n', ' ')}');
+            i = body.indexOf(key, i + 1);
+            n++;
+          }
+        }
+        break;
+      }
+    }
     exit(0);
   });
 }
