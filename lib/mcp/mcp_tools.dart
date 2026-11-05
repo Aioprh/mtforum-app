@@ -593,6 +593,9 @@ class McpTools {
       noticeAuthor: noticeAuthor,
       noticeTrim: noticeTrim,
       noticeAuthorMsg: noticeAuthorMsg,
+      // 先 forum_upload_image 拿 aid、再把 [attachimg] 粘进正文时，
+      // 必须把 aid 交回服务端，否则图只存在「未使用附件」里，帖子上看不到。
+      attachmentIds: ForumRepository.attachmentIdsIn(message),
     );
 
     return <String, Object?>{
@@ -616,6 +619,7 @@ class McpTools {
       fid: fid,
       subject: subject,
       message: message,
+      attachmentIds: ForumRepository.attachmentIdsIn(message),
     );
     return <String, Object?>{
       'ok': true,
@@ -774,6 +778,8 @@ class McpTools {
       subject: newSubject,
       message: message.isEmpty ? draft.message : message,
       formhash: draft.formhash,
+      // 原样带回分类、标签、售价这些表单字段，别让一次改写把它们抹掉。
+      extraForm: draft.extraForm,
     );
     return <String, Object?>{
       'ok': true,

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
@@ -2522,6 +2524,12 @@ class _EditPostPageState extends State<_EditPostPage> {
       setState(() => _error = '标题不能为空');
       return;
     }
+    // Discuz 按字节算标题长度，中文一个字三字节。80 是默认上限，
+    // 提前拦住能省掉一次「标题过长」的往返。
+    if (widget.isOp && utf8.encode(subject).length > 80) {
+      setState(() => _error = '标题太长：最多 80 字节，约 26 个汉字');
+      return;
+    }
     if (message.isEmpty) {
       setState(() => _error = '内容不能为空');
       return;
@@ -2773,7 +2781,7 @@ class _EditPostPageState extends State<_EditPostPage> {
     if (items.isEmpty) return const SizedBox.shrink();
     final imageCount = items.where((item) => item.image).length;
     return Container(
-      padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+      padding: const EdgeInsets.fromLTRB(14, 0, 14, 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

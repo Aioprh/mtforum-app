@@ -1719,7 +1719,9 @@ class ForumRepository {
         continue;
       }
       // 正文可以本来就是空的（只有标题的帖子），不能因为空就当成没权限。
-      final message = textarea.text.trim();
+      // 顺手剔掉编辑记录：MCP 的「只预览」也会直接把它展示给模型，
+      // 不清理就会被当成正文再写一遍。
+      final message = stripEditNote(textarea.text.trim());
       final subjectInput = doc.querySelector('input[name="subject"]');
       final subject = (subjectInput?.attributes['value'] ?? '').trim();
 
@@ -1858,8 +1860,9 @@ class ForumRepository {
     if (_landedOnThread(response)) return '编辑成功';
     final msg = _pageMessage(parser.parse(response.body)) ?? '';
     // 进了审核队列也算提交成功。它的提示里带「审核」两个字，先认成功再判
-    // 错误，否则需要审核的板块每次编辑都会弹成失败。
-    if (response.body.contains('需要审核') || response.body.contains('审核通过')) {
+    // 错误，否则需要审核的板块每次编辑都会弹成失败。只看页面提示，不用
+    // 整页搜：帖子页的公告里也可能写着「审核」，会把正常保存说成待审核。
+    if (msg.contains('需要审核') || msg.contains('审核通过')) {
       return '修改已提交，等待审核通过';
     }
     // 还停在编辑页又没有明确的成功提示，就是没提交上去。早先这里直接
