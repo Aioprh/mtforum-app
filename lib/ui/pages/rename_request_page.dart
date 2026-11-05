@@ -99,9 +99,7 @@ class _RenameRequestPageState extends State<RenameRequestPage> {
     final info = _info;
     if (info == null || _submitting) return;
 
-    final current = info.currentName.isNotEmpty
-        ? info.currentName
-        : (AppState.instance.profile?.username ?? '');
+    final current = AppState.instance.profile?.username ?? '';
     final nameError = RenameRequestPage.validateName(_name.text, current);
     if (nameError != null) {
       _toast(nameError);
@@ -223,7 +221,7 @@ class _RenameRequestPageState extends State<RenameRequestPage> {
   Widget _summaryCard(ColorScheme scheme) {
     final info = _info!;
     final profile = AppState.instance.profile;
-    final current = info.currentName.isNotEmpty ? info.currentName : (profile?.username ?? '—');
+    final current = profile?.username ?? '—';
     final coins = profile?.credits ?? '';
     return Container(
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),

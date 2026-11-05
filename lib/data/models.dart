@@ -923,13 +923,12 @@ class PrivacySettings {
 /// 站点不走 spacecp，而是装了一个改名插件：填新用户名 + 理由提交，扣一次
 /// 金币，再由管理员人工改名。表单里除了这两个字段就只有 formhash。
 class RenameInfo {
-  const RenameInfo({required this.formhash, required this.fee, required this.currentName});
+  const RenameInfo({required this.formhash, required this.fee});
 
   final String formhash;
 
   /// 本次申请要扣的金币，由插件页文案解析，页面改价也能跟上。
   final int fee;
-  final String currentName;
 
   bool get canSubmit => formhash.isNotEmpty;
 }

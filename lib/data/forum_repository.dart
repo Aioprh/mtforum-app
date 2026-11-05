@@ -1026,11 +1026,7 @@ class ForumRepository {
     // 扣费写在表单下面的红字里，页面改价时这里跟着变。
     final fee = int.tryParse(RegExp(r'扣除\s*(\d+)\s*金币').firstMatch(text)?.group(1) ?? '') ??
         _renameFallbackFee;
-    return RenameInfo(
-      formhash: formhash,
-      fee: fee,
-      currentName: _clean(doc.querySelector('.vwmy a')?.text ?? ''),
-    );
+    return RenameInfo(formhash: formhash, fee: fee);
   }
 
   /// 提交改名申请。扣金币由插件在服务端做，这里只负责把结果说清楚。
