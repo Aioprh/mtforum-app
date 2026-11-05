@@ -17,7 +17,7 @@ void _loadCookies() {
 }
 
 void main() {
-  test('attach row + post.js', () async {
+  test('attach delete link + forum_post.js', () async {
     _loadCookies();
     final http = HttpSession.instance;
     final page = await http.get('forum.php', query: {
@@ -29,35 +29,20 @@ void main() {
       'mobile': 'no',
     });
     final html = page.body;
+    final i = html.indexOf('<td class="attc"><a href');
+    print('DEL_LINK ${html.substring(i, i + 420).replaceAll('\n', ' ')}');
 
-    final start = html.indexOf('<tbody id="attach_382585">');
-    final end = html.indexOf('</tbody>', start);
-    print('ROW ${html.substring(start, end + 8).replaceAll('\n', ' ')}');
-
-    // 页面引用的脚本
-    for (final m in RegExp(r'<script[^>]*src="([^"]+)"[^>]*>').allMatches(html)) {
-      final src = m.group(1)!;
-      if (src.contains('post') || src.contains('common')) print('SCRIPT $src');
-    }
-
-    for (final name in ['post.js', 'common.js']) {
-      for (final base in ['static/js/', 'https://cdn.binmt.cc/static/js/']) {
-        final r = await http.get('$base$name');
-        if (r.statusCode != 200) continue;
-        final body = r.body;
-        print('JS $base$name len=${body.length}');
-        for (final key in ['delattachop', 'attachupdate', 'function delAttach']) {
-          var i = body.indexOf(key);
-          var n = 0;
-          while (i > 0 && n < 2) {
-            final a = i - 260 < 0 ? 0 : i - 260;
-            final b = i + 420 > body.length ? body.length : i + 420;
-            print('JSCTX $key ${body.substring(a, b).replaceAll('\n', ' ')}');
-            i = body.indexOf(key, i + 1);
-            n++;
-          }
-        }
-        break;
+    final js = await http.get('static/js/forum_post.js');
+    print('JS len=${js.body.length} status=${js.statusCode}');
+    for (final key in ['attachupdate', 'delattachop']) {
+      var k = js.body.indexOf(key);
+      var n = 0;
+      while (k > 0 && n < 3) {
+        final a = k - 320 < 0 ? 0 : k - 320;
+        final b = k + 420 > js.body.length ? js.body.length : k + 420;
+        print('JSCTX $key ${js.body.substring(a, b).replaceAll('\n', ' ')}');
+        k = js.body.indexOf(key, k + 1);
+        n++;
       }
     }
     exit(0);
