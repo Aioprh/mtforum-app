@@ -2235,6 +2235,12 @@ class _EditPostPageState extends State<_EditPostPage> {
   /// 本帖在编辑之前就挂着的附件（网页版上传后没插入正文的也在里面）。
   List<EditAttachment> _existing = const <EditAttachment>[];
 
+  /// 正在删除的附件 aid，用来把那一格变成转圈。
+  int? _deletingAid;
+
+  /// 这次编辑里已经删掉的附件，保存时要把它们残留的表单字段剔除。
+  final Set<int> _removedAids = <int>{};
+
   @override
   void initState() {
     super.initState();
@@ -2523,6 +2529,74 @@ class _EditPostPageState extends State<_EditPostPage> {
     });
   }
 
+  /// 删除本帖已挂着的一个附件。
+  ///
+  /// 网页版的「删除」是即时的（AJAX 直接删服务器文件），不点保存也已经没了，
+  /// 所以这里也当场删，再把正文里指向它的标记摘掉，避免留下空引用。
+  /// 动作不可逆，先确认。
+  Future<void> _deleteExisting(EditAttachment item) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('删除附件'),
+        content: Text('“${item.name}”会从服务器上删掉，帖子里的引用也一起消失，无法恢复。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    setState(() => _deletingAid = item.aid);
+    try {
+      await AppState.instance.repo.deleteAttachment(
+        aid: item.aid,
+        tid: widget.tid,
+        pid: widget.pid,
+        formhash: _formhash,
+      );
+      if (!mounted) return;
+      setState(() {
+        _deletingAid = null;
+        _existing = _existing.where((entry) => entry.aid != item.aid).toList();
+        _removedAids.add(item.aid);
+        _dropAttachmentTag(item);
+      });
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(content: Text('附件已删除')));
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _deletingAid = null);
+      final text = e is SiteException ? e.message : '删除失败，请稍后重试';
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(text)));
+    }
+  }
+
+  /// 这个表单字段是不是指向一个已经删掉的附件。
+  bool _isRemovedField(String key) {
+    final match = RegExp(r'attach(?:update|new)\[(\d+)\]').firstMatch(key);
+    if (match == null) return false;
+    final aid = int.tryParse(match.group(1)!);
+    return aid != null && _removedAids.contains(aid);
+  }
+
+  /// 附件删掉后，正文里指向它的标记已经没有意义，一并摘掉。
+  void _dropAttachmentTag(EditAttachment item) {
+    final tag = item.isImage ? '[attachimg]${item.aid}[/attachimg]' : '[attach]${item.aid}[/attach]';
+    final text = _message.text;
+    if (!text.contains(tag)) return;
+    _message.value = TextEditingValue(
+      text: text.replaceAll(tag, '').replaceAll(RegExp(r'\n{3,}'), '\n\n'),
+      selection: TextSelection.collapsed(offset: 0),
+    );
+    _message.selection = TextSelection.collapsed(offset: _message.text.length);
+  }
+
   /// 预览已有图片附件。
   void _previewExisting(EditAttachment target) {
     final images = _existing.where((item) => item.isImage && item.thumbUrl.isNotEmpty).toList();
@@ -2608,7 +2682,12 @@ class _EditPostPageState extends State<_EditPostPage> {
           for (final item in _attachments)
             if (item.aid != null && referencedAids.contains(item.aid)) item.aid!,
         ],
-        extraForm: _extraForm,
+        // 删掉的附件在旧表单里还留着 attachupdate[aid] / attachnew[aid]，
+        // 原样交回去服务端可能会顺着这个 aid 再找一遍已不存在的附件。
+        extraForm: {
+          for (final entry in _extraForm.entries)
+            if (!_isRemovedField(entry.key)) entry.key: entry.value,
+        },
       );
       if (!mounted) return;
       Navigator.of(context).pop(result);
@@ -2857,7 +2936,9 @@ class _EditPostPageState extends State<_EditPostPage> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  insertedCount == _existing.length ? '都已插入正文' : '点 + 插入正文',
+                  insertedCount == _existing.length
+                      ? '长按可删除'
+                      : '点 + 插入正文，长按可删除',
                   textAlign: TextAlign.right,
                   style: TextStyle(fontSize: 11, color: scheme.outline),
                 ),
@@ -2889,6 +2970,7 @@ class _EditPostPageState extends State<_EditPostPage> {
           Positioned.fill(
             child: GestureDetector(
               onTap: item.isImage ? () => _previewExisting(item) : () => _toggleExisting(item),
+              onLongPress: item.deletable ? () => _deleteExisting(item) : null,
               child: Container(
                 decoration: BoxDecoration(
                   color: scheme.surfaceContainerHighest,
@@ -2944,6 +3026,31 @@ class _EditPostPageState extends State<_EditPostPage> {
               ),
             ),
           ),
+          // 删除是不可逆的，不放显眼的红点怕误触，放个低调的垃圾桶；
+          // 有权限删的附件（服务端渲染了 delAttach）才有这个入口。
+          if (item.deletable)
+            Positioned(
+              bottom: 3,
+              right: 3,
+              child: Material(
+                color: Colors.black.withValues(alpha: 0.55),
+                shape: const CircleBorder(),
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: _deletingAid == item.aid ? null : () => _deleteExisting(item),
+                  child: Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: _deletingAid == item.aid
+                        ? const SizedBox(
+                            width: 12,
+                            height: 12,
+                            child: CircularProgressIndicator(strokeWidth: 1.6, color: Colors.white),
+                          )
+                        : const Icon(Icons.delete_outline_rounded, size: 13, color: Colors.white),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );

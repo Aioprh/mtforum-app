@@ -182,5 +182,26 @@ void main() {
     test('没有任何附件时返回空列表', () {
       expect(ForumRepository.editAttachments(parser.parse('<form></form>')), isEmpty);
     });
+
+    test('只有带 delAttach / delImgAttach 的附件才允许删除', () {
+      // 网页版编辑页行尾的「删除」就是 delAttach(aid,0)（普通附件）和
+      // delImgAttach(aid,0)（图片）；服务端不给这个链接，说明没权限删。
+      final doc = parser.parse('''
+        <table><tr><td>
+          <a id="imageattach11" title="a.jpg"><img src="https://x/a.jpg" id="image_11"></a>
+          <a href="javascript:;" onclick="delImgAttach(11,0);return false;">删除</a>
+        </td></tr></table>
+        <table><tbody id="attach_22"><tr><td>
+          <a id="attachname22" title="b.apk">b.apk</a>
+          <a href="javascript:;" onclick="delAttach(22,0);return false;">删除</a>
+        </td></tr></tbody></table>
+        <table><tbody id="attach_33"><tr><td>
+          <a id="attachname33" title="c.apk">c.apk</a>
+        </td></tr></tbody></table>
+      ''');
+      final list = ForumRepository.editAttachments(doc);
+      expect(list.map((e) => e.aid), [11, 22, 33]);
+      expect(list.map((e) => e.deletable), [true, true, false]);
+    });
   });
 }

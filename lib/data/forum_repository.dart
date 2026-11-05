@@ -1799,6 +1799,7 @@ class ForumRepository {
   static List<EditAttachment> editAttachments(Document doc) {
     final result = <EditAttachment>[];
     final seen = <int>{};
+    final deleteLinks = _deleteLinks(doc);
     for (final anchor in doc.querySelectorAll('a[id]')) {
       final id = anchor.attributes['id'] ?? '';
       final isImageAnchor = id.startsWith('imageattach');
@@ -1829,9 +1830,69 @@ class ForumRepository {
         isImage: image,
         thumbUrl: thumb.isNotEmpty ? thumb : (image ? bbcode.attachmentMediaUrl(aid) : ''),
         sizeText: size,
+        // 有权限删的附件，行尾才有 `onclick="delAttach(aid,0)"`（图片是
+        // `delImgAttach(aid,0)`）那个「删除」。
+        deletable: deleteLinks.contains('delAttach($aid') || deleteLinks.contains('delImgAttach($aid'),
       ));
     }
     return result;
+  }
+
+  /// 把编辑页里所有删除附件的 `delAttach(aid…)` 调用拼起来，供权限判断。
+  ///
+  /// 普通附件行用 `delAttach(aid,0)`，图片附件用 `delImgAttach(aid,0)`
+  /// （见 `static/js/forum_post.js`），两种都要认，否则图片永远删不了。
+  static String _deleteLinks(Document doc) => doc
+      .querySelectorAll('a[onclick]')
+      .map((a) => (a.attributes['onclick'] ?? '').replaceAll(' ', ''))
+      .where((js) => js.contains('delAttach(') || js.contains('delImgAttach('))
+      .join('|');
+
+  /// 删除本帖已挂着的一个附件。
+  ///
+  /// 网页版点附件行尾的「删除」并不会等你按保存：`forum_post.js` 的
+  /// `delAttach()` 立刻打一次
+  /// `forum.php?mod=ajax&action=deleteattach&inajax=yes&formhash=…&tid=…&pid=…&aids[]=…`
+  /// 文件当场从服务器删掉，正文里的 `[attachimg]` 留着也指不到东西。
+  /// 所以这里同样即时删除，删完再把正文标记摘掉（调用方负责）。
+  ///
+  /// 注意：这个动作不可逆，UI 上必须先确认。
+  Future<String> deleteAttachment({
+    required int aid,
+    required int tid,
+    required int pid,
+    required String formhash,
+  }) async {
+    final response = await _http.get(
+      'forum.php',
+      query: {
+        'mod': 'ajax',
+        'action': 'deleteattach',
+        'inajax': 'yes',
+        'formhash': formhash,
+        'tid': '$tid',
+        'pid': '$pid',
+        'aids[]': '$aid',
+      },
+      referer: _threadReferer(tid),
+    );
+    final text = _ajaxText(response.body);
+    // 服务端就回一个数字：1 = 这个附件已经没了（删成功），0 = 没找到。
+    // 2026-11 实测：删已存在的 382585 回 `1`，删不存在的 aid=1 回 `0`。
+    if (text == '1') return '附件已删除';
+    if (text == '0') throw SiteException('附件没能删除，可能已经不存在或没有权限');
+    if (text.contains('成功') || text.contains('已删除')) return '附件已删除';
+    if (text.isNotEmpty && _looksLikeError(text)) throw SiteException(text);
+    throw SiteException(text.isNotEmpty ? text : '删除附件失败，请稍后重试');
+  }
+
+  /// 解析 AJAX 接口的返回：`<root><![CDATA[删除成功 …]]></root>`。
+  static String _ajaxText(String body) {
+    final cdata = RegExp(r'<!\[CDATA\[(.*?)\]\]>', dotAll: true).firstMatch(body)?.group(1) ?? body;
+    return cdata
+        .replaceAll(RegExp(r'<[^>]+>'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
   }
 
   /// 编辑页里除正文、标题、凭证之外的表单字段。

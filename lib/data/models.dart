@@ -991,6 +991,7 @@ class EditAttachment {
     required this.isImage,
     this.thumbUrl = '',
     this.sizeText = '',
+    this.deletable = false,
   });
 
   /// 附件 id，插入正文时写成 `[attachimg]aid[/attachimg]`。
@@ -1007,4 +1008,10 @@ class EditAttachment {
 
   /// 文件大小，如 `183.79 KB`，拿不到时为空。
   final String sizeText;
+
+  /// 编辑页给了「删除」入口才算有权限删。
+  ///
+  /// 别人的附件、锁定的帖子、超出编辑时限的帖子，服务端不会渲染那个
+  /// `delAttach()` 链接，这里也就跟着不放删除按钮，省得点了才报错。
+  final bool deletable;
 }
