@@ -1780,7 +1780,7 @@ class ForumRepository {
   @visibleForTesting
   static Map<String, String> editFormFields(Document doc) {
     // delete 一定要排除：编辑页上要是有个隐藏的 delete=1，原样带回就成了删帖。
-    const skip = {'message', 'subject', 'formhash', 'posttime', 'save', 'editsubmit', 'delete'};
+    const skip = {'message', 'subject', 'formhash', 'posttime', 'save', 'editsubmit', 'delete', 'hash'};
     const ignoredTypes = {'submit', 'button', 'image', 'file', 'reset'};
     final result = <String, String>{};
 
