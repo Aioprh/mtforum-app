@@ -1679,6 +1679,7 @@ class ForumRepository {
         String uploadHash,
         int uid,
         Map<String, String> extraForm,
+        List<EditAttachment> attachments,
       })> fetchEditDraft({
     required int tid,
     required int pid,
@@ -1775,6 +1776,7 @@ class ForumRepository {
         uploadHash: uploadHash,
         uid: uid,
         extraForm: editFormFields(doc),
+        attachments: editAttachments(doc),
       );
     }
     throw SiteException(
@@ -1782,6 +1784,54 @@ class ForumRepository {
           ? lastMessage
           : '打不开编辑页：可能没有编辑权限，或楼主已关闭编辑',
     );
+  }
+
+  /// 编辑页里「本帖已有」的附件。
+  ///
+  /// 正文里没有被引用的附件（网页版上传后没点「插入」）在编辑页上只存在于
+  /// 附件区，正文 BBCode 里找不到痕迹。只按 `[attachimg]` 还原缩略图会把它们
+  /// 整批漏掉，用户就看不到帖子还挂着哪些文件。
+  ///
+  /// 两处标记（2026-11 实测的克米模板）：
+  /// - 图片：`<a id="imageattach382627" title="scaled_187137.jpg"><img id="image_382627" src="…"></a>`
+  /// - 文件：`<a id="attachname382585" isimage="1" title="名字\n上传日期: …\n文件大小: …">`
+  @visibleForTesting
+  static List<EditAttachment> editAttachments(Document doc) {
+    final result = <EditAttachment>[];
+    final seen = <int>{};
+    for (final anchor in doc.querySelectorAll('a[id]')) {
+      final id = anchor.attributes['id'] ?? '';
+      final isImageAnchor = id.startsWith('imageattach');
+      final isFileAnchor = id.startsWith('attachname');
+      if (!isImageAnchor && !isFileAnchor) continue;
+      final aid = int.tryParse(id.replaceFirst(isImageAnchor ? 'imageattach' : 'attachname', ''));
+      if (aid == null || aid <= 0 || !seen.add(aid)) continue;
+
+      final title = (anchor.attributes['title'] ?? '').trim();
+      // 文件附件的 title 是多行：文件名 / 上传日期 / 文件大小。
+      final lines = title.split('\n').map((line) => line.trim()).where((line) => line.isNotEmpty).toList();
+      final rawName = lines.isNotEmpty ? lines.first : anchor.text.trim();
+      final size = RegExp(r'文件大小[:：]\s*([0-9.]+\s*[KMG]?B)').firstMatch(title)?.group(1) ?? '';
+      final name = rawName.isEmpty ? '附件 $aid' : rawName;
+      final image = isImageAnchor ||
+          (anchor.attributes['isimage'] ?? '') == '1' ||
+          RegExp(r'\.(jpe?g|png|gif|bmp|webp)$', caseSensitive: false).hasMatch(name);
+
+      // 缩略图：图片锚点里的 <img>，或者附件行里单独放的预览层。
+      final thumb = (anchor.querySelector('img')?.attributes['src'] ??
+              doc.querySelector('img[id="image_$aid"]')?.attributes['src'] ??
+              '')
+          .trim();
+
+      result.add(EditAttachment(
+        aid: aid,
+        name: name,
+        isImage: image,
+        thumbUrl: thumb.isNotEmpty ? thumb : (image ? bbcode.attachmentMediaUrl(aid) : ''),
+        sizeText: size,
+      ));
+    }
+    return result;
   }
 
   /// 编辑页里除正文、标题、凭证之外的表单字段。

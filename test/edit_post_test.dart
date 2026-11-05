@@ -121,4 +121,66 @@ void main() {
       );
     });
   });
+
+  group('editAttachments', () {
+    test('图片与文件附件都能读出来，正文没引用的也算', () {
+      // 克米模板真实结构：图片在 imageattach / image_ 标记里，文件在
+      // attachname 标记里，title 里带文件名和大小。
+      final doc = parser.parse('''
+        <table class="imgl"><tr>
+          <td id="image_td_382627">
+            <a href="javascript:;" title="scaled_187137.jpg" id="imageattach382627">
+              <img src="https://oos.binmt.cc/image/000/38/26/27_300_300.jpg" id="image_382627">
+            </a>
+            <input type="hidden" name="attachupdate[382627]">
+          </td>
+        </tr></table>
+        <table><tbody id="attach_382585">
+          <tr><td>
+            <p id="attach382585">
+              <a href="javascript:;" id="attachname382585" isimage="1"
+                 title="Screenshot_2026-11-06-00-47-26.jpg
+上传日期: 2026-11-6 00:49
+文件大小: 183.79 KB">Screenshot_2026-11-06-00- ...</a>
+            </p>
+            <div id="attach_preview_382585_menu"><img src="https://oos.binmt.cc/image/000/38/25/85_300_300.jpg" id="image_382585"></div>
+            <input type="text" name="attachnew[382585][description]">
+          </td></tr>
+        </tbody></table>
+      ''');
+      final list = ForumRepository.editAttachments(doc);
+      expect(list.map((e) => e.aid), [382627, 382585]);
+
+      final image = list.first;
+      expect(image.isImage, isTrue);
+      expect(image.name, 'scaled_187137.jpg');
+      expect(image.thumbUrl, isNotEmpty);
+
+      final file = list.last;
+      expect(file.isImage, isTrue);
+      expect(file.name, 'Screenshot_2026-11-06-00-47-26.jpg');
+      expect(file.sizeText, '183.79 KB');
+      expect(file.thumbUrl, isNotEmpty);
+    });
+
+    test('普通文件附件用文件名，不当成图片', () {
+      final doc = parser.parse('''
+        <tbody id="attach_99"><tr><td>
+          <a id="attachname99" title="MT管理器_v2.5.5.apk
+上传日期: 2026-11-1 10:00
+文件大小: 8.21 MB">MT管理器_v2.5.5.apk</a>
+        </td></tr></tbody>
+      ''');
+      final list = ForumRepository.editAttachments(doc);
+      expect(list, hasLength(1));
+      expect(list.single.isImage, isFalse);
+      expect(list.single.name, 'MT管理器_v2.5.5.apk');
+      expect(list.single.sizeText, '8.21 MB');
+      expect(list.single.thumbUrl, isEmpty);
+    });
+
+    test('没有任何附件时返回空列表', () {
+      expect(ForumRepository.editAttachments(parser.parse('<form></form>')), isEmpty);
+    });
+  });
 }

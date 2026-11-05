@@ -2232,6 +2232,9 @@ class _EditPostPageState extends State<_EditPostPage> {
   String? _friendsError;
   final List<_EditAttachment> _attachments = <_EditAttachment>[];
 
+  /// 本帖在编辑之前就挂着的附件（网页版上传后没插入正文的也在里面）。
+  List<EditAttachment> _existing = const <EditAttachment>[];
+
   @override
   void initState() {
     super.initState();
@@ -2264,6 +2267,7 @@ class _EditPostPageState extends State<_EditPostPage> {
         _uploadHash = draft.uploadHash;
         _uid = draft.uid;
         _extraForm = draft.extraForm;
+        _existing = draft.attachments;
         _draftSubject = draft.subject;
         // 加载期间输入框是只读的，这里正常都会覆盖；仍留一道判断是为了
         // 防止将来放开只读后把用户刚敲的内容冲掉。
@@ -2488,6 +2492,56 @@ class _EditPostPageState extends State<_EditPostPage> {
     return parseBbcodeMedia(text);
   }
 
+  /// 正文里属于「本次编辑才有」的媒体。
+  ///
+  /// 本帖原有附件单独在「已有附件」条里展示，这里再列一遍只是重复。
+  List<BbcodeMediaRef> _freshBodyImages() {
+    if (_existing.isEmpty) return _bodyImages();
+    final existing = _existing.map((item) => item.aid).toSet();
+    return _bodyImages().where((item) => item.aid <= 0 || !existing.contains(item.aid)).toList();
+  }
+
+  /// 已有附件当前是否被正文引用。
+  bool _isExistingInserted(EditAttachment item) =>
+      ForumRepository.attachmentIdsIn(_message.text).contains(item.aid);
+
+  /// 把已有附件的标记写进正文；已经引用过就摘掉（等于「不插入」）。
+  void _toggleExisting(EditAttachment item) {
+    final tag = item.isImage ? '[attachimg]${item.aid}[/attachimg]' : '[attach]${item.aid}[/attach]';
+    final text = _message.text;
+    setState(() {
+      if (text.contains(tag)) {
+        _message.value = TextEditingValue(
+          text: text.replaceAll(tag, '').replaceAll(RegExp(r'\n{3,}'), '\n\n'),
+          selection: TextSelection.collapsed(offset: 0),
+        );
+      } else {
+        _insertAtCursor('\n$tag\n');
+      }
+      // 光标落到末尾，和上传图片后的行为保持一致。
+      _message.selection = TextSelection.collapsed(offset: _message.text.length);
+    });
+  }
+
+  /// 预览已有图片附件。
+  void _previewExisting(EditAttachment target) {
+    final images = _existing.where((item) => item.isImage && item.thumbUrl.isNotEmpty).toList();
+    if (images.isEmpty) return;
+    final index = images.indexWhere((item) => item.aid == target.aid);
+    Navigator.of(context).push(
+      appRoute(
+        builder: (_) => ImageViewerPage(
+          images: images.map((item) => _attachmentUrl(item.thumbUrl)).toList(),
+          initialIndex: index < 0 ? 0 : index,
+        ),
+      ),
+    );
+  }
+
+  /// 附件地址可能是页面里的绝对 CDN 地址，也可能是站内相对路径。
+  String _attachmentUrl(String url) =>
+      url.startsWith('http') ? url : AppConfig.uri(url).toString();
+
   void _previewBodyImage(BbcodeMediaRef target) {
     final images = _bodyImages().where((item) => item.image).toList();
     if (images.isEmpty) return;
@@ -2701,6 +2755,7 @@ class _EditPostPageState extends State<_EditPostPage> {
                     ),
                   ),
                   if (_panel != null) _editPanelContent(scheme),
+                  _existingAttachmentStrip(scheme),
                   _bodyImageStrip(scheme),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
@@ -2773,12 +2828,133 @@ class _EditPostPageState extends State<_EditPostPage> {
     );
   }
 
+  /// 本帖已有附件的缩略条。
+  ///
+  /// 编辑页只给一段 BBCode 原稿，网页版上传后没点「插入」的附件在正文里
+  /// 一点痕迹都没有，改帖时根本不知道帖子里还挂着图/文件。这里直接从编辑页
+  /// 的附件区读出来铺在上面：图片可以点开看，未引用的点「+」插进正文，
+  /// 已引用的点「✓」取消插入。
+  Widget _existingAttachmentStrip(ColorScheme scheme) {
+    if (_existing.isEmpty) return const SizedBox.shrink();
+    final insertedCount = _existing.where(_isExistingInserted).length;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 6, 14, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.folder_copy_outlined, size: 15, color: scheme.onSurfaceVariant),
+              const SizedBox(width: 6),
+              Text(
+                '本帖已有附件 ${_existing.length}',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  insertedCount == _existing.length ? '都已插入正文' : '点 + 插入正文',
+                  textAlign: TextAlign.right,
+                  style: TextStyle(fontSize: 11, color: scheme.outline),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 84,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: _existing.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 8),
+              itemBuilder: (context, index) => _existingAttachmentCard(_existing[index], scheme),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _existingAttachmentCard(EditAttachment item, ColorScheme scheme) {
+    final inserted = _isExistingInserted(item);
+    return SizedBox(
+      width: 84,
+      height: 84,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: GestureDetector(
+              onTap: item.isImage ? () => _previewExisting(item) : () => _toggleExisting(item),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: scheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: item.isImage && item.thumbUrl.isNotEmpty
+                    ? SmartImage(
+                        url: _attachmentUrl(item.thumbUrl),
+                        width: 84,
+                        height: 84,
+                        radius: BorderRadius.circular(12),
+                        placeholderHeight: 84,
+                        cacheWidth: 252,
+                      )
+                    : Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.insert_drive_file_outlined, size: 22, color: scheme.onSurfaceVariant),
+                          const SizedBox(height: 4),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 5),
+                            child: Text(
+                              item.name,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontSize: 9.5, height: 1.2, color: scheme.onSurfaceVariant),
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
+            ),
+          ),
+          Positioned(
+            top: 3,
+            right: 3,
+            child: Material(
+              color: inserted ? scheme.primary : Colors.black.withValues(alpha: 0.55),
+              shape: const CircleBorder(),
+              child: InkWell(
+                customBorder: const CircleBorder(),
+                onTap: () => _toggleExisting(item),
+                child: Padding(
+                  padding: const EdgeInsets.all(4),
+                  child: Icon(
+                    inserted ? Icons.check_rounded : Icons.add_rounded,
+                    size: 13,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// 正文中已引用的图片 / 附件缩略图。
   ///
   /// 编辑框只显示 BBCode，图片看不见；这里把它们铺在正文上方，点开能看大图，
   /// 点右上角叉号会同时去掉正文里的标记，避免保存后图还挂在帖子里。
   Widget _bodyImageStrip(ColorScheme scheme) {
-    final items = _bodyImages();
+    final items = _freshBodyImages();
     if (items.isEmpty) return const SizedBox.shrink();
     final imageCount = items.where((item) => item.image).length;
     return Container(

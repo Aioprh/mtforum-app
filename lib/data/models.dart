@@ -978,3 +978,33 @@ class GroupPermission {
   final String value;
   final bool? allowed;
 }
+
+/// 编辑页里「本帖已有」的一个附件。
+///
+/// 正文里不一定引用了它：网页版上传附件后可以不插入正文，图片尤其常见。
+/// 之前编辑页只按正文里的 `[attachimg]` / `[attach]` 标记还原缩略图，这些
+/// 没被引用的附件就彻底看不见了，等于编辑时无法得知帖子还挂着哪些文件。
+class EditAttachment {
+  const EditAttachment({
+    required this.aid,
+    required this.name,
+    required this.isImage,
+    this.thumbUrl = '',
+    this.sizeText = '',
+  });
+
+  /// 附件 id，插入正文时写成 `[attachimg]aid[/attachimg]`。
+  final int aid;
+
+  /// 原始文件名，如 `Screenshot_2026-11-06-00-47-26.jpg`。
+  final String name;
+
+  /// 图片附件可以显示缩略图；普通附件只能显示名字。
+  final bool isImage;
+
+  /// 图片缩略图地址，没有时退回 `forum.php?mod=attachment&aid=`。
+  final String thumbUrl;
+
+  /// 文件大小，如 `183.79 KB`，拿不到时为空。
+  final String sizeText;
+}
