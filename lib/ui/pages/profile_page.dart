@@ -11,11 +11,16 @@ import '../widgets/user_avatar.dart';
 import 'about_page.dart';
 import 'black_house_page.dart';
 import 'browse_history_page.dart';
+import 'credit_page.dart';
 import 'friends_page.dart';
 import 'followers_page.dart';
 import 'following_page.dart';
 import 'login_page.dart';
 import 'notifications_page.dart';
+import 'privacy_settings_page.dart';
+import 'profile_settings_page.dart';
+import 'rename_request_page.dart';
+import 'user_group_page.dart';
 import 'pm_list_page.dart';
 import 'rankings_page.dart';
 import 'site_features_page.dart';
@@ -650,6 +655,10 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
     Navigator.of(context).push(appRoute(builder: (_) => page));
   }
 
+  void _openMyLevel() {
+    _openPage(const UserGroupPage());
+  }
+
   void _openMySpace() {
     final profile = AppState.instance.profile;
     if (profile == null || profile.uid <= 0) {
@@ -704,6 +713,24 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
                     child: _profileHeader(scheme, profile, state.profileLoading),
                   ),
                   const SizedBox(height: 18),
+                  // 账号自身的东西排在最前：改资料、看等级、管隐私，这些是
+                  // 「我的」页面里唯一点进去只影响自己账号的入口。
+                  _menuGroup(scheme, [
+                    _MenuItem(Icons.badge_outlined, '资料设置', () {
+                      _openPage(const ProfileSettingsPage());
+                    }),
+                    _MenuItem(Icons.drive_file_rename_outline_rounded, '改名申请', () {
+                      _openPage(const RenameRequestPage());
+                    }),
+                    _MenuItem(Icons.visibility_outlined, '隐私筛选', () {
+                      _openPage(const PrivacySettingsPage());
+                    }),
+                    _MenuItem(Icons.military_tech_outlined, '我的等级', _openMyLevel),
+                    _MenuItem(Icons.toll_outlined, '积分', () {
+                      _openPage(const CreditPage());
+                    }),
+                  ]),
+                  const SizedBox(height: 14),
                   _menuGroup(scheme, [
                     _MenuItem(Icons.article_outlined, '我的主题', () {
                       _openPersonal('我的主题', 'home.php', {

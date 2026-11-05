@@ -703,6 +703,462 @@ class ForumRepository {
     _http.clear();
   }
 
+  // ------------------------------------------------------------ 资料设置
+
+  /// 资料设置的三块表单都在 `mod=spacecp&ac=profile` 下，靠 `op` 区分。
+  /// 站点把每个字段的可见范围塞进 `privacy[字段]`，居住地则是由省市区街道
+  /// 四个隐藏字段拼出的文本，页面上只渲染拼好的那一串。
+  static String _profilePath(String op) => 'home.php?mod=spacecp&ac=profile&op=$op&mobile=2';
+
+  Future<ProfileBaseSettings> fetchProfileBase() async {
+    final result = await _http.get(
+      'home.php',
+      query: {'mod': 'spacecp', 'ac': 'profile', 'op': 'base', 'mobile': '2'},
+    );
+    _ensureOk(result);
+    return parseProfileBaseHtml(result.body);
+  }
+
+  Future<ProfileContactSettings> fetchProfileContact() async {
+    final result = await _http.get(
+      'home.php',
+      query: {'mod': 'spacecp', 'ac': 'profile', 'op': 'contact', 'mobile': '2'},
+    );
+    _ensureOk(result);
+    return parseProfileContactHtml(result.body);
+  }
+
+  Future<ProfileInfoSettings> fetchProfileInfo() async {
+    final result = await _http.get(
+      'home.php',
+      query: {'mod': 'spacecp', 'ac': 'profile', 'op': 'info', 'mobile': '2'},
+    );
+    _ensureOk(result);
+    return parseProfileInfoHtml(result.body);
+  }
+
+  Future<PrivacySettings> fetchPrivacySettings() async {
+    final result = await _http.get(
+      'home.php',
+      query: {'mod': 'spacecp', 'ac': 'privacy', 'op': 'base', 'forcemobile': '1'},
+    );
+    _ensureOk(result);
+    return parsePrivacyHtml(result.body);
+  }
+
+  @visibleForTesting
+  static ProfileBaseSettings parseProfileBaseHtml(String html) {
+    final doc = parser.parse(html);
+    final fields = _formValues(_profileForm(doc, 'op=base'));
+    final box = doc.querySelector('#residedistrictbox');
+    // 「天津市 大港区 [修改]」——[修改] 是弹层触发器，不属于地址。
+    final reside = (box?.text ?? '')
+        .replaceAll('[修改]', '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    return ProfileBaseSettings(
+      formhash: fields['formhash'] ?? _findFormhash(html),
+      occupation: fields['occupation'] ?? '',
+      realname: fields['realname'] ?? '',
+      gender: int.tryParse(fields['gender'] ?? '0') ?? 0,
+      birthYear: fields['birthyear'] ?? '',
+      birthMonth: fields['birthmonth'] ?? '',
+      birthDay: fields['birthday'] ?? '',
+      resideText: reside,
+      privacy: _privacyOf(fields),
+    );
+  }
+
+  @visibleForTesting
+  static ProfileContactSettings parseProfileContactHtml(String html) {
+    final doc = parser.parse(html);
+    final fields = _formValues(_profileForm(doc, 'op=contact'));
+    final email = doc
+            .querySelector('#email, [name="email"]')
+            ?.attributes['value']
+            ?.trim() ??
+        RegExp(r'[\w.+-]+@[\w-]+\.[\w.-]+').firstMatch(doc.text ?? '')?.group(0) ??
+        '';
+    return ProfileContactSettings(
+      formhash: fields['formhash'] ?? _findFormhash(html),
+      qq: fields['qq'] ?? '',
+      mobile: fields['mobile'] ?? '',
+      email: email,
+      privacy: _privacyOf(fields),
+    );
+  }
+
+  @visibleForTesting
+  static ProfileInfoSettings parseProfileInfoHtml(String html) {
+    final doc = parser.parse(html);
+    final fields = _formValues(_profileForm(doc, 'op=info'));
+    return ProfileInfoSettings(
+      formhash: fields['formhash'] ?? _findFormhash(html),
+      bio: fields['bio'] ?? '',
+      customStatus: fields['customstatus'] ?? '',
+      signature: fields['sightml'] ?? '',
+      privacy: _privacyOf(fields),
+    );
+  }
+
+  @visibleForTesting
+  static PrivacySettings parsePrivacyHtml(String html) {
+    final doc = parser.parse(html);
+    final fields = _formValues(_profileForm(doc, 'ac=privacy'));
+    return PrivacySettings(
+      formhash: fields['formhash'] ?? _findFormhash(html),
+      friend: fields['privacy[view][friend]'] ?? '0',
+      wall: fields['privacy[view][wall]'] ?? '0',
+      home: fields['privacy[view][home]'] ?? '0',
+    );
+  }
+
+  /// 表单以 `action` 里的片段定位；找不到就退回第一个非搜索表单。
+  static Element? _profileForm(Document doc, String actionHint) {
+    final forms = doc.querySelectorAll('form');
+    for (final form in forms) {
+      final action = form.attributes['action'] ?? '';
+      if (action.contains('search.php')) continue;
+      if (action.contains(actionHint)) return form;
+    }
+    for (final form in forms) {
+      if (!(form.attributes['action'] ?? '').contains('search.php')) return form;
+    }
+    return null;
+  }
+
+  /// 把表单里的控件读成 name → 当前值。select 取选中项，没标 selected 的取第一项，
+  /// 这与浏览器提交默认值的行为一致。
+  static Map<String, String> _formValues(Element? form) {
+    final values = <String, String>{};
+    if (form == null) return values;
+    for (final el in form.querySelectorAll('input, textarea, select')) {
+      final name = el.attributes['name'];
+      if (name == null || name.isEmpty) continue;
+      final type = (el.attributes['type'] ?? '').toLowerCase();
+      if (type == 'submit' || type == 'button' || type == 'file' || type == 'reset') continue;
+      if (el.localName == 'select') {
+        final options = el.querySelectorAll('option');
+        if (options.isEmpty) continue;
+        final selected = options.where((o) => o.attributes.containsKey('selected')).toList();
+        final pick = selected.isNotEmpty ? selected.first : options.first;
+        values[name] = pick.attributes['value'] ?? pick.text.trim();
+      } else if (el.localName == 'textarea') {
+        values[name] = el.text;
+      } else {
+        values[name] = el.attributes['value'] ?? '';
+      }
+    }
+    return values;
+  }
+
+  static Map<String, String> _privacyOf(Map<String, String> fields) {
+    final privacy = <String, String>{};
+    for (final entry in fields.entries) {
+      final match = RegExp(r'^privacy\[([^\]]+)\]$').firstMatch(entry.key);
+      if (match != null) privacy[match.group(1)!] = entry.value;
+    }
+    return privacy;
+  }
+
+  /// 居住地拆回省 / 市 / 区 / 街道。
+  ///
+  /// 站点保存的是四个独立字段，展示时拼成一行，中间没有分隔标记。直辖市的
+  /// 市级字段本来就是空的，所以「天津市 大港区」要拆成 省=天津市、区=大港区，
+  /// 不能想当然按 省/市 切。
+  @visibleForTesting
+  static (String province, String city, String dist, String community) splitRegion(String text) {
+    final parts = text.split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
+    if (parts.isEmpty) return ('', '', '', '');
+    const municipalities = ['北京', '天津', '上海', '重庆', '香港', '澳门', '台湾'];
+    final isMunicipality = municipalities.any((m) => parts.first.startsWith(m));
+    if (isMunicipality) {
+      return (
+        parts[0],
+        '',
+        parts.length > 1 ? parts[1] : '',
+        parts.length > 2 ? parts[2] : '',
+      );
+    }
+    return (
+      parts[0],
+      parts.length > 1 ? parts[1] : '',
+      parts.length > 2 ? parts[2] : '',
+      parts.length > 3 ? parts[3] : '',
+    );
+  }
+
+  Future<String> saveProfileBase(ProfileBaseSettings data) async {
+    final region = splitRegion(data.resideText);
+    final referer = AppConfig.uri(_profilePath('base')).toString();
+    final response = await _http.post(
+      'home.php',
+      query: {'mod': 'spacecp', 'ac': 'profile', 'op': 'base', 'mobile': '2'},
+      referer: referer,
+      form: {
+        'formhash': data.formhash,
+        'occupation': data.occupation,
+        'realname': data.realname,
+        'gender': '${data.gender}',
+        'birthyear': data.birthYear,
+        'birthmonth': data.birthMonth,
+        'birthday': data.birthDay,
+        'resideprovince': region.$1,
+        'residecity': region.$2,
+        'residedist': region.$3,
+        'residecommunity': region.$4,
+        for (final entry in data.privacy.entries) 'privacy[${entry.key}]': entry.value,
+        'profilesubmit': 'true',
+      },
+    );
+    _ensureOk(response);
+    final message = _pageMessage(parser.parse(response.body));
+    if (message != null && _looksLikeError(message)) throw SiteException(message);
+
+    // 站点会对部分字段做二次处理（比如真实姓名过滤字符），以回读结果为准。
+    final saved = await fetchProfileBase();
+    if (saved.realname != data.realname ||
+        saved.occupation != data.occupation ||
+        saved.gender != data.gender) {
+      throw SiteException(message ?? '资料没有保存成功，请稍后重试');
+    }
+    return '资料已保存';
+  }
+
+  Future<String> saveProfileContact(ProfileContactSettings data) async {
+    final referer = AppConfig.uri(_profilePath('contact')).toString();
+    final response = await _http.post(
+      'home.php',
+      query: {'mod': 'spacecp', 'ac': 'profile', 'op': 'contact', 'mobile': '2'},
+      referer: referer,
+      form: {
+        'formhash': data.formhash,
+        'qq': data.qq,
+        'mobile': data.mobile,
+        for (final entry in data.privacy.entries) 'privacy[${entry.key}]': entry.value,
+        'profilesubmit': 'true',
+      },
+    );
+    _ensureOk(response);
+    final message = _pageMessage(parser.parse(response.body));
+    if (message != null && _looksLikeError(message)) throw SiteException(message);
+
+    final saved = await fetchProfileContact();
+    if (saved.qq != data.qq || saved.mobile != data.mobile) {
+      throw SiteException(message ?? '联系方式没有保存成功，请稍后重试');
+    }
+    return '联系方式已保存';
+  }
+
+  Future<String> saveProfileInfo(ProfileInfoSettings data) async {
+    final referer = AppConfig.uri(_profilePath('info')).toString();
+    final response = await _http.post(
+      'home.php',
+      query: {'mod': 'spacecp', 'ac': 'profile', 'op': 'info', 'mobile': '2'},
+      referer: referer,
+      form: {
+        'formhash': data.formhash,
+        'bio': data.bio,
+        'customstatus': data.customStatus,
+        'sightml': data.signature,
+        for (final entry in data.privacy.entries) 'privacy[${entry.key}]': entry.value,
+        'profilesubmit': 'true',
+      },
+    );
+    _ensureOk(response);
+    final message = _pageMessage(parser.parse(response.body));
+    if (message != null && _looksLikeError(message)) throw SiteException(message);
+
+    final saved = await fetchProfileInfo();
+    if (saved.customStatus.trim() != data.customStatus.trim() ||
+        saved.signature.trim() != data.signature.trim()) {
+      throw SiteException(message ?? '个人信息没有保存成功，请稍后重试');
+    }
+    return '个人信息已保存';
+  }
+
+  Future<String> savePrivacySettings(PrivacySettings data) async {
+    final response = await _http.post(
+      'home.php',
+      query: {'mod': 'spacecp', 'ac': 'privacy', 'op': 'base', 'forcemobile': '1'},
+      referer: AppConfig.uri('home.php?mod=spacecp&ac=privacy&forcemobile=1').toString(),
+      form: {
+        'formhash': data.formhash,
+        'privacy[view][friend]': data.friend,
+        'privacy[view][wall]': data.wall,
+        'privacy[view][home]': data.home,
+      },
+    );
+    _ensureOk(response);
+    final message = _pageMessage(parser.parse(response.body));
+    if (message != null && _looksLikeError(message)) throw SiteException(message);
+
+    final saved = await fetchPrivacySettings();
+    if (saved.friend != data.friend || saved.wall != data.wall || saved.home != data.home) {
+      throw SiteException(message ?? '隐私设置没有保存成功，请稍后重试');
+    }
+    return '隐私设置已保存';
+  }
+
+  // ------------------------------------------------------------ 改名申请
+
+  static const String _renamePlugin = 'nimba_rename';
+  static const int _renameFallbackFee = 200;
+
+  /// 改名申请页的校验串、扣费与当前用户名。
+  ///
+  /// 站点没把改名放进 spacecp，而是装了 `nimba_rename` 插件：PC 模板顶栏
+  /// 的「改名申请」用 `showWindow` 弹表单，手机模板里根本没有这个入口，
+  /// 所以固定按桌面页取。
+  Future<RenameInfo> fetchRenameInfo() async {
+    // App 的 UA 是移动端，Discuz 会直接给「手机版」提示页；`mobile=no` 配合
+    // 桌面 UA 才能拿到真正的表单和扣费文案。
+    final page = await _http.get(
+      'plugin.php',
+      query: {'id': _renamePlugin, 'mobile': 'no'},
+      userAgent: _desktopUserAgent,
+    );
+    _ensureOk(page);
+    final doc = parser.parse(page.body);
+    final formhash = _findFormhash(page.body);
+    if (formhash.isEmpty) throw SiteException('登录后才能申请改名');
+    final text = _clean(doc.documentElement?.text ?? '');
+    // 扣费写在表单下面的红字里，页面改价时这里跟着变。
+    final fee = int.tryParse(RegExp(r'扣除\s*(\d+)\s*金币').firstMatch(text)?.group(1) ?? '') ??
+        _renameFallbackFee;
+    return RenameInfo(
+      formhash: formhash,
+      fee: fee,
+      currentName: _clean(doc.querySelector('.vwmy a')?.text ?? ''),
+    );
+  }
+
+  /// 提交改名申请。扣金币由插件在服务端做，这里只负责把结果说清楚。
+  Future<String> requestRename({
+    required String newName,
+    required String reason,
+  }) async {
+    final info = await fetchRenameInfo();
+    final response = await _http.post(
+      'plugin.php',
+      query: {'id': _renamePlugin, 'mobile': 'no'},
+      referer: AppConfig.uri('plugin.php', {'id': _renamePlugin, 'mobile': 'no'}).toString(),
+      userAgent: _desktopUserAgent,
+      form: {
+        'formhash': info.formhash,
+        'newname': newName,
+        'reason': reason,
+        'submit': 'true',
+      },
+    );
+    _ensureOk(response);
+    final message = renameMessage(response.body);
+    if (renameFailed(message)) throw SiteException(message);
+    return '改名申请已提交，等待管理员审核';
+  }
+
+  /// 插件回包里的提示语：可能是 `showmessage(...)` 脚本，也可能是提示页。
+  @visibleForTesting
+  static String renameMessage(String body) {
+    final pageMessage = _pageMessage(parser.parse(body));
+    if (pageMessage != null && pageMessage.trim().isNotEmpty) return pageMessage.trim();
+
+    final cdata = RegExp(r'<!\[CDATA\[(.*?)\]\]>', dotAll: true).firstMatch(body)?.group(1) ?? body;
+    // 插件走的是 `showmessage('…');`，不是私信那套 succeedhandle。
+    final call = RegExp(r'''(?:showmessage|succeedhandle|errorhandle)\s*\(\s*['"]([^'"]*)['"]''')
+        .firstMatch(cdata);
+    final quoted = _clean(call?.group(1) ?? '');
+    if (quoted.isNotEmpty) return quoted;
+
+    final text = _clean(cdata.replaceAll(RegExp(r'<[^>]+>'), ' '));
+    return text.split(RegExp(r'[。！\n]')).first.trim();
+  }
+
+  /// 这次提交到底成没成。
+  ///
+  /// 成功文案本身就带「审核」二字，所以不能用通用的 `_looksLikeError`
+  /// （它把「审核」算成错误）。先认成功词，再看失败词。
+  @visibleForTesting
+  static bool renameFailed(String message) {
+    if (message.trim().isEmpty) return false;
+    if (RegExp(r'(成功|已提交|已受理|等待审核|请等待审核)').hasMatch(message)) return false;
+    return RegExp(
+      r'(抱歉|失败|不能|无法|无权|权限|禁止|非法|敏感|不足|余额|已存在|已被|重名|重复|相同|长度|超过|至少|格式|不正确|未登录|请先登录)',
+    ).hasMatch(message);
+  }
+
+  /// 我的等级：用户组、升级进度与权限表。
+  Future<UserGroupInfo> fetchUserGroupInfo() async {
+    final page = await _http.get(
+      'home.php',
+      query: {'mod': 'spacecp', 'ac': 'usergroup', 'mobile': '2'},
+    );
+    _ensureOk(page);
+    final info = parseUserGroup(page.body);
+    if (info == null) {
+      throw SiteException(_pageMessage(parser.parse(page.body)) ?? '登录后才能查看等级');
+    }
+    return info;
+  }
+
+  /// 解析等级页。移动模板的结构比较稳定：头部 `.comiis_levhead` 放等级和
+  /// 进度，下面 `.comiis_levshow table` 是两列权限表。
+  @visibleForTesting
+  static UserGroupInfo? parseUserGroup(String html) {
+    final doc = parser.parse(html);
+    final head = doc.querySelector('.comiis_levhead');
+    if (head == null) return null;
+
+    final name = _clean(head.querySelector('h2')?.text ?? '')
+        .replaceFirst(RegExp(r'^我的等级[:：]\s*'), '');
+    final levels = head
+        .querySelectorAll('.lev_x em')
+        .map((e) => _clean(e.text))
+        .where((e) => e.isNotEmpty)
+        .toList();
+
+    var progress = 0.0;
+    final barStyle = head.querySelector('.lev_x .z')?.attributes['style'] ?? '';
+    final percent = RegExp(r'width:\s*([\d.]+)%').firstMatch(barStyle)?.group(1);
+    if (percent != null) progress = (double.tryParse(percent) ?? 0) / 100;
+
+    final hint = _clean(head.querySelector('h3')?.text ?? '');
+    final upgrade = RegExp(r'还需要\s*(\d+)\s*积分升级到\s*(.+)').firstMatch(hint);
+
+    var credits = '';
+    final permissions = <GroupPermission>[];
+    for (final tr in doc.querySelectorAll('.comiis_levshow table tr')) {
+      final th = _clean(tr.querySelector('th')?.text ?? '');
+      final td = tr.querySelector('td');
+      if (th.isEmpty || td == null) continue;
+      if (th == '积分') credits = _clean(td.text);
+      // 这三行头部已经讲过了，表格里再列一遍只会显得啰嗦。
+      if (th == '我的等级' || th == '积分' || th == '用户级别') continue;
+
+      final icon = td.querySelector('i.comiis_font');
+      if (icon != null && _clean(td.text).isEmpty) {
+        // 字体图标没有文本：`f_g` 是灰色（无权），`f_wx` 是主题色（有权）。
+        final classes = icon.attributes['class'] ?? '';
+        permissions.add(GroupPermission(name: th, allowed: !classes.contains('f_g')));
+      } else {
+        permissions.add(GroupPermission(name: th, value: _clean(td.text)));
+      }
+    }
+
+    final rawAvatar = head.querySelector('.user_img img')?.attributes['src'] ?? '';
+    return UserGroupInfo(
+      name: name,
+      level: levels.isNotEmpty ? levels[0] : '',
+      nextLevel: levels.length > 1 ? levels[1] : '',
+      nextName: upgrade?.group(2)?.trim() ?? '',
+      credits: credits,
+      remaining: int.tryParse(upgrade?.group(1) ?? '') ?? 0,
+      progress: progress.clamp(0.0, 1.0),
+      avatar: rawAvatar.startsWith('//') ? 'https:$rawAvatar' : rawAvatar,
+      permissions: permissions,
+    );
+  }
+
   Future<ComposeInfo> fetchComposeInfo(int fid) async {
     final page = await _http.get(
       'forum.php',
@@ -3782,7 +4238,7 @@ class ForumRepository {
 
   // ---------------------------------------------------------------- 工具
 
-  String _findFormhash(String html) {
+  static String _findFormhash(String html) {
     final patterns = [
       RegExp(r'''name=["']formhash["'][^>]*?value=["']([0-9a-zA-Z]+)["']''', caseSensitive: false),
       RegExp(r'''value=["']([0-9a-zA-Z]+)["'][^>]*?name=["']formhash["']''', caseSensitive: false),

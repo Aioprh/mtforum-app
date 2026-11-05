@@ -767,3 +767,215 @@ class MallProduct {
   final String statusHref;
   final List<SiteRow> records;
 }
+
+/// 资料设置·基本资料（`home.php?mod=spacecp&ac=profile&op=base`）。
+///
+/// 站点把每个字段的可见范围打包成 `privacy[字段]`，取值 0 公开 / 1 好友可见 /
+/// 3 保密；居住地则是省、市、区、街道四个隐藏字段拼出来的文本，页面上只显示
+/// 拼好的那一串，所以这里保留 [resideText] 原文，提交时再拆回去。
+class ProfileBaseSettings {
+  const ProfileBaseSettings({
+    required this.formhash,
+    this.occupation = '',
+    this.realname = '',
+    this.gender = 0,
+    this.birthYear = '',
+    this.birthMonth = '',
+    this.birthDay = '',
+    this.resideText = '',
+    this.privacy = const <String, String>{},
+  });
+
+  final String formhash;
+  final String occupation;
+  final String realname;
+
+  /// 0 保密 / 1 男 / 2 女。
+  final int gender;
+  final String birthYear;
+  final String birthMonth;
+  final String birthDay;
+  final String resideText;
+  final Map<String, String> privacy;
+
+  bool get hasBirthday => birthYear.isNotEmpty && birthMonth.isNotEmpty && birthDay.isNotEmpty;
+
+  String get birthdayText => hasBirthday
+      ? '$birthYear-${birthMonth.padLeft(2, '0')}-${birthDay.padLeft(2, '0')}'
+      : '';
+
+  String privacyOf(String field) => privacy[field] ?? '0';
+
+  ProfileBaseSettings copyWith({
+    String? occupation,
+    String? realname,
+    int? gender,
+    String? birthYear,
+    String? birthMonth,
+    String? birthDay,
+    String? resideText,
+    Map<String, String>? privacy,
+  }) =>
+      ProfileBaseSettings(
+        formhash: formhash,
+        occupation: occupation ?? this.occupation,
+        realname: realname ?? this.realname,
+        gender: gender ?? this.gender,
+        birthYear: birthYear ?? this.birthYear,
+        birthMonth: birthMonth ?? this.birthMonth,
+        birthDay: birthDay ?? this.birthDay,
+        resideText: resideText ?? this.resideText,
+        privacy: privacy ?? this.privacy,
+      );
+}
+
+/// 资料设置·联系方式（`ac=profile&op=contact`）。邮箱只能去密码页改，这里只读。
+class ProfileContactSettings {
+  const ProfileContactSettings({
+    required this.formhash,
+    this.qq = '',
+    this.mobile = '',
+    this.email = '',
+    this.privacy = const <String, String>{},
+  });
+
+  final String formhash;
+  final String qq;
+  final String mobile;
+  final String email;
+  final Map<String, String> privacy;
+
+  String privacyOf(String field) => privacy[field] ?? '0';
+
+  ProfileContactSettings copyWith({
+    String? qq,
+    String? mobile,
+    Map<String, String>? privacy,
+  }) =>
+      ProfileContactSettings(
+        formhash: formhash,
+        qq: qq ?? this.qq,
+        mobile: mobile ?? this.mobile,
+        email: email,
+        privacy: privacy ?? this.privacy,
+      );
+}
+
+/// 资料设置·个人信息（`ac=profile&op=info`）：自我介绍、自定义头衔、个人签名。
+class ProfileInfoSettings {
+  const ProfileInfoSettings({
+    required this.formhash,
+    this.bio = '',
+    this.customStatus = '',
+    this.signature = '',
+    this.privacy = const <String, String>{},
+  });
+
+  final String formhash;
+  final String bio;
+  final String customStatus;
+
+  /// Discuz 代码（`[b]`、`[img]` 等），与网页端同一套语法。
+  final String signature;
+  final Map<String, String> privacy;
+
+  String privacyOf(String field) => privacy[field] ?? '0';
+
+  ProfileInfoSettings copyWith({
+    String? bio,
+    String? customStatus,
+    String? signature,
+    Map<String, String>? privacy,
+  }) =>
+      ProfileInfoSettings(
+        formhash: formhash,
+        bio: bio ?? this.bio,
+        customStatus: customStatus ?? this.customStatus,
+        signature: signature ?? this.signature,
+        privacy: privacy ?? this.privacy,
+      );
+}
+
+/// 隐私筛选（`ac=privacy&op=base`）：主页、广播、空间动态的可见范围。
+class PrivacySettings {
+  const PrivacySettings({
+    required this.formhash,
+    this.friend = '0',
+    this.wall = '0',
+    this.home = '0',
+  });
+
+  final String formhash;
+  final String friend;
+  final String wall;
+  final String home;
+
+  PrivacySettings copyWith({String? friend, String? wall, String? home}) => PrivacySettings(
+        formhash: formhash,
+        friend: friend ?? this.friend,
+        wall: wall ?? this.wall,
+        home: home ?? this.home,
+      );
+}
+
+/// 改名申请（`plugin.php?id=nimba_rename`）。
+///
+/// 站点不走 spacecp，而是装了一个改名插件：填新用户名 + 理由提交，扣一次
+/// 金币，再由管理员人工改名。表单里除了这两个字段就只有 formhash。
+class RenameInfo {
+  const RenameInfo({required this.formhash, required this.fee, required this.currentName});
+
+  final String formhash;
+
+  /// 本次申请要扣的金币，由插件页文案解析，页面改价也能跟上。
+  final int fee;
+  final String currentName;
+
+  bool get canSubmit => formhash.isNotEmpty;
+}
+
+/// 我的等级（`home.php?mod=spacecp&ac=usergroup&mobile=2`）。
+///
+/// 移动模板把用户组信息和权限表放在同一页：头部是当前等级、进度和还差多少
+/// 积分升级；下面一张两列表，左边权限名、右边值或一个「有/无」图标。
+class UserGroupInfo {
+  const UserGroupInfo({
+    required this.name,
+    required this.level,
+    required this.nextLevel,
+    required this.nextName,
+    required this.credits,
+    required this.remaining,
+    required this.progress,
+    required this.avatar,
+    required this.permissions,
+  });
+
+  /// 用户组名，如「硕士生」。
+  final String name;
+
+  /// 当前等级，如 `Lv.6`。
+  final String level;
+  final String nextLevel;
+  final String nextName;
+  final String credits;
+
+  /// 距离下一级还差多少积分；已经是最高级时为 0。
+  final int remaining;
+
+  /// 0–1 的升级进度，用于画进度条。
+  final double progress;
+  final String avatar;
+  final List<GroupPermission> permissions;
+
+  bool get hasNext => nextName.isNotEmpty;
+}
+
+/// 用户组权限的一行。`allowed` 为 null 表示这一行是具体数值/文字。
+class GroupPermission {
+  const GroupPermission({required this.name, this.value = '', this.allowed});
+
+  final String name;
+  final String value;
+  final bool? allowed;
+}
