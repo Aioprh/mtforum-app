@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mt_forum/core/http_session.dart';
-import 'package:mt_forum/data/forum_repository.dart';
 
 const String _cookieRaw = String.fromEnvironment('MT_COOKIE');
 
@@ -18,55 +17,20 @@ void _loadCookies() {
 }
 
 void main() {
-  test('inspect edit page attachments', () async {
+  test('probe thread page markers', () async {
     _loadCookies();
     final http = HttpSession.instance;
-
-    final thread = await http.get('forum.php', query: {'mod': 'viewthread', 'tid': '176076'});
-    final pid = RegExp(r'id="post_(\d+)"').firstMatch(thread.body)?.group(1);
-    print('THREAD status=${thread.statusCode} pid=$pid len=${thread.body.length}');
-    if (pid == null) {
-      exit(0);
+    final r = await http.get('forum.php', query: {'mod': 'viewthread', 'tid': '176076'});
+    print('URL ${r.uri}');
+    print('LEN ${r.body.length}');
+    final title = RegExp(r'<title>(.*?)</title>', dotAll: true).firstMatch(r.body)?.group(1);
+    print('TITLE $title');
+    for (final p in [r'id="post_(\d+)"', r'id="pid(\d+)"', r'pid=(\d+)', r'postmessage_(\d+)']) {
+      final ms = RegExp(p).allMatches(r.body).map((m) => m.group(1)).take(6).toList();
+      print('MATCH $p => $ms');
     }
-
-    final page = await http.get('forum.php', query: {
-      'mod': 'post',
-      'action': 'edit',
-      'fid': '42',
-      'tid': '176076',
-      'pid': pid,
-      'mobile': 'no',
-    });
-    print('EDIT status=${page.statusCode} len=${page.body.length}');
-    final html = page.body;
-    File('/tmp/edit.html').writeAsStringSync(html);
-
-    // 所有和附件有关的 input
-    for (final m in RegExp(r'<input[^>]*name="[^"]*attach[^"]*"[^>]*>').allMatches(html)) {
-      print('INPUT ${m.group(0)}');
-    }
-    // 删除附件相关的链接 / 文本
-    for (final m in RegExp(r'attachdel').allMatches(html)) {
-      final s = m.start - 200 < 0 ? 0 : m.start - 200;
-      final e = m.start + 260 > html.length ? html.length : m.start + 260;
-      print('DELCTX ${html.substring(s, e).replaceAll('\n', ' ')}');
-    }
-    // 附件条目结构
-    for (final key in ['imageattach', 'attachname', 'attachlist']) {
-      final idx = html.indexOf(key);
-      print('SEC $key at $idx');
-      if (idx > 0) {
-        final s = idx - 400 < 0 ? 0 : idx - 400;
-        final e = idx + 1200 > html.length ? html.length : idx + 1200;
-        print('SEC_BODY ${html.substring(s, e).replaceAll('\n', ' ')}');
-      }
-    }
-
-    final draft = await ForumRepository.instance.fetchEditDraft(tid: 176076, pid: int.parse(pid), fid: 42);
-    print('ATTACH n=${draft.attachments.length}');
-    for (final a in draft.attachments) {
-      print('ATT ${a.aid} img=${a.isImage} name=${a.name} size=${a.sizeText}');
-    }
+    final login = r.body.contains('登录') ? 'has-login-word' : 'no-login-word';
+    print('LOGIN $login');
     exit(0);
   });
 }
