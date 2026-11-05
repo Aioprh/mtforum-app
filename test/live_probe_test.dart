@@ -5,9 +5,6 @@ import 'package:mt_forum/core/http_session.dart';
 import 'package:mt_forum/data/forum_repository.dart';
 
 const String _cookieRaw = String.fromEnvironment('MT_COOKIE');
-const int _tid = 176076;
-const int _pid = 12089521;
-const int _fid = 42;
 
 void _loadCookies() {
   final http = HttpSession.instance;
@@ -21,25 +18,17 @@ void _loadCookies() {
 }
 
 void main() {
-  test('deleteattach responses', () async {
+  test('check attachments now', () async {
     _loadCookies();
     final repo = ForumRepository.instance;
-    final draft = await repo.fetchEditDraft(tid: _tid, pid: _pid, fid: _fid);
-    print('FORMHASH ${draft.formhash}');
-
-    for (final aid in [1, 9, 382585]) {
-      final r = await HttpSession.instance.get('forum.php', query: {
-        'mod': 'ajax',
-        'action': 'deleteattach',
-        'inajax': 'yes',
-        'formhash': draft.formhash,
-        'tid': '$_tid',
-        'pid': '$_pid',
-        'aids[]': '$aid',
-      }, referer: 'https://bbs.binmt.cc/forum.php?mod=viewthread&tid=$_tid');
-      print('AID $aid status=${r.statusCode} uri=${r.uri}');
-      print('AID $aid body=${r.body.replaceAll('\n', ' ').replaceAll('\r', ' ').substring(0, r.body.length > 400 ? 400 : r.body.length)}');
+    final draft = await repo.fetchEditDraft(tid: 176076, pid: 12089521, fid: 42);
+    print('ATT_N ${draft.attachments.length}');
+    for (final a in draft.attachments) {
+      print('ATT ${a.aid} ${a.name} ${a.sizeText} del=${a.deletable}');
     }
+    print('MSG len=${draft.message.length}');
+    final r = await HttpSession.instance.get('forum.php', query: {'mod': 'viewthread', 'tid': '176076'});
+    print('THREAD len=${r.body.length} has382585=${r.body.contains('382585')} has382627=${r.body.contains('382627')}');
     exit(0);
   });
 }
