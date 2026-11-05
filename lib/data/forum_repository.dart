@@ -1789,6 +1789,11 @@ class ForumRepository {
   /// 浏览器点「保存」时提交的是整张表单：主题分类、标签、售价、阅读权限、
   /// 投票选项、已有附件的描述，全在这些字段里。只交 message + formhash
   /// 会把这些设置一并抹掉（有的板块还会因为缺分类直接拒绝保存）。
+  ///
+  /// 但**只能取「含正文输入框的那张表单」**：编辑页里还并排放着页头搜索框
+  /// （`srchtxt`）、附件上传表单（`uid`/`hash`/`localid[]`）等别家的字段。
+  /// 2026-11 实测：把这些一起 POST 回去，服务端一律把表单原样退回来（200，
+  /// 停在编辑页、正文一个字没变）；只交正文所在表单的字段立刻保存成功。
   @visibleForTesting
   static Map<String, String> editFormFields(Document doc) {
     // delete 一定要排除：编辑页上要是有个隐藏的 delete=1，原样带回就成了删帖。
@@ -1804,11 +1809,21 @@ class ForumRepository {
       'delete',
       'hash',
       'wysiwyg',
+      // 这两个只在兜底（没找到表单）时才会遇到，不属于编辑表单。
+      'uid',
+      'srchtxt',
+      // `mod` 是控制器参数，不是表单字段。整页里搜到的 `mod=forum` 一旦
+      // 混进 POST，服务端就把这次编辑原样退回来（见上方实测）。
+      'mod',
     };
     const ignoredTypes = {'submit', 'button', 'image', 'file', 'reset'};
     final result = <String, String>{};
 
-    for (final input in doc.querySelectorAll('input[name]')) {
+    final form = _postForm(doc);
+    Iterable<Element> query(String selector) =>
+        form == null ? doc.querySelectorAll(selector) : form.querySelectorAll(selector);
+
+    for (final input in query('input[name]')) {
       final name = (input.attributes['name'] ?? '').trim();
       if (name.isEmpty || skip.contains(name)) continue;
       final type = (input.attributes['type'] ?? 'text').toLowerCase();
@@ -1824,7 +1839,7 @@ class ForumRepository {
       result[name] = input.attributes['value'] ?? '';
     }
 
-    for (final select in doc.querySelectorAll('select[name]')) {
+    for (final select in query('select[name]')) {
       final name = (select.attributes['name'] ?? '').trim();
       if (name.isEmpty) continue;
       final options = select.querySelectorAll('option');
@@ -1837,13 +1852,25 @@ class ForumRepository {
     }
 
     // 投票选项这类多行字段放在 textarea 里，不带上会丢选项。
-    for (final area in doc.querySelectorAll('textarea[name]')) {
+    for (final area in query('textarea[name]')) {
       final name = (area.attributes['name'] ?? '').trim();
       if (name.isEmpty || skip.contains(name)) continue;
       result[name] = area.text;
     }
 
     return result;
+  }
+
+  /// 编辑表单的作用域：从正文输入框往上找到它所属的 `<form>`。
+  ///
+  /// 找不到（模板把输入框放在表单外、或页面结构异常）时退回整页，
+  /// 调用方的 skip 列表会兜住那些明显不属于编辑表单的字段。
+  static Element? _postForm(Document doc) {
+    Element? form = doc.querySelector('textarea[name="message"]')?.parent;
+    while (form != null && form.localName != 'form') {
+      form = form.parent;
+    }
+    return form;
   }
 
   /// 编辑自己的帖子 / 回复。
