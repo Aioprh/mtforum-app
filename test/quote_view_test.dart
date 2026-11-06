@@ -83,4 +83,31 @@ void main() {
     expect(find.text('我的回复'), findsOneWidget);
     bodyOf(tester, '被引用的内容');
   });
+
+  testWidgets('引用正文里的链接可点，标题式链接也认得出来', (tester) async {
+    await pump(tester, '''
+<div class="quote"><font size="2"><a href="home.php?mod=space&amp;uid=101">Cynnue</a> 发表于 9 分钟前</font><br />
+详细介绍请移步前往阅读：<br />
+<a href="https://bbs.binmt.cc/thread-158632-1-1.html">【空文件夹-智能安全清理V6旗舰版】- MT论坛</a><br />
+https://bbs.binmt.cc/thread-158632-1-1.html</div>
+<p>正文</p>
+''');
+
+    final rich = tester
+        .widgetList<Text>(find.byType(Text))
+        .firstWhere((text) => text.textSpan?.toPlainText().contains('详细介绍请移步') ?? false);
+    final links = <String>[];
+    void walk(InlineSpan span) {
+      if (span is! TextSpan) return;
+      if (span.recognizer != null && (span.text ?? '').isNotEmpty) links.add(span.text!);
+      for (final child in span.children ?? const <InlineSpan>[]) {
+        walk(child);
+      }
+    }
+
+    walk(rich.textSpan!);
+    // 链接文字不是 URL，靠 <a> 的文本反查才认出来；裸地址那行也顺带补上。
+    expect(links, contains('【空文件夹-智能安全清理V6旗舰版】- MT论坛'));
+    expect(links.where((text) => text.contains('thread-158632')), isNotEmpty);
+  });
 }

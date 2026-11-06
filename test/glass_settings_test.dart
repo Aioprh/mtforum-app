@@ -41,11 +41,13 @@ void main() {
     expect(find.text('发帖按钮'), findsOneWidget);
     expect(find.text('顶栏与输入条'), findsOneWidget);
     expect(find.text('启用液态玻璃'), findsOneWidget);
-    expect(find.text('启用液态玻璃悬浮底栏'), findsOneWidget);
+    expect(find.byKey(const ValueKey('glass-master-switch')), findsOneWidget);
+    expect(find.byKey(const ValueKey('glass-nav-switch')), findsOneWidget);
     expect(find.text('玻璃透明度'), findsNWidgets(3));
     expect(find.text('背景模糊度'), findsNWidgets(3));
+    expect(find.text('底栏恢复默认'), findsOneWidget);
     expect(find.text('发帖按钮恢复默认'), findsOneWidget);
-    expect(find.text('恢复默认'), findsOneWidget);
+    expect(find.text('顶栏恢复默认'), findsOneWidget);
   });
 
   testWidgets('面板里改底栏参数只写底栏，发帖按钮不受影响', (tester) async {
@@ -57,9 +59,9 @@ void main() {
     await tester.tap(find.text('液态玻璃'));
     await tester.pumpAndSettle();
 
-    // 打开底栏的启用开关（面板顶部多了「启用液态玻璃」总开关，按文字定位），
+    // 打开底栏的启用开关（顶部是总开关，按 Key 定位底栏那个），
     // 再把第一个透明度滑杆拖到最右。
-    await tester.tap(find.widgetWithText(SwitchListTile, '启用液态玻璃悬浮底栏'));
+    await tester.tap(find.byKey(const ValueKey('glass-nav-switch')));
     await tester.pumpAndSettle();
     await tester.drag(find.byType(Slider).first, const Offset(400, 0));
     await tester.pumpAndSettle();

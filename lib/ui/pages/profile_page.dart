@@ -3,8 +3,6 @@ import 'package:flutter/material.dart';
 import '../../data/models.dart';
 import '../../state/app_state.dart';
 import '../widgets/glass_app_bar.dart';
-import '../widgets/glass_compose_button.dart';
-import '../widgets/thread_glass.dart';
 import '../widgets/sign_in_badge.dart';
 import '../widgets/thread_feed.dart';
 import '../widgets/user_avatar.dart';
@@ -19,6 +17,7 @@ import 'login_page.dart';
 import 'notifications_page.dart';
 import 'privacy_settings_page.dart';
 import 'profile_settings_page.dart';
+import 'liquid_glass_sheet.dart';
 import 'rename_request_page.dart';
 import 'user_group_page.dart';
 import 'pm_list_page.dart';
@@ -141,465 +140,11 @@ class _ProfilePageState extends State<ProfilePage>
 
   /// 「液态玻璃」总入口。
   ///
-  /// 底栏和发帖按钮用的是同一套材质，只是长在两块地方。原来分成两个入口，
-  /// 想把两处调成一致得来回开关两个面板，这里合成一个：顶部是总开关，
-  /// 下面按底栏、发帖按钮、顶栏三节分别调参数，各存各的。
-  ///
-  /// 总开关关掉后，卡片、顶栏、输入框、底栏全部退回不透明样式，也不再做
-  /// 背景模糊；下面的滑块保留，方便下次打开时原样恢复。
+  /// 面板本身搬到 `liquid_glass_sheet.dart`：一张卡一节，总开关在最上面，
+  /// 这里只负责把调好的值写回 AppState。
   Future<void> _pickLiquidGlass() async {
     final appState = AppState.instance;
-    var glassEnabled = appState.glassEnabled;
-    var navEnabled = appState.floatingGlassNav;
-    var navOpacity = appState.floatingGlassNavOpacity;
-    var navBlur = appState.floatingGlassNavBlur;
-    var composeOpacity = appState.composeGlassOpacity;
-    var composeBlur = appState.composeGlassBlur;
-    var threadOpacity = appState.threadGlassOpacity;
-    var threadBlur = appState.threadGlassBlur;
-    final scheme = Theme.of(context).colorScheme;
-
-    final result =
-        await showModalBottomSheet<
-          ({
-            bool glassEnabled,
-            bool navEnabled,
-            double navOpacity,
-            double navBlur,
-            double composeOpacity,
-            double composeBlur,
-            double threadOpacity,
-            double threadBlur,
-          })
-        >(
-          context: context,
-          isScrollControlled: true,
-          showDragHandle: true,
-          builder: (sheetContext) => StatefulBuilder(
-            builder: (context, setSheetState) => SafeArea(
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxHeight: MediaQuery.sizeOf(context).height * 0.86,
-                ),
-                child: SingleChildScrollView(
-                  padding: EdgeInsets.fromLTRB(
-                    20,
-                    4,
-                    20,
-                    22 + MediaQuery.viewInsetsOf(context).bottom,
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Center(
-                        child: Text(
-                          '液态玻璃',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        '底栏、发帖按钮、页面顶栏与输入条各自一套玻璃材质，透明度和模糊度分开调，保存后立即生效。',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: scheme.onSurfaceVariant,
-                          height: 1.5,
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      Material(
-                        color: scheme.surfaceContainerHighest.withValues(
-                          alpha: 0.55,
-                        ),
-                        borderRadius: BorderRadius.circular(16),
-                        child: SwitchListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: const Text(
-                            '启用液态玻璃',
-                            style: TextStyle(fontWeight: FontWeight.w700),
-                          ),
-                          subtitle: const Text(
-                            '关掉后卡片、顶栏、输入框全部换成不透明底色，也不再做背景模糊；保存后生效',
-                          ),
-                          value: glassEnabled,
-                          onChanged: (value) =>
-                              setSheetState(() => glassEnabled = value),
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-
-                      _glassSectionHeader(
-                        context,
-                        Icons.blur_on_rounded,
-                        '底部导航栏',
-                        '保持现有底栏形状，只换背景材质',
-                      ),
-                      SwitchListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: const Text('启用液态玻璃悬浮底栏'),
-                        subtitle: const Text('关闭后恢复普通底部导航栏'),
-                        value: navEnabled,
-                        onChanged: (value) =>
-                            setSheetState(() => navEnabled = value),
-                      ),
-                      _glassSlider(
-                        label: '玻璃透明度',
-                        value: navOpacity,
-                        min: 0.05,
-                        max: 0.65,
-                        divisions: 12,
-                        enabled: glassEnabled,
-                        onChanged: (value) =>
-                            setSheetState(() => navOpacity = value),
-                      ),
-                      _glassSlider(
-                        label: '背景模糊度',
-                        value: navBlur,
-                        min: 0,
-                        max: 40,
-                        divisions: 16,
-                        percent: false,
-                        enabled: glassEnabled,
-                        onChanged: (value) =>
-                            setSheetState(() => navBlur = value),
-                      ),
-
-                      const SizedBox(height: 18),
-                      Divider(
-                        height: 1,
-                        color: scheme.outlineVariant.withValues(alpha: 0.4),
-                      ),
-                      const SizedBox(height: 18),
-
-                      _glassSectionHeader(
-                        context,
-                        Icons.auto_awesome_rounded,
-                        '发帖按钮',
-                        '右下角悬浮按钮的玻璃材质，可边调边看预览',
-                      ),
-                      const SizedBox(height: 12),
-                      // 实时预览：玻璃按钮压在色块上，能直观看出模糊强度。
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(20),
-                        child: Container(
-                          height: 104,
-                          width: double.infinity,
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [
-                                scheme.primaryContainer,
-                                scheme.tertiaryContainer,
-                                scheme.secondaryContainer,
-                              ],
-                            ),
-                          ),
-                          child: Stack(
-                            children: [
-                              Positioned(
-                                left: 18,
-                                top: 18,
-                                child: Container(
-                                  width: 96,
-                                  height: 11,
-                                  decoration: BoxDecoration(
-                                    color: scheme.onPrimaryContainer.withValues(
-                                      alpha: 0.28,
-                                    ),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                ),
-                              ),
-                              Positioned(
-                                left: 18,
-                                top: 38,
-                                child: Container(
-                                  width: 148,
-                                  height: 11,
-                                  decoration: BoxDecoration(
-                                    color: scheme.onPrimaryContainer.withValues(
-                                      alpha: 0.18,
-                                    ),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                ),
-                              ),
-                              Positioned(
-                                right: 18,
-                                bottom: 18,
-                                child: GlassComposeButton(
-                                  opacity: composeOpacity,
-                                  blur: composeBlur,
-                                  onPressed: () {},
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      _glassSlider(
-                        label: '玻璃透明度',
-                        value: composeOpacity,
-                        min: 0.05,
-                        max: 0.75,
-                        divisions: 14,
-                        enabled: glassEnabled,
-                        onChanged: (value) =>
-                            setSheetState(() => composeOpacity = value),
-                      ),
-                      _glassSlider(
-                        label: '背景模糊度',
-                        value: composeBlur,
-                        min: 0,
-                        max: 40,
-                        divisions: 16,
-                        percent: false,
-                        enabled: glassEnabled,
-                        onChanged: (value) =>
-                            setSheetState(() => composeBlur = value),
-                      ),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: TextButton(
-                          onPressed: () => setSheetState(() {
-                            composeOpacity = 0.28;
-                            composeBlur = 26;
-                          }),
-                          child: const Text('发帖按钮恢复默认'),
-                        ),
-                      ),
-
-                      const SizedBox(height: 18),
-                      Divider(
-                        height: 1,
-                        color: scheme.outlineVariant.withValues(alpha: 0.4),
-                      ),
-                      const SizedBox(height: 18),
-
-                      _glassSectionHeader(
-                        context,
-                        Icons.layers_rounded,
-                        '顶栏与输入条',
-                        '帖子页、私信、发帖、版块等页面的顶栏和悬浮输入区共用一套材质',
-                      ),
-                      const SizedBox(height: 12),
-                      // 预览：上下两条玻璃压在同一块色块上，顶栏和回复框的观感一起看。
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(18),
-                        child: SizedBox(
-                          height: 132,
-                          child: Stack(
-                            children: [
-                              Positioned.fill(
-                                child: DecoratedBox(
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(
-                                      begin: Alignment.topCenter,
-                                      end: Alignment.bottomCenter,
-                                      colors: [
-                                        scheme.primaryContainer,
-                                        scheme.tertiaryContainer,
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              Positioned.fill(
-                                child: Padding(
-                                  padding: const EdgeInsets.fromLTRB(
-                                    14,
-                                    44,
-                                    14,
-                                    50,
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      _previewBar(scheme, 168, 0.30),
-                                      const SizedBox(height: 10),
-                                      _previewBar(scheme, 238, 0.20),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                              Positioned(
-                                top: 0,
-                                left: 0,
-                                right: 0,
-                                child: GlassBackdrop(
-                                  opacity: threadOpacity,
-                                  blur: threadBlur,
-                                  showBorder: false,
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 9,
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        Icon(
-                                          Icons.arrow_back_rounded,
-                                          size: 17,
-                                          color: scheme.onSurface,
-                                        ),
-                                        const SizedBox(width: 10),
-                                        Expanded(
-                                          child: Text(
-                                            '帖子标题',
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: TextStyle(
-                                              fontSize: 13,
-                                              fontWeight: FontWeight.w700,
-                                              color: scheme.onSurface,
-                                            ),
-                                          ),
-                                        ),
-                                        Icon(
-                                          Icons.ios_share_rounded,
-                                          size: 16,
-                                          color: scheme.onSurfaceVariant,
-                                        ),
-                                        const SizedBox(width: 10),
-                                        Icon(
-                                          Icons.more_vert_rounded,
-                                          size: 16,
-                                          color: scheme.onSurfaceVariant,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              Positioned(
-                                bottom: 0,
-                                left: 0,
-                                right: 0,
-                                child: GlassBackdrop(
-                                  opacity: threadOpacity,
-                                  blur: threadBlur,
-                                  showBorder: false,
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 8,
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        Icon(
-                                          Icons.sentiment_satisfied_alt_rounded,
-                                          size: 17,
-                                          color: scheme.onSurfaceVariant,
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Expanded(
-                                          child: Container(
-                                            height: 28,
-                                            alignment: Alignment.centerLeft,
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 12,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: scheme.surface.withValues(
-                                                alpha: 0.55,
-                                              ),
-                                              borderRadius:
-                                                  BorderRadius.circular(14),
-                                            ),
-                                            child: Text(
-                                              '写下你的回复…',
-                                              style: TextStyle(
-                                                fontSize: 11.5,
-                                                color: scheme.onSurfaceVariant,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Icon(
-                                          Icons.image_outlined,
-                                          size: 17,
-                                          color: scheme.onSurfaceVariant,
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Icon(
-                                          Icons.send_rounded,
-                                          size: 17,
-                                          color: scheme.primary,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      _glassSlider(
-                        label: '玻璃透明度',
-                        value: threadOpacity,
-                        min: 0.05,
-                        max: 0.85,
-                        divisions: 16,
-                        enabled: glassEnabled,
-                        onChanged: (value) =>
-                            setSheetState(() => threadOpacity = value),
-                      ),
-                      _glassSlider(
-                        label: '背景模糊度',
-                        value: threadBlur,
-                        min: 0,
-                        max: 40,
-                        divisions: 16,
-                        percent: false,
-                        enabled: glassEnabled,
-                        onChanged: (value) =>
-                            setSheetState(() => threadBlur = value),
-                      ),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: TextButton(
-                          onPressed: () => setSheetState(() {
-                            threadOpacity = 0.55;
-                            threadBlur = 22;
-                          }),
-                          child: const Text('恢复默认'),
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      SizedBox(
-                        width: double.infinity,
-                        child: FilledButton(
-                          onPressed: () => Navigator.pop(sheetContext, (
-                            glassEnabled: glassEnabled,
-                            navEnabled: navEnabled,
-                            navOpacity: navOpacity,
-                            navBlur: navBlur,
-                            composeOpacity: composeOpacity,
-                            composeBlur: composeBlur,
-                            threadOpacity: threadOpacity,
-                            threadBlur: threadBlur,
-                          )),
-                          child: const Text('保存设置'),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        );
-
+    final result = await showLiquidGlassSheet(context);
     if (result == null) return;
     await appState.setGlassEnabled(result.glassEnabled);
     await appState.setFloatingGlassNav(result.navEnabled);
@@ -614,105 +159,6 @@ class _ProfilePageState extends State<ProfilePage>
     await appState.setThreadGlassAppearance(
       opacity: result.threadOpacity,
       blur: result.threadBlur,
-    );
-  }
-
-  /// 帖子页预览里的一条「假文字」，用色块代替真实文本。
-  Widget _previewBar(ColorScheme scheme, double width, double alpha) =>
-      Container(
-        width: width,
-        height: 10,
-        decoration: BoxDecoration(
-          color: scheme.onPrimaryContainer.withValues(alpha: alpha),
-          borderRadius: BorderRadius.circular(6),
-        ),
-      );
-
-  /// 玻璃面板里的小节标题，图标 + 名称 + 一句解释，比纯文字分组好认。
-  Widget _glassSectionHeader(
-    BuildContext context,
-    IconData icon,
-    String title,
-    String desc,
-  ) {
-    final scheme = Theme.of(context).colorScheme;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          width: 30,
-          height: 30,
-          decoration: BoxDecoration(
-            color: scheme.primary.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(9),
-          ),
-          child: Icon(icon, size: 17, color: scheme.primary),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 14.5,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                desc,
-                style: TextStyle(
-                  fontSize: 11.5,
-                  color: scheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// 一条「名称 + 数值 + 滑杆」，两个玻璃部位各用两条。
-  Widget _glassSlider({
-    required String label,
-    required double value,
-    required double min,
-    required double max,
-    required int divisions,
-    required ValueChanged<double> onChanged,
-    bool percent = true,
-    bool enabled = true,
-  }) {
-    // 透明度按百分比显示，模糊度直接给数值，两者量纲不一样。
-    final text = percent
-        ? '${(value * 100).round()}%'
-        : value.round().toString();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                label,
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
-            ),
-            Text(text, style: const TextStyle(fontSize: 12.5)),
-          ],
-        ),
-        Slider(
-          value: value,
-          min: min,
-          max: max,
-          divisions: divisions,
-          label: text,
-          onChanged: enabled ? onChanged : null,
-        ),
-      ],
     );
   }
 
@@ -1028,8 +474,9 @@ class _ProfilePageState extends State<ProfilePage>
                   ),
                   _MenuItem(
                     Icons.blur_on_rounded,
-                    AppState.instance.glassEnabled ? '液态玻璃' : '液态玻璃（已关闭）',
+                    '液态玻璃',
                     _pickLiquidGlass,
+                    trailing: AppState.instance.glassEnabled ? '已开启' : '已关闭',
                   ),
                   _MenuItem(Icons.info_outline_rounded, '关于本应用', () {
                     Navigator.of(context)
@@ -1279,10 +726,25 @@ class _ProfilePageState extends State<ProfilePage>
                     color: items[i].danger ? scheme.error : scheme.onSurface,
                   ),
                 ),
-                trailing: Icon(
-                  Icons.chevron_right_rounded,
-                  size: 20,
-                  color: scheme.outline,
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (items[i].trailing != null) ...[
+                      Text(
+                        items[i].trailing!,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(width: 2),
+                    ],
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      size: 20,
+                      color: scheme.outline,
+                    ),
+                  ],
                 ),
                 onTap: items[i].onTap,
               ),
@@ -1295,12 +757,21 @@ class _ProfilePageState extends State<ProfilePage>
 }
 
 class _MenuItem {
-  const _MenuItem(this.icon, this.label, this.onTap, {this.danger = false});
+  const _MenuItem(
+    this.icon,
+    this.label,
+    this.onTap, {
+    this.danger = false,
+    this.trailing,
+  });
 
   final IconData icon;
   final String label;
   final VoidCallback onTap;
   final bool danger;
+
+  /// 右侧箭头前的状态文字，比如液态玻璃的「已开启 / 已关闭」。
+  final String? trailing;
 }
 
 /// 个人主题 / 回复 / 收藏列表。

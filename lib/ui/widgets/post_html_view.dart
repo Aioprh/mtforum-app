@@ -766,16 +766,89 @@ class _PostHtmlViewState extends State<PostHtmlView> {
       if (blocks.isEmpty) return const SizedBox.shrink();
       return Column(crossAxisAlignment: CrossAxisAlignment.start, children: blocks);
     }
+    final scheme = Theme.of(context).colorScheme;
     return _QuoteCard(
       author: parts.author,
       time: parts.time,
       body: parts.body,
+      bodySpans: _quoteBodySpans(
+        context,
+        parts.body,
+        parts.links,
+        TextStyle(fontSize: 14, height: 1.66, color: scheme.onSurfaceVariant),
+      ),
       onTapAuthor: parts.uid > 0 ? () => _openUser(context, parts.uid, parts.author) : null,
     );
   }
 
+  /// 引用正文的富文本：`<a>` 收进来的文字精确切成可点片段，剩下的裸地址
+  /// 再走一次 [_linkifyText]。
+  ///
+  /// 引用块此前只取纯文本，用户在引用里贴的「点这里看另一帖」就成了死字：
+  /// 文字是链接标题、不是 URL，自动识别认不出来。所以这里先用 `<a>` 的
+  /// 文本反查位置——同一段文字可能在正文里出现多次，全都给上链接。
+  List<InlineSpan> _quoteBodySpans(
+    BuildContext context,
+    String body,
+    List<({String text, String url})> links,
+    TextStyle style,
+  ) {
+    if (body.isEmpty) return const <InlineSpan>[];
+    if (links.isEmpty) return _linkifyText(context, body, style);
+
+    final hits = <({int start, int end, String text, String url})>[];
+    for (final link in links) {
+      if (link.text.isEmpty || link.url.isEmpty) continue;
+      var index = body.indexOf(link.text);
+      while (index >= 0) {
+        hits.add((
+          start: index,
+          end: index + link.text.length,
+          text: link.text,
+          url: link.url,
+        ));
+        index = body.indexOf(link.text, index + link.text.length);
+      }
+    }
+    if (hits.isEmpty) return _linkifyText(context, body, style);
+    // 起点升序；同起点时长的优先，短的重叠片段随后被丢掉。
+    hits.sort((a, b) => a.start != b.start ? a.start.compareTo(b.start) : b.end.compareTo(a.end));
+    final picked = <({int start, int end, String text, String url})>[];
+    for (final hit in hits) {
+      if (picked.isNotEmpty && hit.start < picked.last.end) continue;
+      picked.add(hit);
+    }
+
+    final spans = <InlineSpan>[];
+    var cursor = 0;
+    for (final hit in picked) {
+      if (hit.start > cursor) {
+        spans.addAll(_linkifyText(context, body.substring(cursor, hit.start), style));
+      }
+      final recognizer = TapGestureRecognizer()..onTap = () => _openLink(context, hit.url);
+      _recognizers.add(recognizer);
+      spans.add(TextSpan(
+        text: hit.text,
+        style: style.copyWith(color: _linkColor(context), decoration: TextDecoration.underline),
+        recognizer: recognizer,
+      ));
+      cursor = hit.end;
+    }
+    if (cursor < body.length) {
+      spans.addAll(_linkifyText(context, body.substring(cursor), style));
+    }
+    return spans;
+  }
+
   /// 拆出引用头里的作者、时间和引用正文。
-  ({String author, int uid, String time, String body}) _quoteParts(dom.Element element) {
+  ({
+    String author,
+    int uid,
+    String time,
+    String body,
+    List<({String text, String url})> links,
+  })
+  _quoteParts(dom.Element element) {
     final headNode = _findQuoteHead(element);
     var author = '';
     var uid = 0;
@@ -828,7 +901,39 @@ class _PostHtmlViewState extends State<PostHtmlView> {
         author = head;
       }
     }
-    return (author: author, uid: uid, time: time, body: lines.join('\n').trim());  }
+    return (
+      author: author,
+      uid: uid,
+      time: time,
+      body: lines.join('\n').trim(),
+      links: _quoteLinks(element, headNode),
+    );
+  }
+
+  /// 引用正文里的 `<a>`：文字与地址成对取出，渲染时才能把「标题式」链接
+  /// 还原成可点片段。引用头里的链接（作者主页、原帖）不算正文，跳过。
+  List<({String text, String url})> _quoteLinks(dom.Element element, dom.Element? head) {
+    final links = <String, String>{};
+    for (final anchor in element.querySelectorAll('a[href]')) {
+      if (head != null && _isInside(anchor, head)) continue;
+      final href = anchor.attributes['href'] ?? '';
+      if (href.isEmpty || href.startsWith('javascript')) continue;
+      final text = _cleanInline(anchor.text);
+      // 空文字或整段换行的链接无法在纯文本里定位，交给裸地址识别。
+      if (text.isEmpty || text.contains('\n')) continue;
+      links.putIfAbsent(text, () => AppConfig.uri(href).toString());
+    }
+    return [for (final entry in links.entries) (text: entry.key, url: entry.value)];
+  }
+
+  bool _isInside(dom.Node node, dom.Element root) {
+    dom.Node? current = node.parent;
+    while (current != null) {
+      if (identical(current, root)) return true;
+      current = current.parent;
+    }
+    return false;
+  }
 
   /// 找到承载「某某 发表于 …」的那层节点，尽量取最内层，避免把正文算进头部。
   dom.Element? _findQuoteHead(dom.Element element) {
@@ -1409,12 +1514,16 @@ class _QuoteCard extends StatelessWidget {
     required this.author,
     required this.time,
     required this.body,
+    required this.bodySpans,
     this.onTapAuthor,
   });
 
   final String author;
   final String time;
   final String body;
+
+  /// 已经切好链接的正文片段，由 [PostHtmlView] 构建（手势识别器统一在那里回收）。
+  final List<InlineSpan> bodySpans;
   final VoidCallback? onTapAuthor;
 
   @override
@@ -1459,9 +1568,11 @@ class _QuoteCard extends StatelessWidget {
             ),
           if (hasHead && body.isNotEmpty) const SizedBox(height: 4),
           if (body.isNotEmpty)
-            Text(
-              body,
-              style: TextStyle(fontSize: 14, height: 1.66, color: scheme.onSurfaceVariant),
+            Text.rich(
+              TextSpan(
+                children: bodySpans,
+                style: TextStyle(fontSize: 14, height: 1.66, color: scheme.onSurfaceVariant),
+              ),
             ),
         ],
       ),
