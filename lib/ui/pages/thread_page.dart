@@ -22,6 +22,7 @@ import '../widgets/glass_app_bar.dart';
 import '../widgets/glass_controls.dart';
 import '../widgets/glass_menu.dart';
 import '../widgets/measure_height.dart';
+import '../widgets/page_picker_sheet.dart';
 import '../widgets/emoji_panel.dart';
 import '../widgets/post_html_view.dart';
 import '../widgets/reply_composer.dart';
@@ -250,6 +251,33 @@ class _ThreadPageState extends State<ThreadPage> {
 
   Future<void> _loadPrevious() => _loadPage(_page - 1);
 
+  /// 打开页码浮层，选好之后直接跳到那一页。
+  Future<void> _pickPage() async {
+    final target = await PagePickerSheet.show(
+      context,
+      current: _page,
+      total: _totalPages,
+    );
+    if (target == null || target == _page) return;
+    await _loadPage(target, force: true);
+  }
+
+  /// 已知总页数；0 表示站点没给出。
+  ///
+  /// 分页控件解析到的页数最准；解析不到时用第 1 页的全帖楼数折算。
+  /// 两个都拿不到时至少把「还有下一页」这一页算进来，别让选择器
+  /// 里连下一页都点不到。
+  int get _totalPages {
+    final detail = _detail;
+    var total = detail?.pageCount ?? 0;
+    if (total <= 0 && detail != null && detail.page <= 1 && detail.replies > 0) {
+      total = (detail.replies + 1 + AppConfig.postsPerPage - 1) ~/ AppConfig.postsPerPage;
+    }
+    if (total < _page) total = _page;
+    if (_hasMore && total <= _page) total = _page + 1;
+    return total;
+  }
+
   /// 刷新当前页但不把用户甩回第一页顶部；回复、编辑、删除和下拉刷新都用它。
   Future<void> _refreshKeepPosition({bool quiet = false}) async {
     final page = _page;
@@ -284,8 +312,15 @@ class _ThreadPageState extends State<ThreadPage> {
 
   /// 显式分页：每页显示站点返回的 10 条楼层，切页时替换当前列表，
   /// 不再滚动到底自动追加，避免不同页的楼层和评论混在一起。
-  Future<void> _loadPage(int page, {bool jumpToTop = true, bool quiet = false}) async {
-    if (_loadingMore || page < 1 || (page > _page && !_hasMore)) return;
+  Future<void> _loadPage(
+    int page, {
+    bool jumpToTop = true,
+    bool quiet = false,
+    bool force = false,
+  }) async {
+    if (_loadingMore || page < 1) return;
+    // 下一页之外，页码浮层可以直接跳到更后面的页，此时不该被「没有更多」挡住。
+    if (!force && page > _page && !_hasMore) return;
     setState(() => _loadingMore = true);
     try {
       final detail = await _repo.fetchThread(
@@ -1935,22 +1970,43 @@ class _ThreadPageState extends State<ThreadPage> {
             onTap: _loadPrevious,
           ),
           Expanded(
-            child: Column(
-              children: [
-                Text(
-                  '第 $_page 页',
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w700,
-                    color: scheme.onSurfaceVariant,
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: _loadingMore ? null : _pickPage,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            '第 $_page 页',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w700,
+                              color: _loadingMore ? scheme.outline : scheme.primary,
+                            ),
+                          ),
+                          const SizedBox(width: 2),
+                          Icon(
+                            Icons.unfold_more_rounded,
+                            size: 14,
+                            color: _loadingMore ? scheme.outline : scheme.primary,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 1),
+                      Text(
+                        _loadingMore ? '正在加载' : (_hasMore ? '还有更多回复' : '已显示全部内容'),
+                        style: TextStyle(fontSize: 10.5, color: scheme.outline),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  _loadingMore ? '正在加载' : (_hasMore ? '还有更多回复' : '已显示全部内容'),
-                  style: TextStyle(fontSize: 10.5, color: scheme.outline),
-                ),
-              ],
+              ),
             ),
           ),
           _pagerButton(

@@ -169,6 +169,22 @@ void main() {
     expect(tapOf('下一页').onTap, isNotNull);
   });
 
+  testWidgets('翻页条：点「第 N 页」打开页码选择器，总页数来自全帖楼数', (tester) async {
+    await pump(tester, detailOf([opPost(), reply(2, 2)], hasMore: true));
+
+    final pager = tester.widget<InkWell>(
+      find.ancestor(of: find.text('第 1 页'), matching: find.byType(InkWell)).first,
+    );
+    expect(pager.onTap, isNotNull, reason: '页码要能点，不能只是死文字');
+
+    await tester.tap(find.text('第 1 页'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('跳转到页码'), findsOneWidget);
+    // 93 条回复 → 94 楼 → 10 页。
+    expect(find.text('共 10 页'), findsOneWidget);
+  });
+
   testWidgets('翻页条：没有更多时右侧变成「到底了」且不可点', (tester) async {
     await pump(tester, detailOf([opPost()], hasMore: false));
 

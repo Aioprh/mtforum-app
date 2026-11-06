@@ -359,6 +359,7 @@ class ThreadDetail {
     required this.formhash,
     required this.hasMore,
     this.page = 1,
+    this.pageCount = 0,
     required this.isLoggedIn,
     this.likes = 0,
     this.dislikes = 0,
@@ -392,6 +393,12 @@ class ThreadDetail {
   /// 平时就等于请求的页码；按 pid 定位楼层时服务端会 302 到该楼所在页，
   /// 请求写的 `page=1` 已经不作数，翻页得从这个真实页码继续。
   final int page;
+
+  /// 这个主题一共有多少页，0 表示页面没给出可用的总页数。
+  ///
+  /// 来源按可信度：分页控件里的最大页码 → 第 1 页的全帖楼数除以每页条数。
+  /// 页码选择器靠它决定列到第几页；拿不到时只开放「已知的下一页」。
+  final int pageCount;
 
   final bool isLoggedIn;
   final int likes;
@@ -440,6 +447,8 @@ class ThreadDetail {
         posts: posts ?? this.posts,
         formhash: formhash,
         hasMore: hasMore ?? this.hasMore,
+        page: page,
+        pageCount: pageCount,
         isLoggedIn: isLoggedIn,
         likes: likes ?? this.likes,
         dislikes: dislikes ?? this.dislikes,

@@ -30,6 +30,26 @@ class ThreadPaging {
         .toList();
   }
 
+  /// 全帖总页数，供页码选择器列页用；拿不到任何信号时返回 1。
+  ///
+  /// 三个来源取最大：分页控件里的最大页码（最准，站点自己算的）、
+  /// 「共 N 页」这类文案、第 1 页全帖楼数折算。分页控件常把中间折叠成
+  /// 「...」，最大页码只是当前页附近，用楼数折算能把被折叠的尾巴补回来。
+  static int totalPages({
+    required int fromLinks,
+    required int labeled,
+    required int total,
+    required bool totalKnown,
+    int perPage = 10,
+  }) {
+    var count = fromLinks > labeled ? fromLinks : labeled;
+    if (totalKnown && total > 0) {
+      final byTotal = (total + perPage - 1) ~/ perPage;
+      if (byTotal > count) count = byTotal;
+    }
+    return count < 1 ? 1 : count;
+  }
+
   /// 判断是否还有下一页。
   ///
   /// 三个信号按可信度排序：

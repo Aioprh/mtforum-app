@@ -351,6 +351,7 @@ class ForumRepository {
         perPage: AppConfig.postsPerPage,
       ),
       page: currentPage,
+      pageCount: _threadPageCount(doc, tid, total, totalKnown),
       isLoggedIn: loggedIn,
       likes: _intOf(doc.querySelector('.comiis_recommend_num')?.text ?? doc.querySelector('#recommendv_add')?.text),
       dislikes: _intOf(doc.querySelector('#recommendv_subtract')?.text),
@@ -411,6 +412,42 @@ class ForumRepository {
       }
     }
     return false;
+  }
+
+  /// 主题的总页数，0 表示页面没给出可用信息。
+  ///
+  /// 先认分页控件里的最大页码——那是站点自己算出来的，模板改过每页条数
+  /// （`forum-*-2-1.html` 之类的地址里也能看出来）也照样准。
+  /// 分页控件常把中间的页折叠成「...」，最大页码可能只是当前页附近；
+  /// 第 1 页的 `total` 是全帖楼数，除以每页条数能补上被折叠掉的尾巴，
+  /// 两者取大。第 2 页以后 `total` 只是本页条数，不再采信。
+  int _threadPageCount(Document doc, int tid, int total, bool totalKnown) {
+    var fromLinks = 0;
+    for (final link in doc.querySelectorAll(
+      '.pg a[href], .comiis_page a[href], a[href*="mod=viewthread"][href*="page="], a[href*="viewthread-"]',
+    )) {
+      final href = (link.attributes['href'] ?? '').replaceAll('&amp;', '&');
+      if (!_isSameThread(href, tid)) continue;
+      final queryPage = RegExp(r'(?:[?&])page=(\d+)').firstMatch(href)?.group(1);
+      final prettyPage = RegExp(r'viewthread-\d+-(\d+)-\d+\.html').firstMatch(href)?.group(1);
+      final value = int.tryParse(queryPage ?? prettyPage ?? '') ?? 0;
+      if (value > fromLinks) fromLinks = value;
+    }
+
+    // 少数模板干脆写「共 93 页 / 共 5 页」。
+    final pagerText = [
+      doc.querySelector('.pg')?.text ?? '',
+      doc.querySelector('.comiis_page')?.text ?? '',
+    ].join(' ');
+    final labeled = int.tryParse(RegExp(r'共\s*(\d+)\s*页').firstMatch(pagerText)?.group(1) ?? '') ?? 0;
+
+    return ThreadPaging.totalPages(
+      fromLinks: fromLinks,
+      labeled: labeled,
+      total: total,
+      totalKnown: totalKnown,
+      perPage: AppConfig.postsPerPage,
+    );
   }
 
   /// 链接是否指向本帖。认不出 tid 时放行，宁可多翻一页也别漏页。
