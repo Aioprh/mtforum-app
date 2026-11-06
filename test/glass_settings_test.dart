@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mt_forum/core/ui_prefs.dart';
 import 'package:mt_forum/state/app_state.dart';
 import 'package:mt_forum/ui/pages/profile_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -9,6 +10,8 @@ void main() {
 
   setUp(() {
     SharedPreferences.setMockInitialValues({});
+    AppState.instance.glassEnabled = true;
+    UiPrefs.glass = true;
     AppState.instance.floatingGlassNav = false;
     AppState.instance.floatingGlassNavOpacity = 0.25;
     AppState.instance.floatingGlassNavBlur = 30;
@@ -37,6 +40,7 @@ void main() {
     expect(find.text('底部导航栏'), findsOneWidget);
     expect(find.text('发帖按钮'), findsOneWidget);
     expect(find.text('顶栏与输入条'), findsOneWidget);
+    expect(find.text('启用液态玻璃'), findsOneWidget);
     expect(find.text('启用液态玻璃悬浮底栏'), findsOneWidget);
     expect(find.text('玻璃透明度'), findsNWidgets(3));
     expect(find.text('背景模糊度'), findsNWidgets(3));
@@ -53,8 +57,9 @@ void main() {
     await tester.tap(find.text('液态玻璃'));
     await tester.pumpAndSettle();
 
-    // 打开底栏的启用开关，再把第一个透明度滑杆拖到最右。
-    await tester.tap(find.byType(SwitchListTile));
+    // 打开底栏的启用开关（面板顶部多了「启用液态玻璃」总开关，按文字定位），
+    // 再把第一个透明度滑杆拖到最右。
+    await tester.tap(find.widgetWithText(SwitchListTile, '启用液态玻璃悬浮底栏'));
     await tester.pumpAndSettle();
     await tester.drag(find.byType(Slider).first, const Offset(400, 0));
     await tester.pumpAndSettle();

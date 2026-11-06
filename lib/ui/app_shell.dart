@@ -71,12 +71,12 @@ class _AppShellState extends State<AppShell> {
       child: AnimatedBuilder(
         animation: AppState.instance,
         builder: (context, _) => Scaffold(
-          extendBody: AppState.instance.floatingGlassNav,
+          extendBody: AppState.instance.floatingGlassNavActive,
           body: IndexedStack(index: _index, children: _pages),
           floatingActionButton: _index <= 1
               ? GlassComposeButton(onPressed: _openCompose)
               : null,
-          bottomNavigationBar: AppState.instance.floatingGlassNav
+          bottomNavigationBar: AppState.instance.floatingGlassNavActive
               ? _buildFloatingGlassNav(context)
               : NavigationBar(
                   selectedIndex: _index,

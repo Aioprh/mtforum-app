@@ -42,7 +42,8 @@ class ProfilePage extends StatefulWidget {
   State<ProfilePage> createState() => _ProfilePageState();
 }
 
-class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClientMixin {
+class _ProfilePageState extends State<ProfilePage>
+    with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
 
@@ -60,11 +61,11 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
   }
 
   Future<void> _openLogin() async {
-    final ok = await Navigator.of(context).push<bool>(
-      noSwipeRoute(builder: (_) => const LoginPage()),
-    );
+    final ok = await Navigator.of(context)
+        .push<bool>(noSwipeRoute(builder: (_) => const LoginPage()));
     if (ok == true && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('登录成功')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('登录成功')));
     }
   }
 
@@ -83,15 +84,22 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
         title: const Text('退出登录'),
         content: const Text('退出后将无法发帖、回复与收藏，确定要退出吗？'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('退出')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('退出'),
+          ),
         ],
       ),
     );
     if (confirmed != true) return;
     await AppState.instance.logout();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已退出登录')));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('已退出登录')));
   }
 
   Future<void> _pickTheme() async {
@@ -109,13 +117,18 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
           children: [
             const Padding(
               padding: EdgeInsets.fromLTRB(20, 4, 20, 10),
-              child: Text('主题外观', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+              child: Text(
+                '主题外观',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+              ),
             ),
             for (final option in options)
               ListTile(
                 leading: Icon(option.$3),
                 title: Text(option.$2),
-                trailing: current == option.$1 ? const Icon(Icons.check_rounded) : null,
+                trailing: current == option.$1
+                    ? const Icon(Icons.check_rounded)
+                    : null,
                 onTap: () => Navigator.pop(context, option.$1),
               ),
             const SizedBox(height: 10),
@@ -129,10 +142,14 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
   /// 「液态玻璃」总入口。
   ///
   /// 底栏和发帖按钮用的是同一套材质，只是长在两块地方。原来分成两个入口，
-  /// 想把两处调成一致得来回开关两个面板，这里合成一个：
-  /// 上半节调底栏（带启用开关），下半节调发帖按钮，参数仍然各存各的。
+  /// 想把两处调成一致得来回开关两个面板，这里合成一个：顶部是总开关，
+  /// 下面按底栏、发帖按钮、顶栏三节分别调参数，各存各的。
+  ///
+  /// 总开关关掉后，卡片、顶栏、输入框、底栏全部退回不透明样式，也不再做
+  /// 背景模糊；下面的滑块保留，方便下次打开时原样恢复。
   Future<void> _pickLiquidGlass() async {
     final appState = AppState.instance;
+    var glassEnabled = appState.glassEnabled;
     var navEnabled = appState.floatingGlassNav;
     var navOpacity = appState.floatingGlassNavOpacity;
     var navBlur = appState.floatingGlassNavBlur;
@@ -142,339 +159,449 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
     var threadBlur = appState.threadGlassBlur;
     final scheme = Theme.of(context).colorScheme;
 
-    final result = await showModalBottomSheet<({
-      bool navEnabled,
-      double navOpacity,
-      double navBlur,
-      double composeOpacity,
-      double composeBlur,
-      double threadOpacity,
-      double threadBlur,
-    })>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (sheetContext) => StatefulBuilder(
-        builder: (context, setSheetState) => SafeArea(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.86),
-            child: SingleChildScrollView(
-              padding: EdgeInsets.fromLTRB(20, 4, 20, 22 + MediaQuery.viewInsetsOf(context).bottom),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Center(
-                    child: Text('液态玻璃', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+    final result =
+        await showModalBottomSheet<
+          ({
+            bool glassEnabled,
+            bool navEnabled,
+            double navOpacity,
+            double navBlur,
+            double composeOpacity,
+            double composeBlur,
+            double threadOpacity,
+            double threadBlur,
+          })
+        >(
+          context: context,
+          isScrollControlled: true,
+          showDragHandle: true,
+          builder: (sheetContext) => StatefulBuilder(
+            builder: (context, setSheetState) => SafeArea(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.sizeOf(context).height * 0.86,
+                ),
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.fromLTRB(
+                    20,
+                    4,
+                    20,
+                    22 + MediaQuery.viewInsetsOf(context).bottom,
                   ),
-                  const SizedBox(height: 6),
-                  Text(
-                    '底栏、发帖按钮、页面顶栏与输入条各自一套玻璃材质，透明度和模糊度分开调，保存后立即生效。',
-                    style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant, height: 1.5),
-                  ),
-                  const SizedBox(height: 18),
-
-                  _glassSectionHeader(
-                    context,
-                    Icons.blur_on_rounded,
-                    '底部导航栏',
-                    '保持现有底栏形状，只换背景材质',
-                  ),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('启用液态玻璃悬浮底栏'),
-                    subtitle: const Text('关闭后恢复普通底部导航栏'),
-                    value: navEnabled,
-                    onChanged: (value) => setSheetState(() => navEnabled = value),
-                  ),
-                  _glassSlider(
-                    label: '玻璃透明度',
-                    value: navOpacity,
-                    min: 0.05,
-                    max: 0.65,
-                    divisions: 12,
-                    onChanged: (value) => setSheetState(() => navOpacity = value),
-                  ),
-                  _glassSlider(
-                    label: '背景模糊度',
-                    value: navBlur,
-                    min: 0,
-                    max: 40,
-                    divisions: 16,
-                    percent: false,
-                    onChanged: (value) => setSheetState(() => navBlur = value),
-                  ),
-
-                  const SizedBox(height: 18),
-                  Divider(height: 1, color: scheme.outlineVariant.withValues(alpha: 0.4)),
-                  const SizedBox(height: 18),
-
-                  _glassSectionHeader(
-                    context,
-                    Icons.auto_awesome_rounded,
-                    '发帖按钮',
-                    '右下角悬浮按钮的玻璃材质，可边调边看预览',
-                  ),
-                  const SizedBox(height: 12),
-                  // 实时预览：玻璃按钮压在色块上，能直观看出模糊强度。
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(20),
-                    child: Container(
-                      height: 104,
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            scheme.primaryContainer,
-                            scheme.tertiaryContainer,
-                            scheme.secondaryContainer,
-                          ],
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Center(
+                        child: Text(
+                          '液态玻璃',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
                       ),
-                      child: Stack(
-                        children: [
-                          Positioned(
-                            left: 18,
-                            top: 18,
-                            child: Container(
-                              width: 96,
-                              height: 11,
-                              decoration: BoxDecoration(
-                                color: scheme.onPrimaryContainer.withValues(alpha: 0.28),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                            ),
-                          ),
-                          Positioned(
-                            left: 18,
-                            top: 38,
-                            child: Container(
-                              width: 148,
-                              height: 11,
-                              decoration: BoxDecoration(
-                                color: scheme.onPrimaryContainer.withValues(alpha: 0.18),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                            ),
-                          ),
-                          Positioned(
-                            right: 18,
-                            bottom: 18,
-                            child: GlassComposeButton(
-                              opacity: composeOpacity,
-                              blur: composeBlur,
-                              onPressed: () {},
-                            ),
-                          ),
-                        ],
+                      const SizedBox(height: 6),
+                      Text(
+                        '底栏、发帖按钮、页面顶栏与输入条各自一套玻璃材质，透明度和模糊度分开调，保存后立即生效。',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: scheme.onSurfaceVariant,
+                          height: 1.5,
+                        ),
                       ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  _glassSlider(
-                    label: '玻璃透明度',
-                    value: composeOpacity,
-                    min: 0.05,
-                    max: 0.75,
-                    divisions: 14,
-                    onChanged: (value) => setSheetState(() => composeOpacity = value),
-                  ),
-                  _glassSlider(
-                    label: '背景模糊度',
-                    value: composeBlur,
-                    min: 0,
-                    max: 40,
-                    divisions: 16,
-                    percent: false,
-                    onChanged: (value) => setSheetState(() => composeBlur = value),
-                  ),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton(
-                      onPressed: () => setSheetState(() {
-                        composeOpacity = 0.28;
-                        composeBlur = 26;
-                      }),
-                      child: const Text('发帖按钮恢复默认'),
-                    ),
-                  ),
+                      const SizedBox(height: 14),
+                      Material(
+                        color: scheme.surfaceContainerHighest.withValues(
+                          alpha: 0.55,
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                        child: SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text(
+                            '启用液态玻璃',
+                            style: TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                          subtitle: const Text(
+                            '关掉后卡片、顶栏、输入框全部换成不透明底色，也不再做背景模糊；保存后生效',
+                          ),
+                          value: glassEnabled,
+                          onChanged: (value) =>
+                              setSheetState(() => glassEnabled = value),
+                        ),
+                      ),
+                      const SizedBox(height: 18),
 
-                  const SizedBox(height: 18),
-                  Divider(height: 1, color: scheme.outlineVariant.withValues(alpha: 0.4)),
-                  const SizedBox(height: 18),
+                      _glassSectionHeader(
+                        context,
+                        Icons.blur_on_rounded,
+                        '底部导航栏',
+                        '保持现有底栏形状，只换背景材质',
+                      ),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('启用液态玻璃悬浮底栏'),
+                        subtitle: const Text('关闭后恢复普通底部导航栏'),
+                        value: navEnabled,
+                        onChanged: (value) =>
+                            setSheetState(() => navEnabled = value),
+                      ),
+                      _glassSlider(
+                        label: '玻璃透明度',
+                        value: navOpacity,
+                        min: 0.05,
+                        max: 0.65,
+                        divisions: 12,
+                        enabled: glassEnabled,
+                        onChanged: (value) =>
+                            setSheetState(() => navOpacity = value),
+                      ),
+                      _glassSlider(
+                        label: '背景模糊度',
+                        value: navBlur,
+                        min: 0,
+                        max: 40,
+                        divisions: 16,
+                        percent: false,
+                        enabled: glassEnabled,
+                        onChanged: (value) =>
+                            setSheetState(() => navBlur = value),
+                      ),
 
-                  _glassSectionHeader(
-                    context,
-                    Icons.layers_rounded,
-                    '顶栏与输入条',
-                    '帖子页、私信、发帖、版块等页面的顶栏和悬浮输入区共用一套材质',
-                  ),
-                  const SizedBox(height: 12),
-                  // 预览：上下两条玻璃压在同一块色块上，顶栏和回复框的观感一起看。
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(18),
-                    child: SizedBox(
-                      height: 132,
-                      child: Stack(
-                        children: [
-                          Positioned.fill(
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  begin: Alignment.topCenter,
-                                  end: Alignment.bottomCenter,
-                                  colors: [scheme.primaryContainer, scheme.tertiaryContainer],
+                      const SizedBox(height: 18),
+                      Divider(
+                        height: 1,
+                        color: scheme.outlineVariant.withValues(alpha: 0.4),
+                      ),
+                      const SizedBox(height: 18),
+
+                      _glassSectionHeader(
+                        context,
+                        Icons.auto_awesome_rounded,
+                        '发帖按钮',
+                        '右下角悬浮按钮的玻璃材质，可边调边看预览',
+                      ),
+                      const SizedBox(height: 12),
+                      // 实时预览：玻璃按钮压在色块上，能直观看出模糊强度。
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(20),
+                        child: Container(
+                          height: 104,
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                scheme.primaryContainer,
+                                scheme.tertiaryContainer,
+                                scheme.secondaryContainer,
+                              ],
+                            ),
+                          ),
+                          child: Stack(
+                            children: [
+                              Positioned(
+                                left: 18,
+                                top: 18,
+                                child: Container(
+                                  width: 96,
+                                  height: 11,
+                                  decoration: BoxDecoration(
+                                    color: scheme.onPrimaryContainer.withValues(
+                                      alpha: 0.28,
+                                    ),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
                                 ),
                               ),
-                            ),
-                          ),
-                          Positioned.fill(
-                            child: Padding(
-                              padding: const EdgeInsets.fromLTRB(14, 44, 14, 50),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  _previewBar(scheme, 168, 0.30),
-                                  const SizedBox(height: 10),
-                                  _previewBar(scheme, 238, 0.20),
-                                ],
+                              Positioned(
+                                left: 18,
+                                top: 38,
+                                child: Container(
+                                  width: 148,
+                                  height: 11,
+                                  decoration: BoxDecoration(
+                                    color: scheme.onPrimaryContainer.withValues(
+                                      alpha: 0.18,
+                                    ),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                ),
                               ),
-                            ),
+                              Positioned(
+                                right: 18,
+                                bottom: 18,
+                                child: GlassComposeButton(
+                                  opacity: composeOpacity,
+                                  blur: composeBlur,
+                                  onPressed: () {},
+                                ),
+                              ),
+                            ],
                           ),
-                          Positioned(
-                            top: 0,
-                            left: 0,
-                            right: 0,
-                            child: GlassBackdrop(
-                              opacity: threadOpacity,
-                              blur: threadBlur,
-                              showBorder: false,
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.arrow_back_rounded, size: 17, color: scheme.onSurface),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: Text(
-                                        '帖子标题',
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      _glassSlider(
+                        label: '玻璃透明度',
+                        value: composeOpacity,
+                        min: 0.05,
+                        max: 0.75,
+                        divisions: 14,
+                        enabled: glassEnabled,
+                        onChanged: (value) =>
+                            setSheetState(() => composeOpacity = value),
+                      ),
+                      _glassSlider(
+                        label: '背景模糊度',
+                        value: composeBlur,
+                        min: 0,
+                        max: 40,
+                        divisions: 16,
+                        percent: false,
+                        enabled: glassEnabled,
+                        onChanged: (value) =>
+                            setSheetState(() => composeBlur = value),
+                      ),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: () => setSheetState(() {
+                            composeOpacity = 0.28;
+                            composeBlur = 26;
+                          }),
+                          child: const Text('发帖按钮恢复默认'),
+                        ),
+                      ),
+
+                      const SizedBox(height: 18),
+                      Divider(
+                        height: 1,
+                        color: scheme.outlineVariant.withValues(alpha: 0.4),
+                      ),
+                      const SizedBox(height: 18),
+
+                      _glassSectionHeader(
+                        context,
+                        Icons.layers_rounded,
+                        '顶栏与输入条',
+                        '帖子页、私信、发帖、版块等页面的顶栏和悬浮输入区共用一套材质',
+                      ),
+                      const SizedBox(height: 12),
+                      // 预览：上下两条玻璃压在同一块色块上，顶栏和回复框的观感一起看。
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(18),
+                        child: SizedBox(
+                          height: 132,
+                          child: Stack(
+                            children: [
+                              Positioned.fill(
+                                child: DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      begin: Alignment.topCenter,
+                                      end: Alignment.bottomCenter,
+                                      colors: [
+                                        scheme.primaryContainer,
+                                        scheme.tertiaryContainer,
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              Positioned.fill(
+                                child: Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    14,
+                                    44,
+                                    14,
+                                    50,
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      _previewBar(scheme, 168, 0.30),
+                                      const SizedBox(height: 10),
+                                      _previewBar(scheme, 238, 0.20),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              Positioned(
+                                top: 0,
+                                left: 0,
+                                right: 0,
+                                child: GlassBackdrop(
+                                  opacity: threadOpacity,
+                                  blur: threadBlur,
+                                  showBorder: false,
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 9,
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          Icons.arrow_back_rounded,
+                                          size: 17,
                                           color: scheme.onSurface,
                                         ),
-                                      ),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: Text(
+                                            '帖子标题',
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w700,
+                                              color: scheme.onSurface,
+                                            ),
+                                          ),
+                                        ),
+                                        Icon(
+                                          Icons.ios_share_rounded,
+                                          size: 16,
+                                          color: scheme.onSurfaceVariant,
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Icon(
+                                          Icons.more_vert_rounded,
+                                          size: 16,
+                                          color: scheme.onSurfaceVariant,
+                                        ),
+                                      ],
                                     ),
-                                    Icon(Icons.ios_share_rounded, size: 16, color: scheme.onSurfaceVariant),
-                                    const SizedBox(width: 10),
-                                    Icon(Icons.more_vert_rounded, size: 16, color: scheme.onSurfaceVariant),
-                                  ],
+                                  ),
                                 ),
                               ),
-                            ),
-                          ),
-                          Positioned(
-                            bottom: 0,
-                            left: 0,
-                            right: 0,
-                            child: GlassBackdrop(
-                              opacity: threadOpacity,
-                              blur: threadBlur,
-                              showBorder: false,
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.sentiment_satisfied_alt_rounded, size: 17, color: scheme.onSurfaceVariant),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Container(
-                                        height: 28,
-                                        alignment: Alignment.centerLeft,
-                                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                                        decoration: BoxDecoration(
-                                          color: scheme.surface.withValues(alpha: 0.55),
-                                          borderRadius: BorderRadius.circular(14),
-                                        ),
-                                        child: Text(
-                                          '写下你的回复…',
-                                          style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant),
-                                        ),
-                                      ),
+                              Positioned(
+                                bottom: 0,
+                                left: 0,
+                                right: 0,
+                                child: GlassBackdrop(
+                                  opacity: threadOpacity,
+                                  blur: threadBlur,
+                                  showBorder: false,
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 8,
                                     ),
-                                    const SizedBox(width: 8),
-                                    Icon(Icons.image_outlined, size: 17, color: scheme.onSurfaceVariant),
-                                    const SizedBox(width: 8),
-                                    Icon(Icons.send_rounded, size: 17, color: scheme.primary),
-                                  ],
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          Icons.sentiment_satisfied_alt_rounded,
+                                          size: 17,
+                                          color: scheme.onSurfaceVariant,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Container(
+                                            height: 28,
+                                            alignment: Alignment.centerLeft,
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 12,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: scheme.surface.withValues(
+                                                alpha: 0.55,
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(14),
+                                            ),
+                                            child: Text(
+                                              '写下你的回复…',
+                                              style: TextStyle(
+                                                fontSize: 11.5,
+                                                color: scheme.onSurfaceVariant,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Icon(
+                                          Icons.image_outlined,
+                                          size: 17,
+                                          color: scheme.onSurfaceVariant,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Icon(
+                                          Icons.send_rounded,
+                                          size: 17,
+                                          color: scheme.primary,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
                                 ),
                               ),
-                            ),
+                            ],
                           ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  _glassSlider(
-                    label: '玻璃透明度',
-                    value: threadOpacity,
-                    min: 0.05,
-                    max: 0.85,
-                    divisions: 16,
-                    onChanged: (value) => setSheetState(() => threadOpacity = value),
-                  ),
-                  _glassSlider(
-                    label: '背景模糊度',
-                    value: threadBlur,
-                    min: 0,
-                    max: 40,
-                    divisions: 16,
-                    percent: false,
-                    onChanged: (value) => setSheetState(() => threadBlur = value),
-                  ),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton(
-                      onPressed: () => setSheetState(() {
-                        threadOpacity = 0.55;
-                        threadBlur = 22;
-                      }),
-                      child: const Text('恢复默认'),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton(
-                      onPressed: () => Navigator.pop(
-                        sheetContext,
-                        (
-                          navEnabled: navEnabled,
-                          navOpacity: navOpacity,
-                          navBlur: navBlur,
-                          composeOpacity: composeOpacity,
-                          composeBlur: composeBlur,
-                          threadOpacity: threadOpacity,
-                          threadBlur: threadBlur,
                         ),
                       ),
-                      child: const Text('保存设置'),
-                    ),
+                      const SizedBox(height: 8),
+                      _glassSlider(
+                        label: '玻璃透明度',
+                        value: threadOpacity,
+                        min: 0.05,
+                        max: 0.85,
+                        divisions: 16,
+                        enabled: glassEnabled,
+                        onChanged: (value) =>
+                            setSheetState(() => threadOpacity = value),
+                      ),
+                      _glassSlider(
+                        label: '背景模糊度',
+                        value: threadBlur,
+                        min: 0,
+                        max: 40,
+                        divisions: 16,
+                        percent: false,
+                        enabled: glassEnabled,
+                        onChanged: (value) =>
+                            setSheetState(() => threadBlur = value),
+                      ),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: () => setSheetState(() {
+                            threadOpacity = 0.55;
+                            threadBlur = 22;
+                          }),
+                          child: const Text('恢复默认'),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton(
+                          onPressed: () => Navigator.pop(sheetContext, (
+                            glassEnabled: glassEnabled,
+                            navEnabled: navEnabled,
+                            navOpacity: navOpacity,
+                            navBlur: navBlur,
+                            composeOpacity: composeOpacity,
+                            composeBlur: composeBlur,
+                            threadOpacity: threadOpacity,
+                            threadBlur: threadBlur,
+                          )),
+                          child: const Text('保存设置'),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
           ),
-        ),
-      ),
-    );
+        );
 
     if (result == null) return;
+    await appState.setGlassEnabled(result.glassEnabled);
     await appState.setFloatingGlassNav(result.navEnabled);
     await appState.setFloatingGlassNavAppearance(
       opacity: result.navOpacity,
@@ -491,7 +618,8 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
   }
 
   /// 帖子页预览里的一条「假文字」，用色块代替真实文本。
-  Widget _previewBar(ColorScheme scheme, double width, double alpha) => Container(
+  Widget _previewBar(ColorScheme scheme, double width, double alpha) =>
+      Container(
         width: width,
         height: 10,
         decoration: BoxDecoration(
@@ -501,7 +629,12 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
       );
 
   /// 玻璃面板里的小节标题，图标 + 名称 + 一句解释，比纯文字分组好认。
-  Widget _glassSectionHeader(BuildContext context, IconData icon, String title, String desc) {
+  Widget _glassSectionHeader(
+    BuildContext context,
+    IconData icon,
+    String title,
+    String desc,
+  ) {
     final scheme = Theme.of(context).colorScheme;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -520,9 +653,21 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700)),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 14.5,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
               const SizedBox(height: 2),
-              Text(desc, style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant)),
+              Text(
+                desc,
+                style: TextStyle(
+                  fontSize: 11.5,
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
             ],
           ),
         ),
@@ -539,16 +684,22 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
     required int divisions,
     required ValueChanged<double> onChanged,
     bool percent = true,
+    bool enabled = true,
   }) {
     // 透明度按百分比显示，模糊度直接给数值，两者量纲不一样。
-    final text = percent ? '${(value * 100).round()}%' : value.round().toString();
+    final text = percent
+        ? '${(value * 100).round()}%'
+        : value.round().toString();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
             Expanded(
-              child: Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+              child: Text(
+                label,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
             ),
             Text(text, style: const TextStyle(fontSize: 12.5)),
           ],
@@ -559,7 +710,7 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
           max: max,
           divisions: divisions,
           label: text,
-          onChanged: onChanged,
+          onChanged: enabled ? onChanged : null,
         ),
       ],
     );
@@ -589,9 +740,18 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('选择主题色', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+              const Text(
+                '选择主题色',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+              ),
               const SizedBox(height: 6),
-              Text('更改后会立即应用，并自动保存', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+              Text(
+                '更改后会立即应用，并自动保存',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
               const SizedBox(height: 18),
               Wrap(
                 spacing: 12,
@@ -613,16 +773,29 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
                                 decoration: BoxDecoration(
                                   color: option.$2,
                                   shape: BoxShape.circle,
-                                  border: current.toARGB32() == option.$2.toARGB32()
-                                      ? Border.all(color: Theme.of(context).colorScheme.onSurface, width: 3)
+                                  border:
+                                      current.toARGB32() == option.$2.toARGB32()
+                                      ? Border.all(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .onSurface,
+                                          width: 3,
+                                        )
                                       : null,
                                 ),
-                                child: current.toARGB32() == option.$2.toARGB32()
-                                    ? const Icon(Icons.check_rounded, color: Colors.white)
+                                child:
+                                    current.toARGB32() == option.$2.toARGB32()
+                                    ? const Icon(
+                                        Icons.check_rounded,
+                                        color: Colors.white,
+                                      )
                                     : null,
                               ),
                               const SizedBox(height: 6),
-                              Text(option.$1, style: const TextStyle(fontSize: 12)),
+                              Text(
+                                option.$1,
+                                style: const TextStyle(fontSize: 12),
+                              ),
                             ],
                           ),
                         ),
@@ -638,17 +811,24 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
     if (selected != null) await AppState.instance.setThemeSeedColor(selected);
   }
 
-  void _openPersonal(String title, String path, Map<String, String> query, String emptyText,
-      {bool replies = false}) {
-    Navigator.of(context).push(appRoute(
-      builder: (_) => _PersonalThreadsPage(
-        title: title,
-        path: path,
-        query: query,
-        emptyText: emptyText,
-        replies: replies,
+  void _openPersonal(
+    String title,
+    String path,
+    Map<String, String> query,
+    String emptyText, {
+    bool replies = false,
+  }) {
+    Navigator.of(context).push(
+      appRoute(
+        builder: (_) => _PersonalThreadsPage(
+          title: title,
+          path: path,
+          query: query,
+          emptyText: emptyText,
+          replies: replies,
+        ),
       ),
-    ));
+    );
   }
 
   void _openPage(Widget page) {
@@ -662,7 +842,8 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
   void _openMySpace() {
     final profile = AppState.instance.profile;
     if (profile == null || profile.uid <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('资料加载中，请稍后重试')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('资料加载中，请稍后重试')));
       _refresh();
       return;
     }
@@ -697,7 +878,9 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
             onRefresh: _refresh,
             edgeOffset: topInset,
             child: ListView(
-              physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+              physics: const AlwaysScrollableScrollPhysics(
+                parent: BouncingScrollPhysics(),
+              ),
               // 悬浮玻璃底栏浮在页面之上，末尾多留一段，否则最后一项被压住。
               padding: EdgeInsets.fromLTRB(
                 16,
@@ -710,7 +893,11 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
                   GestureDetector(
                     behavior: HitTestBehavior.opaque,
                     onTap: _openMySpace,
-                    child: _profileHeader(scheme, profile, state.profileLoading),
+                    child: _profileHeader(
+                      scheme,
+                      profile,
+                      state.profileLoading,
+                    ),
                   ),
                   const SizedBox(height: 18),
                   // 账号自身的东西排在最前：改资料、看等级、管隐私，这些是
@@ -719,13 +906,21 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
                     _MenuItem(Icons.badge_outlined, '资料设置', () {
                       _openPage(const ProfileSettingsPage());
                     }),
-                    _MenuItem(Icons.drive_file_rename_outline_rounded, '改名申请', () {
-                      _openPage(const RenameRequestPage());
-                    }),
+                    _MenuItem(
+                      Icons.drive_file_rename_outline_rounded,
+                      '改名申请',
+                      () {
+                        _openPage(const RenameRequestPage());
+                      },
+                    ),
                     _MenuItem(Icons.visibility_outlined, '隐私筛选', () {
                       _openPage(const PrivacySettingsPage());
                     }),
-                    _MenuItem(Icons.military_tech_outlined, '我的等级', _openMyLevel),
+                    _MenuItem(
+                      Icons.military_tech_outlined,
+                      '我的等级',
+                      _openMyLevel,
+                    ),
                     _MenuItem(Icons.toll_outlined, '积分', () {
                       _openPage(const CreditPage());
                     }),
@@ -743,14 +938,20 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
                       }, '你还没有发布过主题');
                     }),
                     _MenuItem(Icons.chat_bubble_outline_rounded, '我的回复', () {
-                      _openPersonal('我的回复', 'home.php', {
-                        'mod': 'space',
-                        'do': 'thread',
-                        'view': 'me',
-                        'type': 'reply',
-                        'from': 'space',
-                        'mobile': '2',
-                      }, '你还没有回复过帖子', replies: true);
+                      _openPersonal(
+                        '我的回复',
+                        'home.php',
+                        {
+                          'mod': 'space',
+                          'do': 'thread',
+                          'view': 'me',
+                          'type': 'reply',
+                          'from': 'space',
+                          'mobile': '2',
+                        },
+                        '你还没有回复过帖子',
+                        replies: true,
+                      );
                     }),
                     _MenuItem(Icons.star_outline_rounded, '我的收藏', () {
                       _openPersonal('我的收藏', 'home.php', {
@@ -820,17 +1021,31 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
                 _menuGroup(scheme, [
                   _MenuItem(Icons.palette_outlined, '主题外观', _pickTheme),
                   _MenuItem(Icons.color_lens_outlined, '主题颜色', _pickThemeColor),
-                  _MenuItem(Icons.format_color_text_rounded, '阅读配色', () => showReadPaletteSheet(context)),
-                  _MenuItem(Icons.blur_on_rounded, '液态玻璃', _pickLiquidGlass),
+                  _MenuItem(
+                    Icons.format_color_text_rounded,
+                    '阅读配色',
+                    () => showReadPaletteSheet(context),
+                  ),
+                  _MenuItem(
+                    Icons.blur_on_rounded,
+                    AppState.instance.glassEnabled ? '液态玻璃' : '液态玻璃（已关闭）',
+                    _pickLiquidGlass,
+                  ),
                   _MenuItem(Icons.info_outline_rounded, '关于本应用', () {
-                    Navigator.of(context).push(appRoute(builder: (_) => const AboutPage()));
+                    Navigator.of(context)
+                        .push(appRoute(builder: (_) => const AboutPage()));
                   }),
                 ]),
                 if (state.isLoggedIn) ...[
                   const SizedBox(height: 14),
                   _menuGroup(scheme, [
                     _MenuItem(Icons.key_outlined, '复制 Cookie', _copyCookie),
-                    _MenuItem(Icons.logout_rounded, '退出登录', _logout, danger: true),
+                    _MenuItem(
+                      Icons.logout_rounded,
+                      '退出登录',
+                      _logout,
+                      danger: true,
+                    ),
                   ]),
                 ],
                 const SizedBox(height: 26),
@@ -867,7 +1082,10 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
             child: Icon(Icons.person_rounded, size: 30, color: scheme.primary),
           ),
           const SizedBox(height: 12),
-          const Text('登录 MT论坛账号', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+          const Text(
+            '登录 MT论坛账号',
+            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+          ),
           const SizedBox(height: 5),
           Text(
             '发帖、回复、收藏与查看个人主页',
@@ -880,7 +1098,11 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
     );
   }
 
-  Widget _profileHeader(ColorScheme scheme, UserProfile? profile, bool loading) {
+  Widget _profileHeader(
+    ColorScheme scheme,
+    UserProfile? profile,
+    bool loading,
+  ) {
     final stats = <(String, String)>[
       ('主题', profile?.posts ?? ''),
       ('回复', profile?.replies ?? ''),
@@ -898,43 +1120,67 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
         children: [
           Row(
             children: [
-              UserAvatar(url: profile?.avatar ?? '', name: profile?.username ?? '', size: 58),
+              UserAvatar(
+                url: profile?.avatar ?? '',
+                name: profile?.username ?? '',
+                size: 58,
+              ),
               const SizedBox(width: 13),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      profile?.username.isNotEmpty == true ? profile!.username : 'MT论坛用户',
+                      profile?.username.isNotEmpty == true
+                          ? profile!.username
+                          : 'MT论坛用户',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                     const SizedBox(height: 4),
                     Wrap(
                       spacing: 6,
                       runSpacing: 4,
                       children: [
-                        if (profile?.group.isNotEmpty == true) _tag(scheme, profile!.group, scheme.primary),
-                        if (profile?.level.isNotEmpty == true) _tag(scheme, profile!.level, scheme.tertiary),
+                        if (profile?.group.isNotEmpty == true)
+                          _tag(scheme, profile!.group, scheme.primary),
+                        if (profile?.level.isNotEmpty == true)
+                          _tag(scheme, profile!.level, scheme.tertiary),
                       ],
                     ),
                     const SizedBox(height: 4),
                     Text(
                       [
-                        if (profile != null && profile.uid > 0) 'UID ${profile.uid}',
-                        if (profile?.regTime.isNotEmpty == true) '注册于 ${profile!.regTime}',
+                        if (profile != null && profile.uid > 0)
+                          'UID ${profile.uid}',
+                        if (profile?.regTime.isNotEmpty == true)
+                          '注册于 ${profile!.regTime}',
                       ].join(' · '),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 10.5, color: scheme.onSurfaceVariant),
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        color: scheme.onSurfaceVariant,
+                      ),
                     ),
                   ],
                 ),
               ),
               if (loading)
-                const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
-              Icon(Icons.chevron_right_rounded, size: 20, color: scheme.outline),
+                const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              Icon(
+                Icons.chevron_right_rounded,
+                size: 20,
+                color: scheme.outline,
+              ),
             ],
           ),
           const SizedBox(height: 16),
@@ -946,10 +1192,19 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
                     children: [
                       Text(
                         stat.$2.isEmpty ? '—' : stat.$2,
-                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
                       const SizedBox(height: 2),
-                      Text(stat.$1, style: TextStyle(fontSize: 10.5, color: scheme.onSurfaceVariant)),
+                      Text(
+                        stat.$1,
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -972,14 +1227,21 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
   Future<void> _manualSignIn() async {
     final message = await AppState.instance.signInNow();
     if (!mounted || message == null) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   Widget _tag(ColorScheme scheme, String text, Color color) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(7)),
-        child: Text(text, style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w700)),
-      );
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: 0.12),
+      borderRadius: BorderRadius.circular(7),
+    ),
+    child: Text(
+      text,
+      style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w700),
+    ),
+  );
 
   Widget _menuGroup(ColorScheme scheme, List<_MenuItem> items) {
     return Container(
@@ -996,9 +1258,19 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
         child: Column(
           children: [
             for (var i = 0; i < items.length; i++) ...[
-              if (i > 0) Divider(height: 1, color: scheme.outlineVariant.withValues(alpha: 0.45)),
+              if (i > 0)
+                Divider(
+                  height: 1,
+                  color: scheme.outlineVariant.withValues(alpha: 0.45),
+                ),
               ListTile(
-                leading: Icon(items[i].icon, size: 21, color: items[i].danger ? scheme.error : scheme.onSurfaceVariant),
+                leading: Icon(
+                  items[i].icon,
+                  size: 21,
+                  color: items[i].danger
+                      ? scheme.error
+                      : scheme.onSurfaceVariant,
+                ),
                 title: Text(
                   items[i].label,
                   style: TextStyle(
@@ -1007,7 +1279,11 @@ class _ProfilePageState extends State<ProfilePage> with AutomaticKeepAliveClient
                     color: items[i].danger ? scheme.error : scheme.onSurface,
                   ),
                 ),
-                trailing: Icon(Icons.chevron_right_rounded, size: 20, color: scheme.outline),
+                trailing: Icon(
+                  Icons.chevron_right_rounded,
+                  size: 20,
+                  color: scheme.outline,
+                ),
                 onTap: items[i].onTap,
               ),
             ],

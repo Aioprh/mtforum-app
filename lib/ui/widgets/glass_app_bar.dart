@@ -114,7 +114,7 @@ double glassTopInset(BuildContext context, {double bottomHeight = 0}) =>
 /// 像素，让最后一项略微延续到玻璃背后：宁可被压住一点，也不要在胶囊顶边
 /// 上方留一条背景色的缝。
 double floatingNavSpace(BuildContext context) {
-  if (!AppState.instance.floatingGlassNav) return 0;
+  if (!AppState.instance.floatingGlassNavActive) return 0;
   // 优先用 AppShell 量出来的真实高度：系统字号调大时胶囊会变高，
   // 任何写死的常数都会偏。
   final measured = AppState.instance.floatingNavHeight;

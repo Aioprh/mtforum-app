@@ -8,6 +8,7 @@ import '../pages/thread_page.dart';
 import 'back_to_top.dart';
 import 'state_views.dart';
 import 'thread_card.dart';
+import 'thread_glass.dart';
 import '../navigation/app_routes.dart';
 
 /// 通用主题流：首屏加载、下拉刷新、触底加载更多。
@@ -181,39 +182,53 @@ class _ThreadFeedState extends State<ThreadFeed> {
     await _loadFirst();
   }
 
-  String _message(Object error) => error is SiteException ? error.message : '加载失败，请稍后重试';
+  String _message(Object error) =>
+      error is SiteException ? error.message : '加载失败，请稍后重试';
 
   Widget _skeletonCard(ColorScheme scheme) => Container(
-        height: 132,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: scheme.surface,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.35)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    height: 132,
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: scheme.surface,
+      borderRadius: BorderRadius.circular(18),
+      border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.35)),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
           children: [
-            Row(children: [
-              Container(width: 30, height: 30, decoration: BoxDecoration(color: scheme.surfaceContainerHighest, shape: BoxShape.circle)),
-              const SizedBox(width: 9),
-              Container(width: 78, height: 10, color: scheme.surfaceContainerHighest),
-            ]),
-            const SizedBox(height: 14),
-            Container(height: 13, color: scheme.surfaceContainerHighest),
-            const SizedBox(height: 8),
-            FractionallySizedBox(widthFactor: 0.62, child: Container(height: 13, color: scheme.surfaceContainerHighest)),
+            Container(
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(
+                color: scheme.surfaceContainerHighest,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 9),
+            Container(
+              width: 78,
+              height: 10,
+              color: scheme.surfaceContainerHighest,
+            ),
           ],
         ),
-      );
+        const SizedBox(height: 14),
+        Container(height: 13, color: scheme.surfaceContainerHighest),
+        const SizedBox(height: 8),
+        FractionallySizedBox(
+          widthFactor: 0.62,
+          child: Container(height: 13, color: scheme.surfaceContainerHighest),
+        ),
+      ],
+    ),
+  );
 
   /// 列表尾部的状态：空、出错、加载中、到底。
   Widget _tail(ColorScheme scheme, bool showSkeleton) {
     if (_items.isEmpty && _initialized && _error == null) {
-      return SizedBox(
-        height: 320,
-        child: EmptyView(text: widget.emptyText),
-      );
+      return SizedBox(height: 320, child: EmptyView(text: widget.emptyText));
     }
     if (_error != null) {
       return ErrorView(
@@ -232,7 +247,11 @@ class _ThreadFeedState extends State<ThreadFeed> {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 20),
         child: Center(
-          child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)),
+          child: SizedBox(
+            width: 22,
+            height: 22,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
         ),
       );
     }
@@ -240,7 +259,10 @@ class _ThreadFeedState extends State<ThreadFeed> {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 18),
         child: Center(
-          child: Text('— 已经到底啦 —', style: TextStyle(fontSize: 11.5, color: scheme.outline)),
+          child: Text(
+            '— 已经到底啦 —',
+            style: TextStyle(fontSize: 11.5, color: scheme.outline),
+          ),
         ),
       );
     }
@@ -291,41 +313,44 @@ class _ThreadFeedState extends State<ThreadFeed> {
           // 顶栏留白只能由列表自己撑：以前这里恒为 0，第一条帖子就直接顶到
           // 玻璃顶栏背后，头像和用户名被糊掉半行。有 header 时留白由 header
           // 那块 SliverToBoxAdapter 负责，这里再补一次会空出双重间距。
-          widget.header == null && widget.pinnedHeader == null ? widget.padding.top : 0,
+          widget.header == null && widget.pinnedHeader == null
+              ? widget.padding.top
+              : 0,
           widget.padding.right,
           widget.padding.bottom,
         ),
         sliver: SliverList(
-          delegate: SliverChildBuilderDelegate(
-            (context, index) {
-              if (showSkeleton) {
-                if (index < 5) {
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: _skeletonCard(scheme),
-                  );
-                }
-                return _tail(scheme, showSkeleton);
-              }
-
-              if (index < _items.length) {
-                final thread = _items[index];
+          delegate: SliverChildBuilderDelegate((context, index) {
+            if (showSkeleton) {
+              if (index < 5) {
                 return Padding(
-                  padding: const EdgeInsets.only(bottom: 11),
-                  child: ThreadCard(
-                    thread: thread,
-                    onDoubleTap:
-                        widget.doubleTapToTop && _farFromTop ? () => scrollToTop(_scroll) : null,
-                    onTap: () => Navigator.of(context).push(
-                      appRoute(builder: (_) => ThreadPage(tid: thread.tid, title: thread.title)),
-                    ),
-                  ),
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: _skeletonCard(scheme),
                 );
               }
               return _tail(scheme, showSkeleton);
-            },
-            childCount: (showSkeleton ? 5 : _items.length) + 1,
-          ),
+            }
+
+            if (index < _items.length) {
+              final thread = _items[index];
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 11),
+                child: ThreadCard(
+                  thread: thread,
+                  onDoubleTap: widget.doubleTapToTop && _farFromTop
+                      ? () => scrollToTop(_scroll)
+                      : null,
+                  onTap: () => Navigator.of(context).push(
+                    appRoute(
+                      builder: (_) =>
+                          ThreadPage(tid: thread.tid, title: thread.title),
+                    ),
+                  ),
+                ),
+              );
+            }
+            return _tail(scheme, showSkeleton);
+          }, childCount: (showSkeleton ? 5 : _items.length) + 1),
         ),
       ),
     ];
@@ -335,7 +360,9 @@ class _ThreadFeedState extends State<ThreadFeed> {
       edgeOffset: widget.refreshOffset ?? (widget.header == null ? 0 : 8),
       child: CustomScrollView(
         controller: _scroll,
-        physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
         slivers: slivers,
       ),
     );
@@ -370,8 +397,14 @@ class _PinnedHeaderDelegate extends SliverPersistentHeaderDelegate {
   double get maxExtent => height;
 
   @override
-  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
-    final frosted = frost > 0;
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    // 关掉液态玻璃时吸顶条也退回实底：模糊条底下压着半透明色，
+    // 单独留着会和整页的不透明卡片对不上。
+    final frosted = frost > 0 && ThreadGlass.enabled;
     final content = DecoratedBox(
       decoration: BoxDecoration(
         color: frosted ? background.withValues(alpha: 0.62) : background,
@@ -391,7 +424,11 @@ class _PinnedHeaderDelegate extends SliverPersistentHeaderDelegate {
           // 先模糊背后的滚动内容，再压一层半透明底色，不然帖子文字会穿过
           // 筛选条看得清清楚楚。
           ? BackdropFilter(
-              filter: ui.ImageFilter.blur(sigmaX: frost, sigmaY: frost, tileMode: TileMode.clamp),
+              filter: ui.ImageFilter.blur(
+                sigmaX: frost,
+                sigmaY: frost,
+                tileMode: TileMode.clamp,
+              ),
               child: content,
             )
           : content,

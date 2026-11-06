@@ -2,6 +2,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
+import '../../core/ui_prefs.dart';
 import '../../state/app_state.dart';
 
 /// 帖子页三处玻璃（顶栏、底部回复框、右上角菜单）共用的取色与取值。
@@ -10,11 +11,31 @@ import '../../state/app_state.dart';
 class ThreadGlass {
   const ThreadGlass._();
 
+  /// 全局液态玻璃开关。关掉后这里所有取色都退回实底。
+  static bool get enabled => UiPrefs.glass;
+
   /// 玻璃底色的不透明度。
   static double get opacity => AppState.instance.threadGlassOpacity;
 
-  /// 背景高斯模糊强度。
-  static double get blur => AppState.instance.threadGlassBlur;
+  /// 背景高斯模糊强度。关掉玻璃时直接给 0，调用方不用各自判断。
+  static double get blur => enabled ? AppState.instance.threadGlassBlur : 0;
+
+  /// 玻璃件的底色。
+  ///
+  /// 开启时是一层半透明白（压在模糊背景上）；关闭时换成主题的 surface，
+  /// 不透明、跟随深浅色，和普通卡片一个观感。
+  static Color fill(
+    BuildContext context, {
+    double lightAlpha = 0.44,
+    double darkAlpha = 0.08,
+  }) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    if (!enabled) {
+      return isDark ? const Color(0xFF1B222B) : theme.colorScheme.surface;
+    }
+    return Colors.white.withValues(alpha: isDark ? darkAlpha : lightAlpha);
+  }
 
   /// 左上亮、右下暗的渐变，模拟光线斜穿玻璃。
   ///
@@ -25,7 +46,16 @@ class ThreadGlass {
     double? opacityOverride,
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final alpha = ((opacityOverride ?? opacity) * opacityScale).clamp(0.0, 1.0).toDouble();
+    if (!enabled) {
+      // 不做玻璃就是一块实底，渐变留着只会让上下的白度不匀。
+      final solid = isDark
+          ? const Color(0xFF1B222B)
+          : Theme.of(context).colorScheme.surface;
+      return LinearGradient(colors: [solid, solid]);
+    }
+    final alpha = ((opacityOverride ?? opacity) * opacityScale)
+        .clamp(0.0, 1.0)
+        .toDouble();
     final top = isDark ? const Color(0xFF303945) : Colors.white;
     final bottom = isDark ? const Color(0xFF171D26) : const Color(0xFFF1F5FA);
     return LinearGradient(
@@ -39,11 +69,16 @@ class ThreadGlass {
   }
 
   /// 描边色：浅色主题用淡灰，深色主题用半透明白，避免玻璃边缘糊成一片。
+  /// 关掉玻璃后用不透明的分隔线色，边界才清晰。
   static Color borderColor(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final scheme = Theme.of(context).colorScheme;
-    return (isDark ? Colors.white : scheme.outlineVariant)
-        .withValues(alpha: isDark ? 0.18 : 0.32);
+    if (!enabled) {
+      return isDark ? const Color(0xFF2A323C) : scheme.outlineVariant;
+    }
+    return (isDark ? Colors.white : scheme.outlineVariant).withValues(
+      alpha: isDark ? 0.18 : 0.32,
+    );
   }
 }
 
@@ -83,34 +118,45 @@ class GlassBackdrop extends StatelessWidget {
       animation: AppState.instance,
       builder: (context, _) {
         final sigma = blur ?? ThreadGlass.blur;
+        final solid = !ThreadGlass.enabled;
+        final panel = DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: borderRadius,
+            gradient: ThreadGlass.gradient(
+              context,
+              opacityScale: opacityScale,
+              opacityOverride: opacity,
+            ),
+            border: showBorder
+                ? Border.all(color: ThreadGlass.borderColor(context))
+                : null,
+            boxShadow: showShadow
+                ? [
+                    BoxShadow(
+                      color: Colors.black.withValues(
+                        alpha: Theme.of(context).brightness == Brightness.dark
+                            ? 0.30
+                            : 0.14,
+                      ),
+                      blurRadius: 26,
+                      offset: const Offset(0, 12),
+                    ),
+                  ]
+                : null,
+          ),
+          child: child,
+        );
+
+        // 关掉玻璃就不挂 BackdropFilter：模糊本身是最贵的一步，
+        // 底下已经换成不透明底色，留着它只会白烧 GPU。
         return ClipRRect(
           borderRadius: borderRadius,
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                borderRadius: borderRadius,
-                gradient: ThreadGlass.gradient(
-                  context,
-                  opacityScale: opacityScale,
-                  opacityOverride: opacity,
+          child: solid
+              ? panel
+              : BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
+                  child: panel,
                 ),
-                border: showBorder ? Border.all(color: ThreadGlass.borderColor(context)) : null,
-                boxShadow: showShadow
-                    ? [
-                        BoxShadow(
-                          color: Colors.black.withValues(
-                            alpha: Theme.of(context).brightness == Brightness.dark ? 0.30 : 0.14,
-                          ),
-                          blurRadius: 26,
-                          offset: const Offset(0, 12),
-                        ),
-                      ]
-                    : null,
-              ),
-              child: child,
-            ),
-          ),
         );
       },
     );

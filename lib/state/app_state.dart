@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/http_session.dart';
 import '../core/sign_in_status.dart';
+import '../core/ui_prefs.dart';
 import '../data/forum_repository.dart';
 import '../data/models.dart';
 
@@ -16,12 +17,16 @@ class AppState extends ChangeNotifier {
   static const String _readLinkColorKey = 'mt_forum_read_link_color';
   static const String _readHintColorKey = 'mt_forum_read_hint_color';
   static const String _floatingGlassNavKey = 'mt_forum_floating_glass_nav';
-  static const String _floatingGlassNavOpacityKey = 'mt_forum_floating_glass_nav_opacity';
-  static const String _floatingGlassNavBlurKey = 'mt_forum_floating_glass_nav_blur';
-  static const String _composeGlassOpacityKey = 'mt_forum_compose_glass_opacity';
+  static const String _floatingGlassNavOpacityKey =
+      'mt_forum_floating_glass_nav_opacity';
+  static const String _floatingGlassNavBlurKey =
+      'mt_forum_floating_glass_nav_blur';
+  static const String _composeGlassOpacityKey =
+      'mt_forum_compose_glass_opacity';
   static const String _composeGlassBlurKey = 'mt_forum_compose_glass_blur';
   static const String _threadGlassOpacityKey = 'mt_forum_thread_glass_opacity';
   static const String _threadGlassBlurKey = 'mt_forum_thread_glass_blur';
+  static const String _glassEnabledKey = 'mt_forum_glass_enabled';
   static const String _autoSignInDateKey = 'mt_forum_auto_signin_date';
 
   /// 本机点过赞的主题 id（最多保留 200 条）。
@@ -53,7 +58,13 @@ class AppState extends ChangeNotifier {
   /// 正文太接近，长文里很容易划过去。给色弱用户留一个自己挑颜色的口子。
   Color? readLinkColor;
   Color? readHintColor;
+
+  /// 全局「液态玻璃」开关：关掉后所有玻璃件退回普通不透明样式。
+  bool glassEnabled = UiPrefs.glass;
   bool floatingGlassNav = false;
+
+  /// 实际生效的悬浮玻璃底栏 = 用户开了底栏玻璃 且 总开关没关。
+  bool get floatingGlassNavActive => floatingGlassNav && glassEnabled;
   double floatingGlassNavOpacity = 0.25;
   double floatingGlassNavBlur = 30.0;
 
@@ -99,7 +110,10 @@ class AppState extends ChangeNotifier {
     }
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setStringList(_likedThreadsKey, _likedThreads.map((id) => '$id').toList());
+      await prefs.setStringList(
+        _likedThreadsKey,
+        _likedThreads.map((id) => '$id').toList(),
+      );
     } catch (_) {
       // 本地记录丢了顶多下次显示未赞，不影响点赞结果。
     }
@@ -118,12 +132,27 @@ class AppState extends ChangeNotifier {
     readLinkColor = linkColor == null ? null : Color(linkColor);
     readHintColor = hintColor == null ? null : Color(hintColor);
     floatingGlassNav = prefs.getBool(_floatingGlassNavKey) ?? false;
-    floatingGlassNavOpacity = (prefs.getDouble(_floatingGlassNavOpacityKey) ?? 0.25).clamp(0.05, 0.65).toDouble();
-    floatingGlassNavBlur = (prefs.getDouble(_floatingGlassNavBlurKey) ?? 30.0).clamp(0.0, 40.0).toDouble();
-    composeGlassOpacity = (prefs.getDouble(_composeGlassOpacityKey) ?? 0.28).clamp(0.05, 0.75).toDouble();
-    composeGlassBlur = (prefs.getDouble(_composeGlassBlurKey) ?? 26.0).clamp(0.0, 40.0).toDouble();
-    threadGlassOpacity = (prefs.getDouble(_threadGlassOpacityKey) ?? 0.55).clamp(0.05, 0.85).toDouble();
-    threadGlassBlur = (prefs.getDouble(_threadGlassBlurKey) ?? 22.0).clamp(0.0, 40.0).toDouble();
+    floatingGlassNavOpacity =
+        (prefs.getDouble(_floatingGlassNavOpacityKey) ?? 0.25)
+            .clamp(0.05, 0.65)
+            .toDouble();
+    floatingGlassNavBlur = (prefs.getDouble(_floatingGlassNavBlurKey) ?? 30.0)
+        .clamp(0.0, 40.0)
+        .toDouble();
+    composeGlassOpacity = (prefs.getDouble(_composeGlassOpacityKey) ?? 0.28)
+        .clamp(0.05, 0.75)
+        .toDouble();
+    composeGlassBlur = (prefs.getDouble(_composeGlassBlurKey) ?? 26.0)
+        .clamp(0.0, 40.0)
+        .toDouble();
+    threadGlassOpacity = (prefs.getDouble(_threadGlassOpacityKey) ?? 0.55)
+        .clamp(0.05, 0.85)
+        .toDouble();
+    threadGlassBlur = (prefs.getDouble(_threadGlassBlurKey) ?? 22.0)
+        .clamp(0.0, 40.0)
+        .toDouble();
+    glassEnabled = prefs.getBool(_glassEnabledKey) ?? true;
+    UiPrefs.glass = glassEnabled;
     _signInDay = prefs.getString(_autoSignInDateKey);
     _likedThreads
       ..clear()
@@ -210,7 +239,9 @@ class AppState extends ChangeNotifier {
     profileLoading = true;
     if (!silent) notifyListeners();
     try {
-      profile = await repo.fetchMyProfile(fallbackName: profile?.username ?? '');
+      profile = await repo.fetchMyProfile(
+        fallbackName: profile?.username ?? '',
+      );
       profileError = null;
     } on SiteException catch (e) {
       profileError = e.message;
@@ -226,8 +257,18 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<UserProfile> login(String username, String password, {int questionId = 0, String answer = ''}) async {
-    final user = await repo.login(username, password, questionId: questionId, answer: answer);
+  Future<UserProfile> login(
+    String username,
+    String password, {
+    int questionId = 0,
+    String answer = '',
+  }) async {
+    final user = await repo.login(
+      username,
+      password,
+      questionId: questionId,
+      answer: answer,
+    );
     profile = user;
     profileError = null;
     _boards = null;
@@ -267,6 +308,16 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 总开关：立即作用于所有玻璃件并持久化。
+  Future<void> setGlassEnabled(bool enabled) async {
+    if (glassEnabled == enabled) return;
+    glassEnabled = enabled;
+    UiPrefs.glass = enabled;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_glassEnabledKey, enabled);
+  }
+
   Future<void> setFloatingGlassNav(bool enabled) async {
     floatingGlassNav = enabled;
     notifyListeners();
@@ -274,7 +325,10 @@ class AppState extends ChangeNotifier {
     await prefs.setBool(_floatingGlassNavKey, enabled);
   }
 
-  Future<void> setFloatingGlassNavAppearance({required double opacity, required double blur}) async {
+  Future<void> setFloatingGlassNavAppearance({
+    required double opacity,
+    required double blur,
+  }) async {
     floatingGlassNavOpacity = opacity.clamp(0.05, 0.65).toDouble();
     floatingGlassNavBlur = blur.clamp(0.0, 40.0).toDouble();
     notifyListeners();
@@ -284,7 +338,10 @@ class AppState extends ChangeNotifier {
   }
 
   /// 调整发帖悬浮按钮的玻璃透明度与模糊度并持久化。
-  Future<void> setComposeGlassAppearance({required double opacity, required double blur}) async {
+  Future<void> setComposeGlassAppearance({
+    required double opacity,
+    required double blur,
+  }) async {
     composeGlassOpacity = opacity.clamp(0.05, 0.75).toDouble();
     composeGlassBlur = blur.clamp(0.0, 40.0).toDouble();
     notifyListeners();
@@ -294,7 +351,10 @@ class AppState extends ChangeNotifier {
   }
 
   /// 调整帖子页三处玻璃的透明度与模糊度并持久化。
-  Future<void> setThreadGlassAppearance({required double opacity, required double blur}) async {
+  Future<void> setThreadGlassAppearance({
+    required double opacity,
+    required double blur,
+  }) async {
     threadGlassOpacity = opacity.clamp(0.05, 0.85).toDouble();
     threadGlassBlur = blur.clamp(0.0, 40.0).toDouble();
     notifyListeners();
@@ -342,7 +402,9 @@ class AppState extends ChangeNotifier {
   /// 深色背景上 #E4711B 会发闷，换成更亮的琥珀色，保证在暗底上仍然跳出来。
   Color readHintColorOf(ColorScheme scheme) =>
       readHintColor ??
-      (scheme.brightness == Brightness.dark ? const Color(0xFFFFA24D) : const Color(0xFFD2691E));
+      (scheme.brightness == Brightness.dark
+          ? const Color(0xFFFFA24D)
+          : const Color(0xFFD2691E));
 
   /// 直接塞一份版块数据，省掉网络请求。
   ///

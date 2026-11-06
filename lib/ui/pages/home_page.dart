@@ -5,6 +5,7 @@ import '../../state/app_state.dart';
 import '../pages/thread_page.dart';
 import '../widgets/glass_app_bar.dart';
 import '../widgets/thread_feed.dart';
+import '../widgets/thread_glass.dart';
 import 'notifications_page.dart';
 import '../navigation/app_routes.dart';
 
@@ -61,41 +62,63 @@ class _HomePageState extends State<HomePage> {
                 height: 38,
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [scheme.primary, scheme.primary.withValues(alpha: 0.72)],
+                    colors: [
+                      scheme.primary,
+                      scheme.primary.withValues(alpha: 0.72),
+                    ],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
                   borderRadius: BorderRadius.circular(13),
                   boxShadow: [
-                    BoxShadow(color: scheme.primary.withValues(alpha: 0.25), blurRadius: 12, offset: const Offset(0, 4)),
+                    BoxShadow(
+                      color: scheme.primary.withValues(alpha: 0.25),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
                   ],
                 ),
-                child: const Icon(Icons.forum_rounded, color: Colors.white, size: 21),
+                child: const Icon(
+                  Icons.forum_rounded,
+                  color: Colors.white,
+                  size: 21,
+                ),
               ),
               const SizedBox(width: 11),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('MT论坛', style: TextStyle(fontSize: 23, fontWeight: FontWeight.w800, letterSpacing: -0.4)),
+                    const Text(
+                      'MT论坛',
+                      style: TextStyle(
+                        fontSize: 23,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.4,
+                      ),
+                    ),
                     const SizedBox(height: 1),
                     Text(
                       'MT管理器官方社区',
-                      style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant),
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: scheme.onSurfaceVariant,
+                      ),
                     ),
                   ],
                 ),
               ),
               IconButton.filledTonal(
-                onPressed: () => Navigator.of(context).push(
-                  appRoute(builder: (_) => const NotificationsPage()),
-                ),
+                onPressed: () => Navigator.of(context)
+                    .push(appRoute(builder: (_) => const NotificationsPage())),
                 icon: const Icon(Icons.notifications_none_rounded, size: 21),
                 style: IconButton.styleFrom(
                   backgroundColor: scheme.surface,
                   foregroundColor: scheme.onSurface,
                   minimumSize: const Size(42, 42),
-                  side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.6)),
+                  side: BorderSide(
+                    color: scheme.outlineVariant.withValues(alpha: 0.6),
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
@@ -106,7 +129,9 @@ class _HomePageState extends State<HomePage> {
                   backgroundColor: scheme.surface,
                   foregroundColor: scheme.onSurface,
                   minimumSize: const Size(42, 42),
-                  side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.6)),
+                  side: BorderSide(
+                    color: scheme.outlineVariant.withValues(alpha: 0.6),
+                  ),
                 ),
               ),
             ],
@@ -123,7 +148,10 @@ class _HomePageState extends State<HomePage> {
                 final item = _announcements[index];
                 return GestureDetector(
                   onTap: () => Navigator.of(context).push(
-                    appRoute(builder: (_) => ThreadPage(tid: item.tid, title: item.title)),
+                    appRoute(
+                      builder: (_) =>
+                          ThreadPage(tid: item.tid, title: item.title),
+                    ),
                   ),
                   child: Container(
                     width: 262,
@@ -131,7 +159,9 @@ class _HomePageState extends State<HomePage> {
                     decoration: BoxDecoration(
                       color: scheme.primary.withValues(alpha: 0.075),
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: scheme.primary.withValues(alpha: 0.12)),
+                      border: Border.all(
+                        color: scheme.primary.withValues(alpha: 0.12),
+                      ),
                     ),
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -139,8 +169,15 @@ class _HomePageState extends State<HomePage> {
                         Container(
                           width: 30,
                           height: 30,
-                          decoration: BoxDecoration(color: scheme.primary.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(9)),
-                          child: Icon(Icons.campaign_rounded, size: 17, color: scheme.primary),
+                          decoration: BoxDecoration(
+                            color: scheme.primary.withValues(alpha: 0.14),
+                            borderRadius: BorderRadius.circular(9),
+                          ),
+                          child: Icon(
+                            Icons.campaign_rounded,
+                            size: 17,
+                            color: scheme.primary,
+                          ),
                         ),
                         const SizedBox(width: 9),
                         Expanded(
@@ -151,12 +188,21 @@ class _HomePageState extends State<HomePage> {
                                 item.title,
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontSize: 12.8, height: 1.4, fontWeight: FontWeight.w700),
+                                style: const TextStyle(
+                                  fontSize: 12.8,
+                                  height: 1.4,
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
                               const Spacer(),
                               Text(
-                                item.time.isEmpty ? '官方公告' : '官方公告 · ${item.time}',
-                                style: TextStyle(fontSize: 10.5, color: scheme.onSurfaceVariant),
+                                item.time.isEmpty
+                                    ? '官方公告'
+                                    : '官方公告 · ${item.time}',
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  color: scheme.onSurfaceVariant,
+                                ),
                               ),
                             ],
                           ),
@@ -186,20 +232,38 @@ class _HomePageState extends State<HomePage> {
     final scheme = theme.colorScheme;
     final dark = theme.brightness == Brightness.dark;
     // 未选中项在玻璃上用半透明的浅色，太实会显得脏。
-    final idle = dark ? Colors.white.withValues(alpha: 0.62) : scheme.onSurfaceVariant;
+    final glass = ThreadGlass.enabled;
+    final idle = dark
+        ? Colors.white.withValues(alpha: 0.62)
+        : scheme.onSurfaceVariant;
 
     return Container(
       margin: const EdgeInsets.only(top: 4, bottom: 6),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(18),
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: dark
-              ? [Colors.white.withValues(alpha: 0.16), Colors.white.withValues(alpha: 0.05)]
-              : [Colors.white.withValues(alpha: 0.60), Colors.white.withValues(alpha: 0.30)],
+        // 关掉液态玻璃后，这条筛选栏也退回成一块实底，不然它会是整页
+        // 唯一还在半透明的东西。
+        color: glass ? null : scheme.surface,
+        gradient: glass
+            ? LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: dark
+                    ? [
+                        Colors.white.withValues(alpha: 0.16),
+                        Colors.white.withValues(alpha: 0.05),
+                      ]
+                    : [
+                        Colors.white.withValues(alpha: 0.60),
+                        Colors.white.withValues(alpha: 0.30),
+                      ],
+              )
+            : null,
+        border: Border.all(
+          color: glass
+              ? Colors.white.withValues(alpha: dark ? 0.18 : 0.72)
+              : ThreadGlass.borderColor(context),
         ),
-        border: Border.all(color: Colors.white.withValues(alpha: dark ? 0.18 : 0.72)),
       ),
       child: Padding(
         padding: const EdgeInsets.all(4),
@@ -226,7 +290,9 @@ class _HomePageState extends State<HomePage> {
                             )
                           : null,
                       border: Border.all(
-                        color: Colors.white.withValues(alpha: _selected == i ? 0.34 : 0),
+                        color: Colors.white.withValues(
+                          alpha: _selected == i ? 0.34 : 0,
+                        ),
                       ),
                       boxShadow: _selected == i
                           ? [
@@ -251,7 +317,9 @@ class _HomePageState extends State<HomePage> {
                           _views[i].$1,
                           style: TextStyle(
                             fontSize: 12.5,
-                            fontWeight: _selected == i ? FontWeight.w700 : FontWeight.w600,
+                            fontWeight: _selected == i
+                                ? FontWeight.w700
+                                : FontWeight.w600,
                             color: _selected == i ? Colors.white : idle,
                           ),
                         ),
@@ -281,7 +349,12 @@ class _HomePageState extends State<HomePage> {
           onRefresh: () => _loadAnnouncements(force: true),
           emptyText: '暂时没有内容，稍后再来看看',
           // 底部补上悬浮底栏占掉的高度，最后一张卡片才不会被压进胶囊里。
-          padding: EdgeInsets.fromLTRB(14, 0, 14, 8 + floatingNavSpace(context)),
+          padding: EdgeInsets.fromLTRB(
+            14,
+            0,
+            14,
+            8 + floatingNavSpace(context),
+          ),
           doubleTapToTop: true,
         ),
       ),

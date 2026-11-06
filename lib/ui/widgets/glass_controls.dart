@@ -40,8 +40,10 @@ class GlassPill extends StatelessWidget {
     final accent = tone == GlassPillTone.accent;
     final fg = accent || selected ? scheme.primary : scheme.onSurfaceVariant;
     final fill = accent || selected
-        ? scheme.primary.withValues(alpha: isDark ? 0.22 : 0.13)
-        : Colors.white.withValues(alpha: isDark ? 0.09 : 0.44);
+        ? (ThreadGlass.enabled
+              ? scheme.primary.withValues(alpha: isDark ? 0.22 : 0.13)
+              : scheme.primaryContainer)
+        : ThreadGlass.fill(context, lightAlpha: 0.44, darkAlpha: 0.09);
     final stroke = accent || selected
         ? scheme.primary.withValues(alpha: isDark ? 0.45 : 0.34)
         : ThreadGlass.borderColor(context);
@@ -68,7 +70,11 @@ class GlassPill extends StatelessWidget {
                 ],
                 Text(
                   label,
-                  style: TextStyle(fontSize: fontSize, fontWeight: FontWeight.w600, color: fg),
+                  style: TextStyle(
+                    fontSize: fontSize,
+                    fontWeight: FontWeight.w600,
+                    color: fg,
+                  ),
                 ),
                 if (trailing != null) ...[
                   const SizedBox(width: 2),
@@ -145,7 +151,7 @@ class _GlassSearchFieldState extends State<GlassSearchField> {
       height: widget.height,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(widget.height / 2),
-        color: Colors.white.withValues(alpha: isDark ? 0.10 : 0.46),
+        color: ThreadGlass.fill(context, lightAlpha: 0.46, darkAlpha: 0.10),
         border: Border.all(
           color: _focused ? accent : ThreadGlass.borderColor(context),
           width: _focused ? 1.2 : 0.9,
@@ -174,7 +180,10 @@ class _GlassSearchFieldState extends State<GlassSearchField> {
               onChanged: widget.onChanged,
               onSubmitted: widget.onSubmitted,
               cursorHeight: 18,
-              style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w500),
+              style: const TextStyle(
+                fontSize: 14.5,
+                fontWeight: FontWeight.w500,
+              ),
               decoration: InputDecoration(
                 isDense: true,
                 filled: false,
@@ -257,18 +266,23 @@ class GlassSegmented<T> extends StatelessWidget {
       final fg = !enabled
           ? scheme.onSurfaceVariant.withValues(alpha: 0.45)
           : active
-              ? scheme.primary
-              : scheme.onSurfaceVariant;
+          ? scheme.primary
+          : scheme.onSurfaceVariant;
       final body = Material(
         color: active
-            ? scheme.primary.withValues(alpha: isDark ? 0.26 : 0.14)
+            ? (ThreadGlass.enabled
+                  ? scheme.primary.withValues(alpha: isDark ? 0.26 : 0.14)
+                  : scheme.primaryContainer)
             : Colors.transparent,
         borderRadius: radius,
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: enabled ? () => onChanged!(key) : null,
           child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: dense ? 10 : 13, vertical: dense ? 6 : 8),
+            padding: EdgeInsets.symmetric(
+              horizontal: dense ? 10 : 13,
+              vertical: dense ? 6 : 8,
+            ),
             child: Text(
               label,
               textAlign: TextAlign.center,
@@ -289,7 +303,7 @@ class GlassSegmented<T> extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: isDark ? 0.07 : 0.36),
+        color: ThreadGlass.fill(context, lightAlpha: 0.36, darkAlpha: 0.07),
         borderRadius: radius,
         border: Border.all(color: ThreadGlass.borderColor(context)),
       ),
@@ -403,7 +417,7 @@ class _GlassFieldState extends State<GlassField> {
       curve: Curves.easeOut,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(14),
-        color: Colors.white.withValues(alpha: isDark ? 0.08 : 0.44),
+        color: ThreadGlass.fill(context, lightAlpha: 0.44, darkAlpha: 0.08),
         border: Border.all(
           color: _focused ? accent : ThreadGlass.borderColor(context),
           width: _focused ? 1.2 : 0.9,
@@ -419,8 +433,9 @@ class _GlassFieldState extends State<GlassField> {
             : null,
       ),
       child: Row(
-        crossAxisAlignment:
-            multiline ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+        crossAxisAlignment: multiline
+            ? CrossAxisAlignment.start
+            : CrossAxisAlignment.center,
         children: [
           if (widget.leading != null) ...[
             SizedBox(width: 13),
@@ -533,11 +548,10 @@ class GlassSelectRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final empty = value == null || value!.isEmpty;
 
     final row = Material(
-      color: Colors.white.withValues(alpha: isDark ? 0.08 : 0.44),
+      color: ThreadGlass.fill(context, lightAlpha: 0.44, darkAlpha: 0.08),
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),
@@ -567,7 +581,9 @@ class GlassSelectRow extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 14.5,
                     fontWeight: FontWeight.w500,
-                    color: empty ? scheme.onSurfaceVariant.withValues(alpha: 0.7) : scheme.onSurface,
+                    color: empty
+                        ? scheme.onSurfaceVariant.withValues(alpha: 0.7)
+                        : scheme.onSurface,
                   ),
                 ),
               ),
@@ -622,7 +638,9 @@ Future<T?> showGlassOptionSheet<T>(
     builder: (context) {
       final scheme = Theme.of(context).colorScheme;
       return ConstrainedBox(
-        constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.68),
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * 0.68,
+        ),
         child: GlassBackdrop(
           borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
           opacityScale: 1.06,
@@ -643,7 +661,13 @@ Future<T?> showGlassOptionSheet<T>(
                 padding: const EdgeInsets.fromLTRB(20, 12, 8, 4),
                 child: Row(
                   children: [
-                    Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
                     const Spacer(),
                     IconButton(
                       onPressed: () => Navigator.of(context).pop(),
@@ -666,7 +690,11 @@ Future<T?> showGlassOptionSheet<T>(
                           radius: 14,
                           color: option.$1 == selected
                               ? scheme.primary.withValues(
-                                  alpha: Theme.of(context).brightness == Brightness.dark ? 0.22 : 0.13,
+                                  alpha:
+                                      Theme.of(context).brightness ==
+                                          Brightness.dark
+                                      ? 0.22
+                                      : 0.13,
                                 )
                               : null,
                           onTap: () => Navigator.of(context).pop(option.$1),
@@ -678,8 +706,9 @@ Future<T?> showGlassOptionSheet<T>(
                                   option.$2,
                                   style: TextStyle(
                                     fontSize: 14,
-                                    fontWeight:
-                                        option.$1 == selected ? FontWeight.w700 : FontWeight.w500,
+                                    fontWeight: option.$1 == selected
+                                        ? FontWeight.w700
+                                        : FontWeight.w500,
                                     color: option.$1 == selected
                                         ? scheme.primary
                                         : scheme.onSurface,
@@ -687,7 +716,11 @@ Future<T?> showGlassOptionSheet<T>(
                                 ),
                               ),
                               if (option.$1 == selected)
-                                Icon(Icons.check_rounded, size: 18, color: scheme.primary),
+                                Icon(
+                                  Icons.check_rounded,
+                                  size: 18,
+                                  color: scheme.primary,
+                                ),
                             ],
                           ),
                         ),
@@ -725,13 +758,13 @@ class GlassCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final shape = RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(radius),
       side: BorderSide(color: ThreadGlass.borderColor(context)),
     );
     return Material(
-      color: color ?? Colors.white.withValues(alpha: isDark ? 0.08 : 0.44),
+      color:
+          color ?? ThreadGlass.fill(context, lightAlpha: 0.44, darkAlpha: 0.08),
       clipBehavior: Clip.antiAlias,
       shape: shape,
       child: onTap == null

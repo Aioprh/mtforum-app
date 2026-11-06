@@ -70,9 +70,15 @@ class BoardPickerSheet extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(20, 10, 8, 2),
               child: Row(
                 children: [
-                  const Text('选择版块', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                  const Text(
+                    '选择版块',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                  ),
                   const SizedBox(width: 8),
-                  Text('$total 个', style: TextStyle(fontSize: 11.5, color: scheme.outline)),
+                  Text(
+                    '$total 个',
+                    style: TextStyle(fontSize: 11.5, color: scheme.outline),
+                  ),
                   const Spacer(),
                   IconButton(
                     onPressed: () => Navigator.of(context).pop(),
@@ -113,12 +119,18 @@ class BoardPickerSheet extends StatelessWidget {
                           const SizedBox(width: 7),
                           Text(
                             category.name,
-                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                            ),
                           ),
                           const SizedBox(width: 6),
                           Text(
                             '${category.boards.length}',
-                            style: TextStyle(fontSize: 10.5, color: scheme.outline),
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              color: scheme.outline,
+                            ),
                           ),
                         ],
                       ),
@@ -167,8 +179,10 @@ class _AllBoardsTile extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(18),
           color: selected
-              ? scheme.primary.withValues(alpha: isDark ? 0.22 : 0.13)
-              : Colors.white.withValues(alpha: isDark ? 0.09 : 0.44),
+              ? (ThreadGlass.enabled
+                    ? scheme.primary.withValues(alpha: isDark ? 0.22 : 0.13)
+                    : scheme.primaryContainer)
+              : ThreadGlass.fill(context, lightAlpha: 0.44, darkAlpha: 0.09),
           border: Border.all(
             color: selected
                 ? scheme.primary.withValues(alpha: isDark ? 0.45 : 0.34)
@@ -180,9 +194,17 @@ class _AllBoardsTile extends StatelessWidget {
           children: [
             Icon(Icons.apps_rounded, size: 18, color: fg),
             const SizedBox(width: 10),
-            Text('全部版块', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: fg)),
+            Text(
+              '全部版块',
+              style: TextStyle(
+                fontSize: 13.5,
+                fontWeight: FontWeight.w700,
+                color: fg,
+              ),
+            ),
             const Spacer(),
-            if (selected) Icon(Icons.check_rounded, size: 18, color: scheme.primary),
+            if (selected)
+              Icon(Icons.check_rounded, size: 18, color: scheme.primary),
           ],
         ),
       ),
