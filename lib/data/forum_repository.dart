@@ -2757,7 +2757,7 @@ class ForumRepository {
   }
 
   /// 他人主页资料。`hash` 为关注操作所需的 formhash。
-  Future<(UserProfile, String, bool)> fetchUserProfile(int uid) async {
+  Future<(UserProfile, String, bool, bool)> fetchUserProfile(int uid) async {
     final result = await _http.get(
       'home.php',
       query: {'mod': 'space', 'uid': '$uid', 'do': 'profile', 'mobile': '2'},
@@ -2769,6 +2769,7 @@ class ForumRepository {
       _parseSpaceProfile(doc, result.body, uid: uid),
       _findFormhash(result.body),
       isFollowing,
+      _isBlockedOnProfile(doc, result.body, uid),
     );
   }
 
@@ -2848,6 +2849,87 @@ class ForumRepository {
     final msg = _pageMessage(parser.parse(result.body));
     if (msg != null && _looksLikeError(msg)) throw SiteException(msg);
     return follow;
+  }
+
+  /// 主页上是否已经把这个人拉黑。
+  ///
+  /// Comiis 的「拉黑ta」被点过之后，主页会把那个按钮换成「解除拉黑」，
+  /// 指向 `spacecp&ac=friend&op=blacklist&subop=delete&uid=X`。所以只看
+  /// 主页就能判断状态，不用额外请求黑名单列表。
+  bool _isBlockedOnProfile(Document doc, String html, int uid) {
+    if (!_http.hasLoginCookie || uid <= 0) return false;
+    return hasBlockedLink(html, uid);
+  }
+
+  /// 页面里有没有指向「解除拉黑」的链接。
+  ///
+  /// 只看 href 里的三个标记：`op=blacklist` + `subop=delete` + 本人的 `uid=`。
+  /// Comiis 同一个链接在主页和黑名单列表里都会出现，写法一致，所以一处判断
+  /// 两处都能用；`uid=` 后面加数字边界，免得 uid=16072 命中 uid=160721。
+  @visibleForTesting
+  static bool hasBlockedLink(String html, int uid) {
+    if (uid <= 0 || html.isEmpty) return false;
+    final normalized = html.replaceAll('&amp;', '&');
+    final pattern = RegExp(
+      'op=blacklist[^"<>]{0,160}?subop=delete[^"<>]{0,160}?uid=$uid(?![0-9])',
+    );
+    return pattern.hasMatch(normalized);
+  }
+
+  /// 拉黑用户（加入黑名单）。
+  ///
+  /// Comiis 手机模板没给「我的黑名单」页入口，主页上的「拉黑ta」直接发
+  /// `spacecp&ac=friend&op=blacklist` 的 AJAX 请求，提交的是**用户名**
+  /// 而不是 uid，所以这里也必须带昵称。成功时返回「操作成功」的 XML。
+  Future<void> blockUser({required String username, required String hash}) async {
+    if (hash.isEmpty) throw SiteException('操作凭证已失效，请重新进入主页');
+    final name = username.trim();
+    if (name.isEmpty) throw SiteException('拿不到这个用户的昵称，无法拉黑');
+    final result = await _http.post(
+      'home.php',
+      query: {
+        'mod': 'spacecp',
+        'ac': 'friend',
+        'op': 'blacklist',
+        'start': '',
+        'inajax': '1',
+        'mobile': '2',
+      },
+      form: {
+        'blacklistsubmit': 'true',
+        'formhash': hash,
+        'username': name,
+      },
+      referer: AppConfig.uri('home.php', {'mod': 'space', 'do': 'profile'}).toString(),
+    );
+    _ensureOk(result);
+    final message = _pageMessage(parser.parse(result.body));
+    if (message == null) throw SiteException('拉黑失败，请稍后重试');
+    if (_looksLikeError(message) || !message.contains('成功')) {
+      throw SiteException(message);
+    }
+  }
+
+  /// 解除拉黑。主页和黑名单列表里给的现成链接就是这个形状，
+  /// 按 uid 删除，不需要 formhash。
+  Future<void> unblockUser({required int uid}) async {
+    if (uid <= 0) throw SiteException('无法识别用户');
+    final result = await _http.get(
+      'home.php',
+      query: {
+        'mod': 'spacecp',
+        'ac': 'friend',
+        'op': 'blacklist',
+        'subop': 'delete',
+        'uid': '$uid',
+        'start': '',
+        'mobile': '2',
+      },
+      referer: AppConfig.uri('home.php', {'mod': 'space', 'uid': '$uid', 'do': 'profile'}).toString(),
+    );
+    _ensureOk(result);
+    final message = _pageMessage(parser.parse(result.body));
+    if (message != null && _looksLikeError(message)) throw SiteException(message);
   }
 
   /// 我的好友列表。

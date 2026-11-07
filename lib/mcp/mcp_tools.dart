@@ -685,7 +685,7 @@ class McpTools {
   Future<Object?> _userProfile(Map<String, dynamic> args) async {
     final uid = _int(args['uid']);
     if (uid <= 0) throw const McpToolException('uid 必须是正整数');
-    final (profile, _, followed) = await _repo.fetchUserProfile(uid);
+    final (profile, _, followed, blocked) = await _repo.fetchUserProfile(uid);
     return <String, Object?>{
       'uid': profile.uid > 0 ? profile.uid : uid,
       'username': profile.username,
@@ -697,6 +697,7 @@ class McpTools {
       'followers': profile.followers,
       'reg_time': profile.regTime,
       'followed_by_me': followed,
+      'blocked_by_me': blocked,
     };
   }
 
@@ -827,7 +828,7 @@ class McpTools {
     if (message.isEmpty) throw const McpToolException('message 不能为空');
 
     // 私信要 formhash，只有用户主页那种带表单的页面才输出。
-    final (profile, hash, _) = await _repo.fetchUserProfile(uid);
+    final (profile, hash, _, _) = await _repo.fetchUserProfile(uid);
     if (hash.isEmpty) {
       throw const McpToolException('没取到 formhash，请确认 App 内已登录');
     }

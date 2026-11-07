@@ -929,6 +929,8 @@ class _ThreadPageState extends State<ThreadPage> {
         await _ratePost(post);
       case 'pm':
         await _openPm(post);
+      case 'block':
+        await _blockAuthor(post);
       case 'edit':
         await _editPost(post);
       case 'delete':
@@ -949,6 +951,43 @@ class _ThreadPageState extends State<ThreadPage> {
   Future<void> _copySource(ForumPost post) async {
     await Clipboard.setData(ClipboardData(text: post.html));
     _toast('本楼源码已复制（${post.html.length} 字）');
+  }
+
+  /// 直接在楼层里拉黑作者：刷屏、引战的时候不用先跳到他主页。
+  ///
+  /// 站点的黑名单入口按**昵称**提交，楼层的 author 就是站点渲染的昵称，
+  /// 直接拿来用；formhash 是全站共用的，帖子页这一份就能过校验。
+  Future<void> _blockAuthor(ForumPost post) async {
+    if (!await _ensureLogin()) return;
+    final name = post.author.trim();
+    if (name.isEmpty) {
+      _toast('拿不到这楼的昵称，无法拉黑');
+      return;
+    }
+    if (!mounted) return;
+    final confirmed = await showGlassDialog<bool>(
+      context: context,
+      builder: (context) => GlassDialog(
+        title: const Text('加入黑名单'),
+        content: Text('拉黑后「$name」将无法给你发私信、留言。\n可以随时在 TA 的主页解除。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('加入黑名单'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await _repo.blockUser(username: name, hash: _detail?.formhash ?? '');
+      if (!mounted) return;
+      _toast('已把「$name」加入黑名单');
+    } catch (e) {
+      if (!mounted) return;
+      _toast(e is SiteException ? e.message : '拉黑失败，请稍后重试');
+    }
   }
 
   Future<void> _report(ForumPost post) async {
@@ -1760,6 +1799,13 @@ class _ThreadPageState extends State<ThreadPage> {
           ),
         if (!_isMine(post) && post.uid > 0)
           const GlassMenuItem(value: 'pm', label: '发消息', icon: Icons.mail_outline_rounded),
+        if (!_isMine(post) && post.uid > 0)
+          const GlassMenuItem(
+            value: 'block',
+            label: '加入黑名单',
+            icon: Icons.block_rounded,
+            danger: true,
+          ),
         // 主题作者和版主都能置顶回复；已置顶的楼层给「取消置顶」。
         if (!post.isOp && (_isThreadOwner || _isModerator))
           GlassMenuItem(

@@ -7,6 +7,8 @@ import '../../data/forum_repository.dart';
 import '../../data/models.dart';
 import '../../state/app_state.dart';
 import '../widgets/glass_app_bar.dart';
+import '../widgets/glass_dialog.dart';
+import '../widgets/glass_menu.dart';
 import '../widgets/state_views.dart';
 import '../widgets/thread_feed.dart';
 import '../widgets/user_avatar.dart';
@@ -31,6 +33,8 @@ class _UserPageState extends State<UserPage> {
   bool _loading = true;
   bool _followBusy = false;
   bool _following = false;
+  bool _blockBusy = false;
+  bool _blocked = false;
   String? _error;
 
   ForumRepository get _repo => AppState.instance.repo;
@@ -56,12 +60,13 @@ class _UserPageState extends State<UserPage> {
       _error = null;
     });
     try {
-      final (profile, hash, following) = await _repo.fetchUserProfile(widget.uid);
+      final (profile, hash, following, blocked) = await _repo.fetchUserProfile(widget.uid);
       if (!mounted) return;
       setState(() {
         _profile = profile;
         _hash = hash;
         _following = following;
+        _blocked = blocked;
         _loading = false;
       });
     } catch (e) {
@@ -91,6 +96,61 @@ class _UserPageState extends State<UserPage> {
       _toast(e is SiteException ? e.message : '操作失败，请稍后重试');
     } finally {
       if (mounted) setState(() => _followBusy = false);
+    }
+  }
+
+  /// 拉黑 / 解除拉黑。两个方向都先确认：拉黑会挡住对方私信和留言。
+  Future<void> _toggleBlock() async {
+    if (_blockBusy) return;
+    if (!AppState.instance.isLoggedIn) {
+      final ok = await Navigator.of(context).push<bool>(
+        noSwipeRoute(builder: (_) => const LoginPage()),
+      );
+      if (ok != true || !mounted) return;
+      // 登录前抓的那份主页是游客视角，没有 formhash，也没有拉黑状态。
+      await _load();
+      if (!mounted) return;
+    }
+    final name = _profile?.username.isNotEmpty == true ? _profile!.username : widget.name;
+    final block = !_blocked;
+    final confirmed = await showGlassDialog<bool>(
+      context: context,
+      builder: (context) => GlassDialog(
+        title: Text(block ? '加入黑名单' : '解除拉黑'),
+        content: Text(
+          block
+              ? '拉黑后「${name.isEmpty ? '该用户' : name}」将无法给你发私信、留言，\n'
+                  '你也随时可以在这里解除。'
+              : '解除后「${name.isEmpty ? '该用户' : name}」可以重新给你发私信、留言。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(block ? '取消' : '保持拉黑'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(block ? '加入黑名单' : '解除拉黑'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _blockBusy = true);
+    try {
+      if (block) {
+        await _repo.blockUser(username: name, hash: _hash);
+      } else {
+        await _repo.unblockUser(uid: widget.uid);
+      }
+      if (!mounted) return;
+      setState(() => _blocked = block);
+      _toast(block ? '已加入黑名单' : '已解除拉黑');
+    } catch (e) {
+      _toast(e is SiteException ? e.message : '操作失败，请稍后重试');
+    } finally {
+      if (mounted) setState(() => _blockBusy = false);
     }
   }
 
@@ -236,6 +296,7 @@ class _UserPageState extends State<UserPage> {
                       children: [
                         if (profile?.group.isNotEmpty == true) _tag(scheme, profile!.group, scheme.primary),
                         if (profile?.level.isNotEmpty == true) _tag(scheme, profile!.level, scheme.tertiary),
+                        if (_blocked) _tag(scheme, '已拉黑', scheme.error),
                         _tag(scheme, 'UID ${widget.uid}', scheme.outline),
                       ],
                     ),
@@ -291,6 +352,24 @@ class _UserPageState extends State<UserPage> {
                     label: const Text('发消息'),
                     style: OutlinedButton.styleFrom(minimumSize: const Size(0, 36)),
                   ),
+                ),
+                const SizedBox(width: 4),
+                // 拉黑是低频且不可逆感很强的操作，收进「更多」里，
+                // 不跟关注 / 发消息抢同一排按钮。
+                GlassMenuButton<String>(
+                  items: [
+                    GlassMenuItem(
+                      value: 'block',
+                      label: _blocked ? '解除拉黑' : '加入黑名单',
+                      icon: _blocked ? Icons.lock_open_rounded : Icons.block_rounded,
+                      danger: !_blocked,
+                    ),
+                  ],
+                  onSelected: (_) => _toggleBlock(),
+                  tooltip: '更多操作',
+                  hitSize: 36,
+                  color: _blocked ? scheme.error : scheme.outline,
+                  padding: EdgeInsets.zero,
                 ),
               ],
             ),
