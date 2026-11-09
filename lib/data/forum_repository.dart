@@ -2462,7 +2462,7 @@ class ForumRepository {
       },
     );
     _ensureOk(response);
-    final msg = _rateMessage(response.body);
+    final msg = rateMessage(response.body);
     if (msg.isNotEmpty && _looksLikeRateError(msg)) {
       throw SiteException(_rateErrorText(msg));
     }
@@ -2473,18 +2473,47 @@ class ForumRepository {
   ///
   /// `inajax` 返回的通常是 `errorhandle_rate('提示')` 这类脚本，
   /// 必须只取引号内的提示，避免把整段 JS 弹给用户。
-  String _rateMessage(String body) {
+  ///
+  /// 有些模板的成功响应里根本不写文案，只把「返回帖子」的地址塞进提示位
+  /// （`succeedhandle_rate('https://…/forum.php?mod=viewthread…')`）。这种
+  /// 地址对用户没有意义，一律当「没给提示」处理，由调用方补「打赏成功」。
+  @visibleForTesting
+  static String rateMessage(String body) {
     final cdata = RegExp(r'<!\[CDATA\[(.*?)\]\]>', dotAll: true).firstMatch(body)?.group(1);
     final raw = cdata ?? body;
     final quoted = RegExp(
       r"(?:errorhandle_\w+|succeedhandle_\w+|showmessage|showDialog)\(\s*'([^']*)'",
     ).firstMatch(raw)?.group(1);
-    if (quoted != null && _clean(quoted).isNotEmpty) return _clean(quoted);
-    final page = _pageMessage(parser.parse(body)) ?? '';
-    if (page.isNotEmpty) return page;
-    final text = _clean(raw.replaceAll(RegExp(r'<[^>]+>'), ' '));
+    if (quoted != null) {
+      final rawText = _clean(quoted);
+      // 跳转地址指向登录页时不能当成功：那是登录态失效，得让用户重新登录。
+      if (RegExp(r'(?:mod=logging|action=login)', caseSensitive: false).hasMatch(rawText)) {
+        return '登录状态已失效，请重新登录后再打赏';
+      }
+      final text = _stripUrls(rawText);
+      if (text.isNotEmpty) return text;
+    }
+    final page = _pageMessage(parser.parse(raw)) ?? '';
+    final cleanedPage = _stripUrls(page);
+    if (cleanedPage.isNotEmpty) return cleanedPage;
+    final text = _stripUrls(_clean(raw.replaceAll(RegExp(r'<[^>]+>'), ' ')));
     if (_looksLikeRateError(text) && text.length < 80) return text;
     return '';
+  }
+
+  /// 提示里夹着的地址：整条提示只有一个链接时，它不构成文案。
+  static final RegExp _urlPattern = RegExp(
+    r'''https?://[^\s'"<>]+'''
+    r'''|(?:^|\s)[\w-]+\.(?:php|html?)\?[^\s'"<>]*'''
+    r'''|(?:^|\s)(?:[\w-]+\.)+[a-z]{2,}/[^\s'"<>]*''',
+    caseSensitive: false,
+  );
+
+  static String _stripUrls(String text) {
+    final stripped = text.replaceAll(_urlPattern, ' ');
+    return _clean(stripped)
+        .replaceAll(RegExp(r'^[\s:：,，。.、;；!！?？\-—|]+'), '')
+        .trim();
   }
 
   /// 评分页本身返回的错误提示（权限不足等）。
@@ -2506,7 +2535,7 @@ class ForumRepository {
     return message;
   }
 
-  bool _looksLikeRateError(String text) =>
+  static bool _looksLikeRateError(String text) =>
       RegExp(r'(抱歉|错误|失败|不能|无权|权限|非法|禁止|请先登录|间隔|重复|超过限制)')
           .hasMatch(text);
 
