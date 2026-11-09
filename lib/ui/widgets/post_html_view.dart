@@ -2,7 +2,6 @@ import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:html/dom.dart' as dom;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:html/parser.dart' as parser;
@@ -81,8 +80,9 @@ class _PostHtmlViewState extends State<PostHtmlView> {
   void _onReadPaletteChanged() {
     final state = AppState.instance;
     if (state.readLinkColor == _lastLinkColor &&
-        state.readHintColor == _lastHintColor)
+        state.readHintColor == _lastHintColor) {
       return;
+    }
     _lastLinkColor = state.readLinkColor;
     _lastHintColor = state.readHintColor;
     if (!mounted) return;
@@ -208,8 +208,9 @@ class _PostHtmlViewState extends State<PostHtmlView> {
             .toLowerCase();
     if (src.contains('/smiley/') ||
         src.contains('smiley') ||
-        src.contains('smilies'))
+        src.contains('smilies')) {
       return true;
+    }
     final width = double.tryParse(img.attributes['width'] ?? '');
     final height = double.tryParse(img.attributes['height'] ?? '');
     if (width == null || height == null) return false;
@@ -490,8 +491,9 @@ class _PostHtmlViewState extends State<PostHtmlView> {
     if (cleaned.isEmpty || cleaned.length > 20) return null;
     // 「点我播放」「点击观看」这类只是操作指令，不算说明，卡片用默认标题。
     if (cleaned.length <= 8 &&
-        RegExp(r'^(点我|点击|点此|直接)?(播放|观看)').hasMatch(cleaned))
+        RegExp(r'^(点我|点击|点此|直接)?(播放|观看)').hasMatch(cleaned)) {
       return null;
+    }
     return cleaned;
   }
 
@@ -508,8 +510,9 @@ class _PostHtmlViewState extends State<PostHtmlView> {
     final classes = element.classes;
 
     if (tag == 'blockquote') {
-      if (_isHiddenContentBlock(element))
+      if (_isHiddenContentBlock(element)) {
         return [_hiddenContentCard(context, element)];
+      }
       return [_quoteCard(context, element)];
     }
 
@@ -728,8 +731,10 @@ class _PostHtmlViewState extends State<PostHtmlView> {
   /// 「▍视频教程」下面常见写法就是 `<li><a href="bilibili…">点我播放</a></li>`，
   /// 整项没有别的字，做成播放区域比留一条蓝色链接顺手。
   VideoLink? _standaloneVideoIn(dom.Element item) {
-    if (item.querySelector('img, iframe, video, audio, ul, ol, table') != null)
+    if (item.querySelector('img, iframe, video, audio, ul, ol, table') !=
+        null) {
       return null;
+    }
     final links = item
         .querySelectorAll('a')
         .where((a) => a.querySelector('img') == null)
@@ -754,8 +759,9 @@ class _PostHtmlViewState extends State<PostHtmlView> {
   /// 引用容器：标准的 blockquote，以及皮肤改写后的 div.quote 等。
   bool _isQuoteContainer(String tag, Set<String> classes) {
     if (tag == 'blockquote') return true;
-    if (!const {'div', 'section', 'article', 'fieldset'}.contains(tag))
+    if (!const {'div', 'section', 'article', 'fieldset'}.contains(tag)) {
       return false;
+    }
     return classes.any(
       (name) =>
           name == 'quote' ||
@@ -771,8 +777,9 @@ class _PostHtmlViewState extends State<PostHtmlView> {
   bool _looksLikeQuotedBlock(dom.Element element, String tag) {
     if (!const {'div', 'section', 'dl'}.contains(tag)) return false;
     if (element.querySelector('div, p, ul, ol, table, blockquote, fieldset') !=
-        null)
+        null) {
       return false;
+    }
     final text = _cleanInline(element.text).trim();
     if (text.isEmpty || text.length > 1500) return false;
     final head = text.length > 48 ? text.substring(0, 48) : text;

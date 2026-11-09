@@ -35,8 +35,9 @@ class _CodeBlockCardState extends State<CodeBlockCard> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final background =
-        scheme.brightness == Brightness.dark ? _backgroundDark : _background;
+    final background = scheme.brightness == Brightness.dark
+        ? _backgroundDark
+        : _background;
     final lines = widget.code.split('\n');
     final total = lines.length;
     final foldable = total > widget.collapsedLines;
@@ -78,9 +79,8 @@ class _CodeBlockCardState extends State<CodeBlockCard> {
                 TextButton(
                   onPressed: () {
                     Clipboard.setData(ClipboardData(text: widget.code));
-                    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-                      const SnackBar(content: Text('代码已复制')),
-                    );
+                    ScaffoldMessenger.maybeOf(context)
+                        ?.showSnackBar(const SnackBar(content: Text('代码已复制')));
                   },
                   style: TextButton.styleFrom(
                     foregroundColor: Colors.white70,
@@ -102,8 +102,9 @@ class _CodeBlockCardState extends State<CodeBlockCard> {
                   child: Text(
                     CodeHighlight.lineNumbers(shownCount),
                     textAlign: TextAlign.right,
-                    style: CodeHighlight.codeStyle
-                        .copyWith(color: CodeHighlight.gutterColor),
+                    style: CodeHighlight.codeStyle.copyWith(
+                      color: CodeHighlight.gutterColor,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -112,7 +113,9 @@ class _CodeBlockCardState extends State<CodeBlockCard> {
                     scrollDirection: Axis.horizontal,
                     // 用 Text.rich 而不是裸 RichText：后者不参与外层的
                     // SelectionArea，正文能长按选，代码块却选不了。
-                    child: Text.rich(CodeHighlight.span(shown, widget.language)),
+                    child: Text.rich(
+                      CodeHighlight.span(shown, widget.language),
+                    ),
                   ),
                 ),
               ],
@@ -188,7 +191,9 @@ class _FoldBar extends StatelessWidget {
                 ),
                 const SizedBox(width: 3),
                 Icon(
-                  expanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+                  expanded
+                      ? Icons.expand_less_rounded
+                      : Icons.expand_more_rounded,
                   size: 16,
                   color: Colors.white60,
                 ),

@@ -24,7 +24,10 @@ void main() {
 </li><li>import android.content.Intent;<br/>
 </li></ol></div></div>
 ''');
-      expect(code, 'package com.oplus.appdetail;\n\nimport android.content.Intent;');
+      expect(
+        code,
+        'package com.oplus.appdetail;\n\nimport android.content.Intent;',
+      );
     });
 
     test('保留缩进与行内空格，只去掉行尾空白', () {
@@ -36,7 +39,9 @@ void main() {
     });
 
     test('pre/code 结构保留原有换行', () {
-      final code = extract('<div class="comiis_blockcode"><pre><code>line1\nline2\n</code></pre></div>');
+      final code = extract(
+        '<div class="comiis_blockcode"><pre><code>line1\nline2\n</code></pre></div>',
+      );
       expect(code, 'line1\nline2');
     });
 
@@ -55,14 +60,20 @@ void main() {
 
   group('卡片渲染', () {
     Future<void> pump(WidgetTester tester, String html) async {
-      await tester.pumpWidget(MaterialApp(
-        home: Scaffold(body: SingleChildScrollView(child: PostHtmlView(html: html))),
-      ));
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(child: PostHtmlView(html: html)),
+          ),
+        ),
+      );
       await tester.pump();
     }
 
-    String longCode(int lines) =>
-        List.generate(lines, (i) => '  int value${i + 1} = ${i + 1};').join('<br/>\n');
+    String longCode(int lines) => List.generate(
+      lines,
+      (i) => '  int value${i + 1} = ${i + 1};',
+    ).join('<br/>\n');
 
     testWidgets('长代码默认折叠，只露前 14 行', (tester) async {
       await pump(tester, '''
@@ -72,7 +83,10 @@ void main() {
       expect(find.byType(CodeBlockCard), findsOneWidget);
       expect(find.textContaining('20 行'), findsOneWidget);
       expect(find.textContaining('展开全部 6 行'), findsOneWidget);
-      expect(find.textContaining('value14', findRichText: true), findsOneWidget);
+      expect(
+        find.textContaining('value14', findRichText: true),
+        findsOneWidget,
+      );
       expect(find.textContaining('value15', findRichText: true), findsNothing);
       // 行号列只排到折叠处，不该出现第 15 行之后的编号。
       expect(find.textContaining('收起代码'), findsNothing);
@@ -87,7 +101,10 @@ void main() {
       await tester.tap(find.textContaining('展开全部'));
       await tester.pump();
 
-      expect(find.textContaining('value20', findRichText: true), findsOneWidget);
+      expect(
+        find.textContaining('value20', findRichText: true),
+        findsOneWidget,
+      );
       expect(find.textContaining('收起代码'), findsOneWidget);
       expect(find.textContaining('已折叠'), findsNothing);
 

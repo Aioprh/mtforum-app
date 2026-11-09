@@ -27,7 +27,9 @@ class CodeBlock {
     for (final raw in classes) {
       final name = raw.toLowerCase();
       if (_classNames.contains(name)) return true;
-      if (name.endsWith('_blockcode') || name.endsWith('-blockcode')) return true;
+      if (name.endsWith('_blockcode') || name.endsWith('-blockcode')) {
+        return true;
+      }
     }
     return false;
   }
@@ -75,7 +77,15 @@ class CodeBlock {
         return;
       }
       final block = const {
-        'div', 'p', 'li', 'tr', 'ol', 'ul', 'table', 'blockquote', 'pre',
+        'div',
+        'p',
+        'li',
+        'tr',
+        'ol',
+        'ul',
+        'table',
+        'blockquote',
+        'pre',
       }.contains(tag);
       if (block && !atLineStart) write('\n');
       for (final child in current.nodes) {
@@ -88,8 +98,9 @@ class CodeBlock {
     return parts.join();
   }
 
-  static String _trimNewlines(String text) =>
-      text.replaceFirst(RegExp(r'^[\n]+'), '').replaceFirst(RegExp(r'[\n]+$'), '');
+  static String _trimNewlines(String text) => text
+      .replaceFirst(RegExp(r'^[\n]+'), '')
+      .replaceFirst(RegExp(r'[\n]+$'), '');
 
   /// 统一换行符、去掉行尾空白和首尾空行，内部空行保留（代码里它们是结构）。
   static String _tidy(String raw) {
