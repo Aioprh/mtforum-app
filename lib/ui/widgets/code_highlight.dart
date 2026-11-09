@@ -298,12 +298,16 @@ class CodeHighlight {
         .hasMatch(head)) {
       return CodeLanguage.shell;
     }
+    // Kotlin 只认真正独有的写法。`import androidx.*` 两边都有，
+    // 早先据此判成 Kotlin，反编译出来的 Java 源码全被标错了语言。
     if (RegExp(r'\bfun\s+\w+\s*\(').hasMatch(head) ||
-        RegExp(r'\bimport\s+(androidx|kotlin)\.').hasMatch(head)) {
+        RegExp(r'\bimport\s+kotlin\.').hasMatch(head) ||
+        RegExp(r'^\s*(val|var)\s+\w+', multiLine: true).hasMatch(head)) {
       return CodeLanguage.kotlin;
     }
-    if (RegExp(r'\b(public|private|protected)\s+(static\s+)?(class|void|final|int|String|boolean)\b').hasMatch(head) ||
-        RegExp(r'\bimport\s+(java|android)\.').hasMatch(head)) {
+    if (RegExp(r'^\s*package\s+[\w.]+\s*;', multiLine: true).hasMatch(head) ||
+        RegExp(r'\b(public|private|protected)\s+(static\s+)?(class|void|final|int|String|boolean)\b').hasMatch(head) ||
+        RegExp(r'\bimport\s+(java|android|androidx)\.').hasMatch(head)) {
       return CodeLanguage.java;
     }
     if (RegExp(r'^\s*def\s+\w+\s*\(', multiLine: true).hasMatch(head) ||

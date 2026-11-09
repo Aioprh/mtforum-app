@@ -74,6 +74,16 @@ void main() {
       expect(CodeHighlight.detect(code, classes: const <String>['hljs', 'language-kotlin']), CodeLanguage.kotlin);
     });
 
+    test('反编译出来的 Java 带 androidx 导入，也不该标成 Kotlin', () {
+      // JADX 产出的源码几乎每份都有 `import androidx.*`，而 Kotlin 判断
+      // 早先也吃这个前缀，整段代码被当成 Kotlin 着色。
+      const code = 'package com.oplus.appdetail;\n\n'
+          'import android.content.Intent;\n'
+          'import androidx.fragment.app.Fragment;\n'
+          'import androidx.lifecycle.LifecycleOwnerKt;\n';
+      expect(CodeHighlight.detect(code), CodeLanguage.java);
+    });
+
     test('认不出来就是 none，不硬套', () {
       expect(CodeLanguage.none.label, '代码');
       expect(CodeHighlight.detect('随手写的一句话'), CodeLanguage.none);

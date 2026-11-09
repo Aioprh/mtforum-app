@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:html/parser.dart' as parser;
 
 import '../../core/app_config.dart';
+import '../../core/code_block.dart';
 import '../../core/forum_link.dart';
 import '../../core/http_session.dart';
 import '../../core/page_message.dart';
@@ -19,6 +20,7 @@ import '../pages/internal_browser_page.dart';
 import '../pages/thread_page.dart';
 import '../pages/user_page.dart';
 import '../pages/video_player_page.dart';
+import 'code_block_card.dart';
 import 'code_highlight.dart';
 import 'smart_image.dart';
 import 'video_card.dart';
@@ -78,7 +80,9 @@ class _PostHtmlViewState extends State<PostHtmlView> {
 
   void _onReadPaletteChanged() {
     final state = AppState.instance;
-    if (state.readLinkColor == _lastLinkColor && state.readHintColor == _lastHintColor) return;
+    if (state.readLinkColor == _lastLinkColor &&
+        state.readHintColor == _lastHintColor)
+      return;
     _lastLinkColor = state.readLinkColor;
     _lastHintColor = state.readHintColor;
     if (!mounted) return;
@@ -123,7 +127,9 @@ class _PostHtmlViewState extends State<PostHtmlView> {
   List<List<Widget>> _split(List<Widget> blocks) {
     final chunks = <List<Widget>>[];
     for (var i = 0; i < blocks.length; i += _blocksPerChunk) {
-      chunks.add(blocks.sublist(i, math.min(i + _blocksPerChunk, blocks.length)));
+      chunks.add(
+        blocks.sublist(i, math.min(i + _blocksPerChunk, blocks.length)),
+      );
     }
     return chunks;
   }
@@ -155,24 +161,55 @@ class _PostHtmlViewState extends State<PostHtmlView> {
   /// 下载链接；照常渲染会凭空多出图片占位块，视觉上就是一片空白。
   bool _isHidden(dom.Element element) {
     if (element.attributes.containsKey('hidden')) return true;
-    final style = (element.attributes['style'] ?? '').replaceAll(' ', '').toLowerCase();
+    final style = (element.attributes['style'] ?? '')
+        .replaceAll(' ', '')
+        .toLowerCase();
     if (style.isEmpty) return false;
-    return style.contains('display:none') || style.contains('visibility:hidden');
+    return style.contains('display:none') ||
+        style.contains('visibility:hidden');
   }
 
   /// 脚本与样式内容不是正文，直接跳过；否则会把 JS/CSS 原样当段落显示。
-  bool _isSkippedTag(String tag) =>
-      const {'script', 'style', 'noscript', 'template', 'link', 'meta'}.contains(tag);
+  bool _isSkippedTag(String tag) => const {
+    'script',
+    'style',
+    'noscript',
+    'template',
+    'link',
+    'meta',
+  }.contains(tag);
 
   bool _isBlockTag(String tag) => const {
-        'div', 'p', 'section', 'article', 'blockquote', 'pre', 'ul', 'ol',
-        'table', 'hr', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'iframe', 'video',
-        'audio', 'center',
-      }.contains(tag);
+    'div',
+    'p',
+    'section',
+    'article',
+    'blockquote',
+    'pre',
+    'ul',
+    'ol',
+    'table',
+    'hr',
+    'h1',
+    'h2',
+    'h3',
+    'h4',
+    'h5',
+    'h6',
+    'iframe',
+    'video',
+    'audio',
+    'center',
+  }.contains(tag);
 
   bool _isSmiley(dom.Element img) {
-    final src = (img.attributes['src'] ?? img.attributes['comiis_loadimages'] ?? '').toLowerCase();
-    if (src.contains('/smiley/') || src.contains('smiley') || src.contains('smilies')) return true;
+    final src =
+        (img.attributes['src'] ?? img.attributes['comiis_loadimages'] ?? '')
+            .toLowerCase();
+    if (src.contains('/smiley/') ||
+        src.contains('smiley') ||
+        src.contains('smilies'))
+      return true;
     final width = double.tryParse(img.attributes['width'] ?? '');
     final height = double.tryParse(img.attributes['height'] ?? '');
     if (width == null || height == null) return false;
@@ -180,17 +217,20 @@ class _PostHtmlViewState extends State<PostHtmlView> {
   }
 
   String _imageUrl(dom.Element img) {
-    final raw = (img.attributes['comiis_loadimages'] ??
-            img.attributes['data-src'] ??
-            img.attributes['data-original'] ??
-            img.attributes['file'] ??
-            img.attributes['src'] ??
-            img.attributes['longdesc'] ??
-            '')
-        .trim();
+    final raw =
+        (img.attributes['comiis_loadimages'] ??
+                img.attributes['data-src'] ??
+                img.attributes['data-original'] ??
+                img.attributes['file'] ??
+                img.attributes['src'] ??
+                img.attributes['longdesc'] ??
+                '')
+            .trim();
     if (raw.isEmpty) return '';
     if (raw.startsWith('file://')) return raw;
-    if (raw.contains('none.png') || raw.contains('imageloading.gif') || raw.contains('noavatar')) {
+    if (raw.contains('none.png') ||
+        raw.contains('imageloading.gif') ||
+        raw.contains('noavatar')) {
       final candidates = <String>[
         img.attributes['data-src']?.trim() ?? '',
         img.attributes['data-original']?.trim() ?? '',
@@ -199,7 +239,10 @@ class _PostHtmlViewState extends State<PostHtmlView> {
         img.attributes['longdesc']?.trim() ?? '',
       ];
       for (final candidate in candidates) {
-        if (candidate.isNotEmpty && !candidate.contains('none.png') && !candidate.contains('imageloading.gif') && !candidate.contains('noavatar')) {
+        if (candidate.isNotEmpty &&
+            !candidate.contains('none.png') &&
+            !candidate.contains('imageloading.gif') &&
+            !candidate.contains('noavatar')) {
           return AppConfig.uri(candidate).toString();
         }
       }
@@ -215,17 +258,19 @@ class _PostHtmlViewState extends State<PostHtmlView> {
       if (inline.isEmpty) return;
       final spans = List<InlineSpan>.from(inline);
       inline.clear();
-      widgets.add(Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Text.rich(
-          TextSpan(children: spans),
-          style: TextStyle(
-            fontSize: 15.5,
-            height: 1.62,
-            color: Theme.of(context).colorScheme.onSurface,
+      widgets.add(
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Text.rich(
+            TextSpan(children: spans),
+            style: TextStyle(
+              fontSize: 15.5,
+              height: 1.62,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
           ),
         ),
-      ));
+      );
     }
 
     for (final node in nodes) {
@@ -259,12 +304,15 @@ class _PostHtmlViewState extends State<PostHtmlView> {
       // 整段就是一个视频链接时，直接把这块换成可点击播放的区域。
       if (tag == 'a' && node.querySelector('img') == null) {
         final href = node.attributes['href'] ?? '';
-        final video = href.isEmpty ? null : parseVideoLink(AppConfig.uri(href).toString());
+        final video = href.isEmpty
+            ? null
+            : parseVideoLink(AppConfig.uri(href).toString());
         if (video != null) {
           final text = node.text.trim();
           // 链接文字是「视频演示」这类短标题、或者干脆就是链接本身，就做成播放区域；
           // 一整句话里夹着的链接保持行内样式，点击时同样走应用内播放。
-          final standalone = text.isEmpty ||
+          final standalone =
+              text.isEmpty ||
               text == href ||
               parseStandaloneVideo(text) != null ||
               (text.length <= 20 && !text.contains(RegExp(r'[。！？!?\n]')));
@@ -279,19 +327,22 @@ class _PostHtmlViewState extends State<PostHtmlView> {
         if (_isSmiley(node)) {
           final src = _imageUrl(node);
           if (src.isNotEmpty) {
-            inline.add(WidgetSpan(
-              alignment: PlaceholderAlignment.middle,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 1),
-                child: Image.network(
-                  src,
-                  width: 22,
-                  height: 22,
-                  headers: _headers(),
-                  errorBuilder: (_, __, ___) => const SizedBox(width: 22, height: 22),
+            inline.add(
+              WidgetSpan(
+                alignment: PlaceholderAlignment.middle,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 1),
+                  child: Image.network(
+                    src,
+                    width: 22,
+                    height: 22,
+                    headers: _headers(),
+                    errorBuilder: (_, __, ___) =>
+                        const SizedBox(width: 22, height: 22),
+                  ),
                 ),
               ),
-            ));
+            );
           }
         } else {
           flush();
@@ -311,7 +362,8 @@ class _PostHtmlViewState extends State<PostHtmlView> {
 
       // 引用块要优先于普通容器处理：站点皮肤常把 [quote] 渲染成
       // div.quote（没有 blockquote），不拦截就会退化成一整段正文。
-      if (_isQuoteContainer(tag, node.classes) || _looksLikeQuotedBlock(node, tag)) {
+      if (_isQuoteContainer(tag, node.classes) ||
+          _looksLikeQuotedBlock(node, tag)) {
         flush();
         widgets.add(_quoteCard(context, node));
         continue;
@@ -336,11 +388,17 @@ class _PostHtmlViewState extends State<PostHtmlView> {
         continue;
       }
 
-      inline.addAll(_inlineNode(context, node, TextStyle(
-        fontSize: 15.5,
-        height: 1.62,
-        color: Theme.of(context).colorScheme.onSurface,
-      )));
+      inline.addAll(
+        _inlineNode(
+          context,
+          node,
+          TextStyle(
+            fontSize: 15.5,
+            height: 1.62,
+            color: Theme.of(context).colorScheme.onSurface,
+          ),
+        ),
+      );
     }
     flush();
     return widgets;
@@ -372,11 +430,16 @@ class _PostHtmlViewState extends State<PostHtmlView> {
         continue;
       }
       if (_isReplyHint(line)) {
-        inline.addAll(_linkifyText(
-          context,
-          line,
-          style.copyWith(color: _hintColor(context), fontWeight: FontWeight.w600),
-        ));
+        inline.addAll(
+          _linkifyText(
+            context,
+            line,
+            style.copyWith(
+              color: _hintColor(context),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        );
         continue;
       }
       inline.addAll(_linkifyText(context, line, style));
@@ -420,17 +483,24 @@ class _PostHtmlViewState extends State<PostHtmlView> {
   /// 从「视频演示：https://…」里取出前半句说明，作为卡片标题。
   String? _videoLabel(String text) {
     final withoutUrl = text.replaceAll(RegExp(r'https?://\S+'), '').trim();
-    final cleaned = withoutUrl.replaceAll(RegExp(r'[：:，,。.、；;\-—\s]+$'), '').replaceAll(RegExp(r'^[「『“"（(\[]+'), '').trim();
+    final cleaned = withoutUrl
+        .replaceAll(RegExp(r'[：:，,。.、；;\-—\s]+$'), '')
+        .replaceAll(RegExp(r'^[「『“"（(\[]+'), '')
+        .trim();
     if (cleaned.isEmpty || cleaned.length > 20) return null;
     // 「点我播放」「点击观看」这类只是操作指令，不算说明，卡片用默认标题。
-    if (cleaned.length <= 8 && RegExp(r'^(点我|点击|点此|直接)?(播放|观看)').hasMatch(cleaned)) return null;
+    if (cleaned.length <= 8 &&
+        RegExp(r'^(点我|点击|点此|直接)?(播放|观看)').hasMatch(cleaned))
+      return null;
     return cleaned;
   }
 
   void _openVideo(BuildContext context, VideoLink video, [String? title]) {
-    Navigator.of(context).push(appRoute(
-      builder: (_) => VideoPlayerPage(video: video, title: title),
-    ));
+    Navigator.of(context).push(
+      appRoute(
+        builder: (_) => VideoPlayerPage(video: video, title: title),
+      ),
+    );
   }
 
   List<Widget> _blockElement(BuildContext context, dom.Element element) {
@@ -438,18 +508,25 @@ class _PostHtmlViewState extends State<PostHtmlView> {
     final classes = element.classes;
 
     if (tag == 'blockquote') {
-      if (_isHiddenContentBlock(element)) return [_hiddenContentCard(context, element)];
+      if (_isHiddenContentBlock(element))
+        return [_hiddenContentCard(context, element)];
       return [_quoteCard(context, element)];
     }
 
-    if (tag == 'pre' || classes.contains('blockcode')) {
-      final text = element.text.trim();
+    if (CodeBlock.isCodeBlock(tag, classes)) {
+      final text = CodeBlock.extract(element);
       if (text.isEmpty) return const [];
       return [
-        _codeBlock(context, text, <String>[
-          ...classes,
-          ...?element.querySelector('code')?.classes,
-        ]),
+        CodeBlockCard(
+          code: text,
+          language: CodeHighlight.detect(
+            text,
+            classes: <String>[
+              ...classes,
+              ...?element.querySelector('code')?.classes,
+            ],
+          ),
+        ),
       ];
     }
 
@@ -461,7 +538,11 @@ class _PostHtmlViewState extends State<PostHtmlView> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               for (final (index, li) in element.querySelectorAll('li').indexed)
-                _listItem(context, li, marker: tag == 'ol' ? '${index + 1}.' : '•'),
+                _listItem(
+                  context,
+                  li,
+                  marker: tag == 'ol' ? '${index + 1}.' : '•',
+                ),
             ],
           ),
         ),
@@ -482,31 +563,54 @@ class _PostHtmlViewState extends State<PostHtmlView> {
     }
 
     if (RegExp(r'^h[1-6]$').hasMatch(tag)) {
-      final spans = _inlineNode(context, element, TextStyle(
-        fontSize: 17,
-        height: 1.45,
-        fontWeight: FontWeight.w700,
-        color: Theme.of(context).colorScheme.onSurface,
-      ));
+      final spans = _inlineNode(
+        context,
+        element,
+        TextStyle(
+          fontSize: 17,
+          height: 1.45,
+          fontWeight: FontWeight.w700,
+          color: Theme.of(context).colorScheme.onSurface,
+        ),
+      );
       return [
         Padding(
           padding: const EdgeInsets.only(top: 4, bottom: 8),
-          child: Text.rich(TextSpan(children: spans), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, height: 1.45)),
+          child: Text.rich(
+            TextSpan(children: spans),
+            style: const TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w700,
+              height: 1.45,
+            ),
+          ),
         ),
       ];
     }
 
     if (tag == 'iframe' || tag == 'video') {
-      final src = element.attributes['src'] ?? element.querySelector('source')?.attributes['src'] ?? '';
+      final src =
+          element.attributes['src'] ??
+          element.querySelector('source')?.attributes['src'] ??
+          '';
       if (src.isEmpty) return const [];
       final resolved = AppConfig.uri(src).toString();
-      final video = parseVideoLink(resolved) ??
-          VideoLink(url: resolved, kind: VideoKind.other, playUrl: resolved, asPage: true);
+      final video =
+          parseVideoLink(resolved) ??
+          VideoLink(
+            url: resolved,
+            kind: VideoKind.other,
+            playUrl: resolved,
+            asPage: true,
+          );
       return [_videoCard(context, video)];
     }
 
     if (tag == 'audio') {
-      final src = element.attributes['src'] ?? element.querySelector('source')?.attributes['src'] ?? '';
+      final src =
+          element.attributes['src'] ??
+          element.querySelector('source')?.attributes['src'] ??
+          '';
       if (src.isEmpty) return const [];
       return [
         Card(
@@ -514,7 +618,14 @@ class _PostHtmlViewState extends State<PostHtmlView> {
             leading: const Icon(Icons.play_circle_outline),
             title: const Text('音频内容'),
             subtitle: Text(src, maxLines: 1, overflow: TextOverflow.ellipsis),
-            onTap: () => Navigator.of(context).push(appRoute(builder: (_) => InternalBrowserPage(url: AppConfig.uri(src).toString(), title: '音频内容'))),
+            onTap: () => Navigator.of(context).push(
+              appRoute(
+                builder: (_) => InternalBrowserPage(
+                  url: AppConfig.uri(src).toString(),
+                  title: '音频内容',
+                ),
+              ),
+            ),
           ),
         ),
       ];
@@ -538,12 +649,18 @@ class _PostHtmlViewState extends State<PostHtmlView> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text.rich(
-                  TextSpan(children: _inlineNode(context, element, TextStyle(
-                    fontSize: 13.5,
-                    height: 1.55,
-                    fontWeight: FontWeight.w600,
-                    color: hint,
-                  ))),
+                  TextSpan(
+                    children: _inlineNode(
+                      context,
+                      element,
+                      TextStyle(
+                        fontSize: 13.5,
+                        height: 1.55,
+                        fontWeight: FontWeight.w600,
+                        color: hint,
+                      ),
+                    ),
+                  ),
                   style: const TextStyle(fontSize: 13.5, height: 1.55),
                 ),
               ),
@@ -558,7 +675,11 @@ class _PostHtmlViewState extends State<PostHtmlView> {
   }
 
   /// 列表项：整项就是一个视频链接时换成播放卡片，其余照旧一行文本。
-  Widget _listItem(BuildContext context, dom.Element li, {required String marker}) {
+  Widget _listItem(
+    BuildContext context,
+    dom.Element li, {
+    required String marker,
+  }) {
     final video = _standaloneVideoIn(li);
     if (video != null) {
       // 卡片自己带边框，项目符号就省了，只留和正文对齐的缩进。
@@ -574,16 +695,26 @@ class _PostHtmlViewState extends State<PostHtmlView> {
         children: [
           Text(
             marker,
-            style: TextStyle(fontSize: 15, height: 1.5, color: Theme.of(context).colorScheme.primary),
+            style: TextStyle(
+              fontSize: 15,
+              height: 1.5,
+              color: Theme.of(context).colorScheme.primary,
+            ),
           ),
           const SizedBox(width: 7),
           Expanded(
             child: Text.rich(
-              TextSpan(children: _inlineNode(context, li, TextStyle(
-                fontSize: 15,
-                height: 1.58,
-                color: Theme.of(context).colorScheme.onSurface,
-              ))),
+              TextSpan(
+                children: _inlineNode(
+                  context,
+                  li,
+                  TextStyle(
+                    fontSize: 15,
+                    height: 1.58,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                ),
+              ),
               style: const TextStyle(fontSize: 15, height: 1.58),
             ),
           ),
@@ -597,8 +728,12 @@ class _PostHtmlViewState extends State<PostHtmlView> {
   /// 「▍视频教程」下面常见写法就是 `<li><a href="bilibili…">点我播放</a></li>`，
   /// 整项没有别的字，做成播放区域比留一条蓝色链接顺手。
   VideoLink? _standaloneVideoIn(dom.Element item) {
-    if (item.querySelector('img, iframe, video, audio, ul, ol, table') != null) return null;
-    final links = item.querySelectorAll('a').where((a) => a.querySelector('img') == null).toList();
+    if (item.querySelector('img, iframe, video, audio, ul, ol, table') != null)
+      return null;
+    final links = item
+        .querySelectorAll('a')
+        .where((a) => a.querySelector('img') == null)
+        .toList();
     if (links.length != 1) return null;
     final link = links.first;
     final href = link.attributes['href'] ?? '';
@@ -608,7 +743,8 @@ class _PostHtmlViewState extends State<PostHtmlView> {
     final text = link.text.trim();
     // 链接之外还有别的字，说明是句子里的链接，保持行内样式。
     if (item.text.replaceFirst(text, '').trim().isNotEmpty) return null;
-    final standalone = text.isEmpty ||
+    final standalone =
+        text.isEmpty ||
         text == href ||
         parseStandaloneVideo(text) != null ||
         (text.length <= 20 && !text.contains(RegExp(r'[。！？!?\n]')));
@@ -618,20 +754,25 @@ class _PostHtmlViewState extends State<PostHtmlView> {
   /// 引用容器：标准的 blockquote，以及皮肤改写后的 div.quote 等。
   bool _isQuoteContainer(String tag, Set<String> classes) {
     if (tag == 'blockquote') return true;
-    if (!const {'div', 'section', 'article', 'fieldset'}.contains(tag)) return false;
-    return classes.any((name) =>
-        name == 'quote' ||
-        name == 'blockquote' ||
-        name == 'quotecontent' ||
-        name == 'comiis_quote' ||
-        name.endsWith('_quote'));
+    if (!const {'div', 'section', 'article', 'fieldset'}.contains(tag))
+      return false;
+    return classes.any(
+      (name) =>
+          name == 'quote' ||
+          name == 'blockquote' ||
+          name == 'quotecontent' ||
+          name == 'comiis_quote' ||
+          name.endsWith('_quote'),
+    );
   }
 
   /// 有些皮肤连 quote 类名都不给：叶子里只有一行「某某 发表于 …」再跟正文，
   /// 这类容器同样按引用处理。约束得足够紧，避免把本楼正文吞进卡片。
   bool _looksLikeQuotedBlock(dom.Element element, String tag) {
     if (!const {'div', 'section', 'dl'}.contains(tag)) return false;
-    if (element.querySelector('div, p, ul, ol, table, blockquote, fieldset') != null) return false;
+    if (element.querySelector('div, p, ul, ol, table, blockquote, fieldset') !=
+        null)
+      return false;
     final text = _cleanInline(element.text).trim();
     if (text.isEmpty || text.length > 1500) return false;
     final head = text.length > 48 ? text.substring(0, 48) : text;
@@ -657,7 +798,13 @@ class _PostHtmlViewState extends State<PostHtmlView> {
 
   bool _isHiddenContentBlock(dom.Element element) {
     final tag = element.localName ?? '';
-    if (!const {'div', 'section', 'article', 'blockquote', 'fieldset'}.contains(tag)) {
+    if (!const {
+      'div',
+      'section',
+      'article',
+      'blockquote',
+      'fieldset',
+    }.contains(tag)) {
       return false;
     }
     final text = _cleanInline(element.text).trim();
@@ -675,7 +822,9 @@ class _PostHtmlViewState extends State<PostHtmlView> {
     final kept = <dom.Node>[];
     var stripped = false;
     for (final node in nodes) {
-      if (!stripped && node is dom.Text && _hideContentLabel.hasMatch(_cleanInline(node.text).trim())) {
+      if (!stripped &&
+          node is dom.Text &&
+          _hideContentLabel.hasMatch(_cleanInline(node.text).trim())) {
         stripped = true;
         final rest = node.text.replaceFirst(
           RegExp(r'^\s*本帖隐藏的内容\s*[：:，,。、]?\s*'),
@@ -736,7 +885,10 @@ class _PostHtmlViewState extends State<PostHtmlView> {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Padding(padding: const EdgeInsets.only(top: 2), child: lock),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: lock,
+                    ),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
@@ -764,7 +916,10 @@ class _PostHtmlViewState extends State<PostHtmlView> {
       // 引用里只有图片等情况，退回普通渲染，至少让图片可见。
       final blocks = _blocks(context, element.nodes);
       if (blocks.isEmpty) return const SizedBox.shrink();
-      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: blocks);
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: blocks,
+      );
     }
     final scheme = Theme.of(context).colorScheme;
     return _QuoteCard(
@@ -777,7 +932,9 @@ class _PostHtmlViewState extends State<PostHtmlView> {
         parts.links,
         TextStyle(fontSize: 14, height: 1.66, color: scheme.onSurfaceVariant),
       ),
-      onTapAuthor: parts.uid > 0 ? () => _openUser(context, parts.uid, parts.author) : null,
+      onTapAuthor: parts.uid > 0
+          ? () => _openUser(context, parts.uid, parts.author)
+          : null,
     );
   }
 
@@ -812,7 +969,11 @@ class _PostHtmlViewState extends State<PostHtmlView> {
     }
     if (hits.isEmpty) return _linkifyText(context, body, style);
     // 起点升序；同起点时长的优先，短的重叠片段随后被丢掉。
-    hits.sort((a, b) => a.start != b.start ? a.start.compareTo(b.start) : b.end.compareTo(a.end));
+    hits.sort(
+      (a, b) => a.start != b.start
+          ? a.start.compareTo(b.start)
+          : b.end.compareTo(a.end),
+    );
     final picked = <({int start, int end, String text, String url})>[];
     for (final hit in hits) {
       if (picked.isNotEmpty && hit.start < picked.last.end) continue;
@@ -823,15 +984,23 @@ class _PostHtmlViewState extends State<PostHtmlView> {
     var cursor = 0;
     for (final hit in picked) {
       if (hit.start > cursor) {
-        spans.addAll(_linkifyText(context, body.substring(cursor, hit.start), style));
+        spans.addAll(
+          _linkifyText(context, body.substring(cursor, hit.start), style),
+        );
       }
-      final recognizer = TapGestureRecognizer()..onTap = () => _openLink(context, hit.url);
+      final recognizer = TapGestureRecognizer()
+        ..onTap = () => _openLink(context, hit.url);
       _recognizers.add(recognizer);
-      spans.add(TextSpan(
-        text: hit.text,
-        style: style.copyWith(color: _linkColor(context), decoration: TextDecoration.underline),
-        recognizer: recognizer,
-      ));
+      spans.add(
+        TextSpan(
+          text: hit.text,
+          style: style.copyWith(
+            color: _linkColor(context),
+            decoration: TextDecoration.underline,
+          ),
+          recognizer: recognizer,
+        ),
+      );
       cursor = hit.end;
     }
     if (cursor < body.length) {
@@ -912,7 +1081,10 @@ class _PostHtmlViewState extends State<PostHtmlView> {
 
   /// 引用正文里的 `<a>`：文字与地址成对取出，渲染时才能把「标题式」链接
   /// 还原成可点片段。引用头里的链接（作者主页、原帖）不算正文，跳过。
-  List<({String text, String url})> _quoteLinks(dom.Element element, dom.Element? head) {
+  List<({String text, String url})> _quoteLinks(
+    dom.Element element,
+    dom.Element? head,
+  ) {
     final links = <String, String>{};
     for (final anchor in element.querySelectorAll('a[href]')) {
       if (head != null && _isInside(anchor, head)) continue;
@@ -923,7 +1095,9 @@ class _PostHtmlViewState extends State<PostHtmlView> {
       if (text.isEmpty || text.contains('\n')) continue;
       links.putIfAbsent(text, () => AppConfig.uri(href).toString());
     }
-    return [for (final entry in links.entries) (text: entry.key, url: entry.value)];
+    return [
+      for (final entry in links.entries) (text: entry.key, url: entry.value),
+    ];
   }
 
   bool _isInside(dom.Node node, dom.Element root) {
@@ -966,13 +1140,18 @@ class _PostHtmlViewState extends State<PostHtmlView> {
   }
 
   int _uidFromHref(String href) {
-    final match = RegExp(r'(?:[?&](?:amp;)?uid=|space-uid-)(\d+)').firstMatch(href);
+    final match = RegExp(r'(?:[?&](?:amp;)?uid=|space-uid-)(\d+)')
+        .firstMatch(href);
     return int.tryParse(match?.group(1) ?? '') ?? 0;
   }
 
   void _openUser(BuildContext context, int uid, String name) {
     if (uid <= 0) return;
-    Navigator.of(context).push(appRoute(builder: (_) => UserPage(uid: uid, name: name)));
+    Navigator.of(context).push(
+      appRoute(
+        builder: (_) => UserPage(uid: uid, name: name),
+      ),
+    );
   }
 
   /// 引用正文的纯文本：保留换行，丢掉图片（引用里的原图会重复占屏）。
@@ -997,7 +1176,15 @@ class _PostHtmlViewState extends State<PostHtmlView> {
       for (final child in node.nodes) {
         walk(child);
       }
-      if (const {'div', 'p', 'blockquote', 'li', 'tr', 'fieldset', 'table'}.contains(tag)) {
+      if (const {
+        'div',
+        'p',
+        'blockquote',
+        'li',
+        'tr',
+        'fieldset',
+        'table',
+      }.contains(tag)) {
         buffer.write('\n');
       }
     }
@@ -1012,79 +1199,6 @@ class _PostHtmlViewState extends State<PostHtmlView> {
   ///
   /// 行号列和正文共用 [CodeHighlight.codeStyle]，也共用同一个 `textScaler`：
   /// 少一样，用户把系统字体调大之后两列就会逐行错开，越往下错得越离谱。
-  Widget _codeBlock(BuildContext context, String text, Iterable<String> classes) {
-    final scheme = Theme.of(context).colorScheme;
-    final language = CodeHighlight.detect(text, classes: classes);
-    final lineCount = '\n'.allMatches(text).length + 1;
-    final textScaler = MediaQuery.textScalerOf(context);
-    // 等宽字体 12.5 号，一个数字大约 7.5 宽；再加 4 的余量，别贴边。
-    final gutterWidth =
-        (4 + 7.6 * '$lineCount'.length) * (textScaler.scale(12.5) / 12.5);
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      decoration: BoxDecoration(
-        color: scheme.brightness == Brightness.dark ? const Color(0xFF0B0E13) : const Color(0xFF1D232B),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 6, 0),
-            child: Row(
-              children: [
-                Text(
-                  '${language.label} · $lineCount 行',
-                  style: const TextStyle(color: Colors.white54, fontSize: 11),
-                ),
-                const Spacer(),
-                TextButton(
-                  onPressed: () {
-                    Clipboard.setData(ClipboardData(text: text));
-                    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-                      const SnackBar(content: Text('代码已复制')),
-                    );
-                  },
-                  style: TextButton.styleFrom(
-                    foregroundColor: Colors.white70,
-                    minimumSize: const Size(44, 30),
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                  ),
-                  child: const Text('复制', style: TextStyle(fontSize: 11.5)),
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 2, 12, 12),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(
-                  width: gutterWidth,
-                  child: Text(
-                    CodeHighlight.lineNumbers(lineCount),
-                    textAlign: TextAlign.right,
-                    style: CodeHighlight.codeStyle.copyWith(color: CodeHighlight.gutterColor),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    // 用 Text.rich 而不是裸 RichText：后者不参与外层的
-                    // SelectionArea，正文能长按选，代码块却选不了。
-                    child: Text.rich(CodeHighlight.span(text, language)),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   /// 估算一段文本排成一行大概多宽，用来给表格分列。
   ///
   /// 不需要精确，只要比例对得上：全角按 1 个字宽，半角按 0.55 个字宽。
@@ -1102,7 +1216,9 @@ class _PostHtmlViewState extends State<PostHtmlView> {
     final rows = table.querySelectorAll('tr');
     if (rows.isEmpty) return const SizedBox.shrink();
     final scheme = Theme.of(context).colorScheme;
-    final columnCount = rows.map((row) => row.querySelectorAll('td,th').length).fold(0, (a, b) => a > b ? a : b);
+    final columnCount = rows
+        .map((row) => row.querySelectorAll('td,th').length)
+        .fold(0, (a, b) => a > b ? a : b);
     if (columnCount == 0) return const SizedBox.shrink();
 
     const fontSize = 12.5;
@@ -1126,16 +1242,21 @@ class _PostHtmlViewState extends State<PostHtmlView> {
       padding: const EdgeInsets.only(bottom: 10),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final available = constraints.maxWidth.isFinite && constraints.maxWidth > 0
+          final available =
+              constraints.maxWidth.isFinite && constraints.maxWidth > 0
               ? constraints.maxWidth
               : 320.0;
           // 列多到手机放不下时才横向滚动；普通两三列的参数表铺满屏宽，
           // 文字正常折行，比让用户左右拖着看舒服。
           final scrollable = columnCount > 5;
           final minColumn = scrollable ? 72.0 : 44.0;
-          final columns = [for (final w in wanted) (w + 16).clamp(minColumn, 320.0)];
+          final columns = [
+            for (final w in wanted) (w + 16).clamp(minColumn, 320.0),
+          ];
           final wantedTotal = columns.fold<double>(0, (a, b) => a + b);
-          final tableWidth = scrollable ? wantedTotal.clamp(available, 2400.0) : available;
+          final tableWidth = scrollable
+              ? wantedTotal.clamp(available, 2400.0)
+              : available;
           final columnWidths = <int, TableColumnWidth>{
             for (var i = 0; i < columnCount; i++)
               i: FixedColumnWidth(columns[i] / wantedTotal * tableWidth),
@@ -1143,7 +1264,10 @@ class _PostHtmlViewState extends State<PostHtmlView> {
 
           final body = Table(
             defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-            border: TableBorder.all(color: scheme.outlineVariant.withValues(alpha: 0.55), width: 0.7),
+            border: TableBorder.all(
+              color: scheme.outlineVariant.withValues(alpha: 0.55),
+              width: 0.7,
+            ),
             columnWidths: columnWidths,
             children: [
               for (final row in rows)
@@ -1151,21 +1275,32 @@ class _PostHtmlViewState extends State<PostHtmlView> {
                   // 带 <th> 的行当表头：加粗 + 淡底色，和网页端观感接近。
                   decoration: row.querySelector('th') == null
                       ? null
-                      : BoxDecoration(color: scheme.surfaceContainerHighest.withValues(alpha: 0.45)),
+                      : BoxDecoration(
+                          color: scheme.surfaceContainerHighest.withValues(
+                            alpha: 0.45,
+                          ),
+                        ),
                   children: [
                     for (var i = 0; i < columnCount; i++)
                       Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 6,
+                        ),
                         child: Text(
                           () {
                             final cells = row.querySelectorAll('td,th');
-                            return i < cells.length ? _cleanInline(cells[i].text).trim() : '';
+                            return i < cells.length
+                                ? _cleanInline(cells[i].text).trim()
+                                : '';
                           }(),
                           style: TextStyle(
                             fontSize: fontSize,
                             height: 1.35,
                             color: scheme.onSurface,
-                            fontWeight: row.querySelector('th') == null ? FontWeight.w400 : FontWeight.w600,
+                            fontWeight: row.querySelector('th') == null
+                                ? FontWeight.w400
+                                : FontWeight.w600,
                           ),
                         ),
                       ),
@@ -1175,7 +1310,10 @@ class _PostHtmlViewState extends State<PostHtmlView> {
           );
 
           if (!scrollable || tableWidth <= available + 0.5) return body;
-          return SingleChildScrollView(scrollDirection: Axis.horizontal, child: body);
+          return SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: body,
+          );
         },
       ),
     );
@@ -1200,10 +1338,17 @@ class _PostHtmlViewState extends State<PostHtmlView> {
       child: RepaintBoundary(
         child: GestureDetector(
           onTap: () {
-            final images = widget.images.isEmpty ? <String>[url] : widget.images;
-            Navigator.of(context).push(noSwipeRoute(
-              builder: (_) => ImageViewerPage(images: images, initialIndex: index < 0 ? 0 : index),
-            ));
+            final images = widget.images.isEmpty
+                ? <String>[url]
+                : widget.images;
+            Navigator.of(context).push(
+              noSwipeRoute(
+                builder: (_) => ImageViewerPage(
+                  images: images,
+                  initialIndex: index < 0 ? 0 : index,
+                ),
+              ),
+            );
           },
           child: ConstrainedBox(
             constraints: BoxConstraints(maxHeight: maxImageHeight),
@@ -1222,7 +1367,11 @@ class _PostHtmlViewState extends State<PostHtmlView> {
     );
   }
 
-  List<InlineSpan> _inlineNode(BuildContext context, dom.Node node, TextStyle style) {
+  List<InlineSpan> _inlineNode(
+    BuildContext context,
+    dom.Node node,
+    TextStyle style,
+  ) {
     final spans = <InlineSpan>[];
     if (node is dom.Text) {
       final text = _cleanInline(node.text);
@@ -1238,26 +1387,48 @@ class _PostHtmlViewState extends State<PostHtmlView> {
         return spans;
       case 'b':
       case 'strong':
-        return _inlineChildren(context, node, style.copyWith(fontWeight: FontWeight.w700));
+        return _inlineChildren(
+          context,
+          node,
+          style.copyWith(fontWeight: FontWeight.w700),
+        );
       case 'i':
       case 'em':
-        return _inlineChildren(context, node, style.copyWith(fontStyle: FontStyle.italic));
+        return _inlineChildren(
+          context,
+          node,
+          style.copyWith(fontStyle: FontStyle.italic),
+        );
       case 'u':
       case 'ins':
-        return _inlineChildren(context, node, style.copyWith(decoration: TextDecoration.underline));
+        return _inlineChildren(
+          context,
+          node,
+          style.copyWith(decoration: TextDecoration.underline),
+        );
       case 's':
       case 'del':
-        return _inlineChildren(context, node, style.copyWith(decoration: TextDecoration.lineThrough));
+        return _inlineChildren(
+          context,
+          node,
+          style.copyWith(decoration: TextDecoration.lineThrough),
+        );
       case 'font':
         final color = _parseColor(node.attributes['color']);
-        return _inlineChildren(context, node, color == null ? style : style.copyWith(color: color));
+        return _inlineChildren(
+          context,
+          node,
+          color == null ? style : style.copyWith(color: color),
+        );
       case 'code':
         return [
           TextSpan(
             text: node.text,
             style: style.copyWith(
               fontFamily: 'monospace',
-              backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+              backgroundColor: Theme.of(context)
+                  .colorScheme
+                  .surfaceContainerHighest,
             ),
           ),
         ];
@@ -1267,12 +1438,16 @@ class _PostHtmlViewState extends State<PostHtmlView> {
           return _inlineChildren(context, node, style);
         }
         final url = AppConfig.uri(href).toString();
-        final recognizer = TapGestureRecognizer()..onTap = () => _openLink(context, url);
+        final recognizer = TapGestureRecognizer()
+          ..onTap = () => _openLink(context, url);
         _recognizers.add(recognizer);
         return [
           TextSpan(
             text: node.text.isEmpty ? url : node.text,
-            style: style.copyWith(color: _linkColor(context), decoration: TextDecoration.underline),
+            style: style.copyWith(
+              color: _linkColor(context),
+              decoration: TextDecoration.underline,
+            ),
             recognizer: recognizer,
           ),
         ];
@@ -1283,7 +1458,13 @@ class _PostHtmlViewState extends State<PostHtmlView> {
             return [
               WidgetSpan(
                 alignment: PlaceholderAlignment.middle,
-                child: Image.network(src, width: 22, height: 22, headers: _headers(), errorBuilder: (_, __, ___) => const SizedBox()),
+                child: Image.network(
+                  src,
+                  width: 22,
+                  height: 22,
+                  headers: _headers(),
+                  errorBuilder: (_, __, ___) => const SizedBox(),
+                ),
               ),
             ];
           }
@@ -1291,7 +1472,9 @@ class _PostHtmlViewState extends State<PostHtmlView> {
         }
         final image = _imageBlock(context, node);
         if (image == null) return const [];
-        return [WidgetSpan(alignment: PlaceholderAlignment.middle, child: image)];
+        return [
+          WidgetSpan(alignment: PlaceholderAlignment.middle, child: image),
+        ];
       default:
         return _inlineChildren(context, node, style);
     }
@@ -1302,12 +1485,17 @@ class _PostHtmlViewState extends State<PostHtmlView> {
   /// Discuz 的隐藏内容（[hide] 回复可见）里，用户手打的链接往往是裸文本，
   /// 服务端不会帮忙加 <a>，这里补上：完整 URL、`www.` 开头，以及
   /// `pan.baidu.com/s/xxx` 这种不带协议头的域名都认。
-  List<InlineSpan> _linkifyText(BuildContext context, String text, TextStyle style) {
+  List<InlineSpan> _linkifyText(
+    BuildContext context,
+    String text,
+    TextStyle style,
+  ) {
     final spans = <InlineSpan>[];
     // 只吃 ASCII 里的 URL 合法字符：紧跟其后的中文不该被吞进链接。
     const urlChars = r'[A-Za-z0-9\-._~:/?#\[\]@!$&()*+,;=%]';
     // 裸域名靠顶级域白名单兜底，避免把「1.9.1」这类版本号认成网址。
-    const tlds = r'com|cn|net|org|cc|io|top|xyz|me|tv|info|biz|vip|club|site|app|dev|'
+    const tlds =
+        r'com|cn|net|org|cc|io|top|xyz|me|tv|info|biz|vip|club|site|app|dev|'
         r'co|ltd|wang|tech|online|store|fun|live|pro|ink|wiki|link|cloud|plus|'
         r'shop|art|design|blog|page|work|space|world|life|news|mobi|asia|'
         r'tw|hk|jp|kr|us|uk|de|ru';
@@ -1320,11 +1508,14 @@ class _PostHtmlViewState extends State<PostHtmlView> {
     var cursor = 0;
     for (final match in pattern.allMatches(text)) {
       // user@qq.com 的 qq.com 不是独立链接，前面连着字母数字就直接放过。
-      if (match.start > 0 && RegExp(r'[A-Za-z0-9@_\-]').hasMatch(text[match.start - 1])) {
+      if (match.start > 0 &&
+          RegExp(r'[A-Za-z0-9@_\-]').hasMatch(text[match.start - 1])) {
         continue;
       }
       if (match.start > cursor) {
-        spans.add(TextSpan(text: text.substring(cursor, match.start), style: style));
+        spans.add(
+          TextSpan(text: text.substring(cursor, match.start), style: style),
+        );
       }
       var url = match.group(0)!;
       var suffix = '';
@@ -1337,18 +1528,23 @@ class _PostHtmlViewState extends State<PostHtmlView> {
         spans.add(TextSpan(text: match.group(0), style: style));
       } else {
         // 裸域名补上协议头再交给路由，否则会被当成站内相对路径。
-        final hasScheme = url.startsWith('http://') || url.startsWith('https://');
-        final linkUrl = AppConfig.uri(hasScheme ? url : 'https://$url').toString();
-        final recognizer = TapGestureRecognizer()..onTap = () => _openLink(context, linkUrl);
+        final hasScheme =
+            url.startsWith('http://') || url.startsWith('https://');
+        final linkUrl = AppConfig.uri(hasScheme ? url : 'https://$url')
+            .toString();
+        final recognizer = TapGestureRecognizer()
+          ..onTap = () => _openLink(context, linkUrl);
         _recognizers.add(recognizer);
-        spans.add(TextSpan(
-          text: url,
-          style: style.copyWith(
-            color: _linkColor(context),
-            decoration: TextDecoration.underline,
+        spans.add(
+          TextSpan(
+            text: url,
+            style: style.copyWith(
+              color: _linkColor(context),
+              decoration: TextDecoration.underline,
+            ),
+            recognizer: recognizer,
           ),
-          recognizer: recognizer,
-        ));
+        );
         if (suffix.isNotEmpty) spans.add(TextSpan(text: suffix, style: style));
       }
       cursor = match.end;
@@ -1359,7 +1555,11 @@ class _PostHtmlViewState extends State<PostHtmlView> {
     return spans;
   }
 
-  List<InlineSpan> _inlineChildren(BuildContext context, dom.Element element, TextStyle style) {
+  List<InlineSpan> _inlineChildren(
+    BuildContext context,
+    dom.Element element,
+    TextStyle style,
+  ) {
     final spans = <InlineSpan>[];
     for (final child in element.nodes) {
       spans.addAll(_inlineNode(context, child, style));
@@ -1378,19 +1578,25 @@ class _PostHtmlViewState extends State<PostHtmlView> {
     final target = ForumLink.parse(url);
     if (target is ThreadLink) {
       // 楼层链接常常只带 pid，得先问服务端它属于哪个主题。
-      final tid = target.needsLookup ? await _lookupTid(target.pid) : target.tid;
+      final tid = target.needsLookup
+          ? await _lookupTid(target.pid)
+          : target.tid;
       if (tid > 0) {
         if (!context.mounted) return;
-        Navigator.of(context).push(appRoute(
-          builder: (_) => ThreadPage(tid: tid, initialPid: target.pid),
-        ));
+        Navigator.of(context).push(
+          appRoute(
+            builder: (_) => ThreadPage(tid: tid, initialPid: target.pid),
+          ),
+        );
         return;
       }
       // 楼层被删、链接过期时认不出主题号，退回内置浏览器看站点提示。
     } else if (target is BoardLink) {
-      Navigator.of(context).push(appRoute(
-        builder: (_) => BoardThreadsPage(fid: target.fid, name: '版块'),
-      ));
+      Navigator.of(context).push(
+        appRoute(
+          builder: (_) => BoardThreadsPage(fid: target.fid, name: '版块'),
+        ),
+      );
       return;
     } else if (target is UserLink) {
       _openUser(context, target.uid, '');
@@ -1406,7 +1612,8 @@ class _PostHtmlViewState extends State<PostHtmlView> {
       }
     }
     if (!context.mounted) return;
-    Navigator.of(context).push(appRoute(builder: (_) => InternalBrowserPage(url: url)));
+    Navigator.of(context)
+        .push(appRoute(builder: (_) => InternalBrowserPage(url: url)));
   }
 
   /// 只有 pid 的楼层链接要先问服务端这楼属于哪个主题。失败就返回 0，
@@ -1472,12 +1679,17 @@ class _PostHtmlViewState extends State<PostHtmlView> {
     var cache = _cache;
     if (cache == null) {
       try {
-        cache = _blocks(context, parser.parseFragment(stripEditNote(widget.html)).nodes);
+        cache = _blocks(
+          context,
+          parser.parseFragment(stripEditNote(widget.html)).nodes,
+        );
       } catch (error) {
         // 楼层 HTML 千奇百怪，渲染偶尔会踩到没预料到的标签组合。
         // 不能让一处异常把整楼吞成空白：退回纯文本，至少内容读得到。
         debugPrint('PostHtmlView 渲染失败，降级为纯文本：$error');
-        final text = stripEditNote(parser.parseFragment(widget.html).text ?? '');
+        final text = stripEditNote(
+          parser.parseFragment(widget.html).text ?? '',
+        );
         cache = <Widget>[
           if (text.isNotEmpty)
             Text(
@@ -1494,7 +1706,10 @@ class _PostHtmlViewState extends State<PostHtmlView> {
     }
     if (cache.isEmpty) {
       final scheme = Theme.of(context).colorScheme;
-      return Text('该楼层暂无内容', style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant));
+      return Text(
+        '该楼层暂无内容',
+        style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
+      );
     }
     final chunks = _chunks ??= _split(cache);
     final visible = <Widget>[];
@@ -1502,7 +1717,10 @@ class _PostHtmlViewState extends State<PostHtmlView> {
       visible.addAll(chunks[i]);
     }
     if (_visibleChunks < chunks.length) _scheduleNextChunk();
-    final content = Column(crossAxisAlignment: CrossAxisAlignment.start, children: visible);
+    final content = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: visible,
+    );
     return widget.selectable ? SelectionArea(child: content) : content;
   }
 }
@@ -1529,7 +1747,11 @@ class _QuoteCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final headStyle = TextStyle(fontSize: 12.5, height: 1.5, color: scheme.onSurfaceVariant);
+    final headStyle = TextStyle(
+      fontSize: 12.5,
+      height: 1.5,
+      color: scheme.onSurfaceVariant,
+    );
     final hasHead = author.isNotEmpty || time.isNotEmpty;
     return Container(
       width: double.infinity,
@@ -1537,7 +1759,9 @@ class _QuoteCard extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
       decoration: BoxDecoration(
         color: scheme.surfaceContainerHighest.withValues(alpha: 0.45),
-        border: Border(left: BorderSide(color: scheme.outlineVariant, width: 4)),
+        border: Border(
+          left: BorderSide(color: scheme.outlineVariant, width: 4),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1571,7 +1795,11 @@ class _QuoteCard extends StatelessWidget {
             Text.rich(
               TextSpan(
                 children: bodySpans,
-                style: TextStyle(fontSize: 14, height: 1.66, color: scheme.onSurfaceVariant),
+                style: TextStyle(
+                  fontSize: 14,
+                  height: 1.66,
+                  color: scheme.onSurfaceVariant,
+                ),
               ),
             ),
         ],
