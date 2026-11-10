@@ -10,23 +10,27 @@ import '../widgets/thread_glass.dart';
 ///
 /// [silent] 用于「顺手检查一下」的场景：已是最新时不打扰用户。
 Future<void> checkForUpdates(BuildContext context, {bool silent = false}) async {
-  final check = await UpdateService.check();
-  if (!context.mounted) return;
-  if (check.hasUpdate) {
-    await UpdateSheet.show(context, check.release!);
-    return;
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  void toast(String text) => messenger
+    ?..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text(text)));
+  try {
+    final check = await UpdateService.check();
+    if (!context.mounted) return;
+    if (check.hasUpdate) {
+      await UpdateSheet.show(context, check.release!);
+      return;
+    }
+    if (check.failed) {
+      toast(check.error);
+      return;
+    }
+    if (silent) return;
+    toast('已经是最新版本了');
+  } catch (error) {
+    // 检查更新不该把页面搞崩：弹窗、网络、解析任何一环出问题都只提示一句。
+    if (!silent) toast('检查更新失败：$error');
   }
-  final messenger = ScaffoldMessenger.of(context);
-  if (check.failed) {
-    messenger
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(check.error)));
-    return;
-  }
-  if (silent) return;
-  messenger
-    ..hideCurrentSnackBar()
-    ..showSnackBar(const SnackBar(content: Text('已经是最新版本了')));
 }
 
 /// 更新面板：版本说明 + 按架构选包 + 下载 + 拉起系统安装器。

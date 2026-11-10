@@ -5,6 +5,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'core/app_config.dart';
 import 'core/app_theme.dart';
+import 'core/block_list.dart';
 import 'mcp/mcp_server.dart';
 import 'state/app_state.dart';
 import 'ui/app_shell.dart';
@@ -15,6 +16,12 @@ Future<void> main() async {
     await AppState.instance.bootstrapLocal();
   } catch (_) {
     // 本地缓存初始化失败也应进入应用。
+  }
+  // 屏蔽名单要在首屏渲染前就位，否则列表会先闪一下被屏蔽的内容。
+  try {
+    await BlockList.instance.load();
+  } catch (_) {
+    // 名单读不出来就当作没屏蔽，不影响正常浏览。
   }
   // 上次开着 MCP 服务的话，开机自动恢复监听；关着就只读一下配置。
   unawaited(McpServer.instance.load());
