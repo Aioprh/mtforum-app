@@ -30,13 +30,21 @@ class _AppShellState extends State<AppShell> {
   int _index = 0;
   DateTime? _lastBackPressedAt;
 
+  Timer? _autoCheckTimer;
+
   @override
   void initState() {
     super.initState();
     // 等首屏稳下来再查，别和首页的帖子请求抢带宽，也别一进来就弹窗。
-    Timer(const Duration(seconds: 5), () {
+    _autoCheckTimer = Timer(const Duration(seconds: 5), () {
       if (mounted) _autoCheckUpdate();
     });
+  }
+
+  @override
+  void dispose() {
+    _autoCheckTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _autoCheckUpdate() async {
