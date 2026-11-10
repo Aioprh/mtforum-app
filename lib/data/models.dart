@@ -780,8 +780,13 @@ class MallProduct {
 /// 资料设置·基本资料（`home.php?mod=spacecp&ac=profile&op=base`）。
 ///
 /// 站点把每个字段的可见范围打包成 `privacy[字段]`，取值 0 公开 / 1 好友可见 /
-/// 3 保密；居住地则是省、市、区、街道四个隐藏字段拼出来的文本，页面上只显示
-/// 拼好的那一串，所以这里保留 [resideText] 原文，提交时再拆回去。
+/// 3 保密；居住地则是省、市、区、街道四个字段拼出来的文本，页面上只显示
+/// 拼好的那一串，所以这里保留 [resideText] 原文，同时尽量还原出各级名称。
+///
+/// 站点在「已填地址」和「未填地址」两种状态下渲染的 `#residedistrictbox`
+/// 完全不一样：前者是一行纯文本，后者直接把整张省份下拉塞进来。只读文本会
+/// 把下拉里的所有省份拼成一句「省份-北京市天津市河北省…」，所以解析时要先
+/// 看容器里有没有 select，有就只认选中项。
 class ProfileBaseSettings {
   const ProfileBaseSettings({
     required this.formhash,
@@ -792,6 +797,10 @@ class ProfileBaseSettings {
     this.birthMonth = '',
     this.birthDay = '',
     this.resideText = '',
+    this.resideProvince = '',
+    this.resideCity = '',
+    this.resideDist = '',
+    this.resideCommunity = '',
     this.privacy = const <String, String>{},
   });
 
@@ -804,8 +813,23 @@ class ProfileBaseSettings {
   final String birthYear;
   final String birthMonth;
   final String birthDay;
+
+  /// 页面上显示的那一行地址（省市区街道用空格拼接）。
   final String resideText;
+
+  /// 站点四个地区字段的原始取值；只有页面直接渲染了 select 时才能拿到。
+  final String resideProvince;
+  final String resideCity;
+  final String resideDist;
+  final String resideCommunity;
   final Map<String, String> privacy;
+
+  /// 四级都为空表示没填过居住地。
+  bool get hasRegion =>
+      resideProvince.isNotEmpty ||
+      resideCity.isNotEmpty ||
+      resideDist.isNotEmpty ||
+      resideCommunity.isNotEmpty;
 
   bool get hasBirthday => birthYear.isNotEmpty && birthMonth.isNotEmpty && birthDay.isNotEmpty;
 
@@ -823,6 +847,10 @@ class ProfileBaseSettings {
     String? birthMonth,
     String? birthDay,
     String? resideText,
+    String? resideProvince,
+    String? resideCity,
+    String? resideDist,
+    String? resideCommunity,
     Map<String, String>? privacy,
   }) =>
       ProfileBaseSettings(
@@ -834,8 +862,23 @@ class ProfileBaseSettings {
         birthMonth: birthMonth ?? this.birthMonth,
         birthDay: birthDay ?? this.birthDay,
         resideText: resideText ?? this.resideText,
+        resideProvince: resideProvince ?? this.resideProvince,
+        resideCity: resideCity ?? this.resideCity,
+        resideDist: resideDist ?? this.resideDist,
+        resideCommunity: resideCommunity ?? this.resideCommunity,
         privacy: privacy ?? this.privacy,
       );
+}
+
+/// 地区选择器里的一项。[id] 是站点的 `did`，透传给下一级查询用。
+class RegionOption {
+  const RegionOption({required this.name, required this.id});
+
+  final String name;
+  final int id;
+
+  @override
+  String toString() => 'RegionOption($name, $id)';
 }
 
 /// 资料设置·联系方式（`ac=profile&op=contact`）。邮箱只能去密码页改，这里只读。

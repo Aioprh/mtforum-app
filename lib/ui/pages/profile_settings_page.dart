@@ -6,6 +6,7 @@ import '../../state/app_state.dart';
 import '../widgets/glass_app_bar.dart';
 import '../widgets/glass_controls.dart';
 import '../widgets/state_views.dart';
+import 'region_picker_sheet.dart';
 
 /// 资料设置：基本资料 / 联系方式 / 个人信息。
 ///
@@ -62,6 +63,15 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
   String _birthYear = '';
   String _birthMonth = '';
   String _birthDay = '';
+
+  /// 居住地四个字段。页面上的地址串只是它们的拼接结果，提交时按字段走，
+  /// 免得跟老代码一样靠空格去猜哪一段是省、哪一段是区。
+  /// 页面显示的那一行地址；跟四个字段分开存，清除时才能一起清干净。
+  String _resideText = '';
+  String _resideProvince = '';
+  String _resideCity = '';
+  String _resideDist = '';
+  String _resideCommunity = '';
 
   bool _loading = true;
   bool _saving = false;
@@ -125,6 +135,11 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
         _birthYear = base.birthYear;
         _birthMonth = base.birthMonth;
         _birthDay = base.birthDay;
+        _resideText = base.resideText;
+        _resideProvince = base.resideProvince;
+        _resideCity = base.resideCity;
+        _resideDist = base.resideDist;
+        _resideCommunity = base.resideCommunity;
         _occupation.text = base.occupation;
         _realname.text = base.realname;
         _qq.text = contact.qq;
@@ -167,6 +182,11 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
               birthYear: _birthYear,
               birthMonth: _birthMonth,
               birthDay: _birthDay,
+              resideText: _resideText,
+              resideProvince: _resideProvince,
+              resideCity: _resideCity,
+              resideDist: _resideDist,
+              resideCommunity: _resideCommunity,
               privacy: Map<String, String>.from(_basePrivacy),
             ),
           ),
@@ -313,7 +333,6 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
   // ------------------------------------------------------------ 基本资料
 
   List<Widget> _baseFields(ColorScheme scheme) {
-    final base = _base!;
     return [
       _card(scheme, [
         _field(
@@ -326,7 +345,7 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
         ),
         _genderRow(scheme),
         _birthdayRow(scheme),
-        _regionRow(scheme, base.resideText),
+        _regionRow(scheme),
         _field(
           scheme,
           label: '真实姓名',
@@ -336,7 +355,7 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
           hint: '仅用于站点实名场景',
         ),
       ]),
-      _note(scheme, '居住地涉及省 / 市 / 区三级联动，网页端才有完整选择器；这里按原值保留，需要修改请到网页版。'),
+      _note(scheme, '居住地按站点地区库选择省 / 市 / 区，选完记得保存；街道信息请到网页版填写。'),
     ];
   }
 
@@ -369,30 +388,39 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
     );
   }
 
-  Widget _regionRow(ColorScheme scheme, String text) {
+  Widget _regionRow(ColorScheme scheme) {
     return _labelled(
       scheme,
       label: '居住地',
       privacyField: 'residecity',
       privacy: _basePrivacy,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.fromLTRB(13, 13, 13, 13),
-        decoration: BoxDecoration(
-          color: scheme.surfaceContainerHighest.withValues(alpha: 0.35),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.4)),
-        ),
-        child: Text(
-          text.isEmpty ? '未设置' : text,
-          style: TextStyle(
-            fontSize: 14.5,
-            fontWeight: FontWeight.w500,
-            color: text.isEmpty ? scheme.onSurfaceVariant.withValues(alpha: 0.7) : scheme.onSurface,
-          ),
-        ),
+      child: GlassSelectRow(
+        value: _resideText,
+        placeholder: '未设置',
+        leading: Icons.place_outlined,
+        onTap: _pickRegion,
       ),
     );
+  }
+
+  Future<void> _pickRegion() async {
+    final repo = AppState.instance.repo;
+    final picked = await RegionPickerSheet.show(
+      context,
+      loader: ({int provinceId = 0, int cityId = 0}) =>
+          repo.fetchRegions(provinceId: provinceId, cityId: cityId),
+      province: _resideProvince,
+      city: _resideCity,
+      dist: _resideDist,
+    );
+    if (!mounted || picked == null) return;
+    setState(() {
+      _resideProvince = picked.province;
+      _resideCity = picked.city;
+      _resideDist = picked.dist;
+      _resideCommunity = '';
+      _resideText = picked.text;
+    });
   }
 
   // ------------------------------------------------------------ 联系方式

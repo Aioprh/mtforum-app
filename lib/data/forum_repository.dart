@@ -775,6 +775,71 @@ class ForumRepository {
     return parseProfileInfoHtml(result.body);
   }
 
+  /// 地区选择器的数据源。
+  ///
+  /// Discuz 的省 / 市 / 区下拉是 ajax 现拼的：
+  /// `home.php?mod=misc&ac=ajax&op=district&…&level=4&changelevel=N`。
+  /// `changelevel` 0/1/2 分别对应「要省」「省变了要市」「市变了要区」，
+  /// 返回的是 CDATA 包着的一段 `<select>`，每个 option 带 `did`。
+  /// 不传 id 时一次拿全省列表；后面按层级逐级下钻即可。
+  Future<List<RegionOption>> fetchRegions({int provinceId = 0, int cityId = 0}) async {
+    final level = provinceId == 0
+        ? 0
+        : cityId == 0
+            ? 1
+            : 2;
+    final result = await _http.get(
+      'home.php',
+      query: {
+        'mod': 'misc',
+        'ac': 'ajax',
+        'op': 'district',
+        'container': 'residedistrictbox',
+        'containertype': 'reside',
+        'country': 'resideprovince',
+        'province': 'resideprovince',
+        'city': 'residecity',
+        'district': 'residedist',
+        'community': 'residecommunity',
+        'countryid': '0',
+        'pid': '$provinceId',
+        'cid': '$cityId',
+        'did': '0',
+        'coid': '0',
+        'level': '4',
+        'changelevel': '$level',
+        'handlekey': 'residedistrictbox',
+        'inajax': '1',
+        if (level == 0) 'showdefault': '1',
+      },
+      referer: AppConfig.uri(_profilePath('base')).toString(),
+    );
+    _ensureOk(result);
+    const selectName = ['resideprovince', 'residecity', 'residedist'];
+    return parseRegionOptions(result.body, selectName[level]);
+  }
+
+  /// 从 ajax 返回的 XML 里取出指定那一级的下拉选项。
+  @visibleForTesting
+  static List<RegionOption> parseRegionOptions(String body, String selectName) {
+    // `<root><![CDATA[ <select…> ]]></root>`：html5 解析器会把 CDATA 当注释，
+    // 先把壳剥掉再交给它。
+    final inner =
+        RegExp(r'<!\[CDATA\[([\s\S]*)\]\]>').firstMatch(body)?.group(1) ?? body;
+    final doc = parser.parse(inner);
+    final select = doc.querySelector('select[name="$selectName"]');
+    if (select == null) return const [];
+    final options = <RegionOption>[];
+    for (final option in select.querySelectorAll('option')) {
+      final name = (option.attributes['value'] ?? '').trim();
+      final id = int.tryParse(option.attributes['did'] ?? '') ?? 0;
+      // 第一项是「-省份-」这种占位，value 为空且没有 did。
+      if (name.isEmpty || id <= 0) continue;
+      options.add(RegionOption(name: name, id: id));
+    }
+    return options;
+  }
+
   Future<PrivacySettings> fetchPrivacySettings() async {
     final result = await _http.get(
       'home.php',
@@ -788,12 +853,7 @@ class ForumRepository {
   static ProfileBaseSettings parseProfileBaseHtml(String html) {
     final doc = parser.parse(html);
     final fields = _formValues(_profileForm(doc, 'op=base'));
-    final box = doc.querySelector('#residedistrictbox');
-    // 「天津市 大港区 [修改]」——[修改] 是弹层触发器，不属于地址。
-    final reside = (box?.text ?? '')
-        .replaceAll('[修改]', '')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
+    final region = _readRegion(doc.querySelector('#residedistrictbox'), fields);
     return ProfileBaseSettings(
       formhash: fields['formhash'] ?? _findFormhash(html),
       occupation: fields['occupation'] ?? '',
@@ -802,9 +862,130 @@ class ForumRepository {
       birthYear: fields['birthyear'] ?? '',
       birthMonth: fields['birthmonth'] ?? '',
       birthDay: fields['birthday'] ?? '',
-      resideText: reside,
+      resideText: region.text,
+      resideProvince: region.province,
+      resideCity: region.city,
+      resideDist: region.dist,
+      resideCommunity: region.community,
       privacy: _privacyOf(fields),
     );
+  }
+
+  /// 读出居住地。
+  ///
+  /// `#residedistrictbox` 有两种形态，差别很大：
+  /// * 已填地址：`<div class="comiis_styli">天津市 大港区 [修改]</div>`，只能读文本；
+  /// * 未填地址：模板块把整张 `<select name="resideprovince">` 塞进来，
+  ///   直接读容器文本会把三十多个省份拼成一句话（用户看到的那个 bug）。
+  ///
+  /// 所以规则是「容器里有 select 就只认选中项」：选中项全是占位符，就是没填，
+  /// 绝不回退去读文本。文本分支再加一道省份名计数兜底，防止别的模板把下拉
+  /// 藏在别的标签里。
+  static ({String province, String city, String dist, String community, String text})
+      _readRegion(Element? box, Map<String, String> fields) {
+    const names = ['resideprovince', 'residecity', 'residedist', 'residecommunity'];
+    final picked = <String>[];
+    var hasSelect = false;
+    for (final name in names) {
+      final select = box?.querySelector('select[name="$name"]');
+      if (select != null) hasSelect = true;
+      final selected = select != null
+          ? _selectedOption(select)
+          // 有的模板把它做成隐藏域而没有 select。
+          : _hiddenRegionValue(box, name);
+      final value = _cleanRegionName(selected) ?? _cleanRegionName(fields[name]);
+      picked.add(value ?? '');
+    }
+
+    if (hasSelect || picked.any((p) => p.isNotEmpty)) {
+      final text = picked.where((p) => p.isNotEmpty).join(' ');
+      return (
+        province: picked[0],
+        city: picked[1],
+        dist: picked[2],
+        community: picked[3],
+        text: text,
+      );
+    }
+
+    // 纯文本形态：去掉 [修改] 之类触发器，压缩空白。
+    final raw = (box == null ? '' : _textWithoutControls(box))
+        .replaceAll('[修改]', '')
+        .replaceAll('\u00a0', ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    // 防御：一长串省级行政区名只可能来自下拉选项，不是真地址。
+    if (_looksLikeRegionDump(raw)) {
+      return (province: '', city: '', dist: '', community: '', text: '');
+    }
+    return (province: '', city: '', dist: '', community: '', text: raw);
+  }
+
+  /// 取 select 里选中项的文本 / value；选中占位项（值为空或 `-省份-`）返回 null。
+  static String? _selectedOption(Element select) {
+    final options = select.querySelectorAll('option');
+    if (options.isEmpty) return null;
+    final selected = options.where((o) => o.attributes.containsKey('selected')).toList();
+    final pick = selected.isNotEmpty ? selected.first : options.first;
+    final value = (pick.attributes['value'] ?? '').trim();
+    if (value.isNotEmpty) return value;
+    // 占位项的 value 通常是空，文本是「-省份-」这种。
+    return null;
+  }
+
+  static String? _hiddenRegionValue(Element? box, String name) {
+    final el = box?.querySelector('input[name="$name"]');
+    if (el == null) return null;
+    final value = (el.attributes['value'] ?? '').trim();
+    return value.isEmpty ? null : value;
+  }
+
+  static String? _cleanRegionName(String? value) {
+    final text = (value ?? '').replaceAll('\u00a0', ' ').trim();
+    if (text.isEmpty) return null;
+    // 「-省份-」「-城市-」「-州县-」都是下拉占位项。
+    if (RegExp(r'^-[^-]{1,4}-$').hasMatch(text)) return null;
+    return text;
+  }
+
+  /// 取纯文本，但跳过 select / option / script / style 子树。
+  static String _textWithoutControls(Element box) {
+    final buffer = StringBuffer();
+    void walk(Node node) {
+      if (node is Text) {
+        buffer.write(node.text);
+        return;
+      }
+      if (node is Element) {
+        const skip = {'select', 'option', 'script', 'style', 'noscript'};
+        if (skip.contains(node.localName)) return;
+      }
+      for (final child in node.nodes) {
+        walk(child);
+      }
+    }
+
+    walk(box);
+    return buffer.toString();
+  }
+
+  static const List<String> _provinceNames = [
+    '北京市', '天津市', '河北省', '山西省', '内蒙古自治区', '辽宁省', '吉林省',
+    '黑龙江省', '上海市', '江苏省', '浙江省', '安徽省', '福建省', '江西省',
+    '山东省', '河南省', '湖北省', '湖南省', '广东省', '广西壮族自治区',
+    '海南省', '重庆市', '四川省', '贵州省', '云南省', '西藏自治区',
+    '陕西省', '甘肃省', '青海省', '宁夏回族自治区', '新疆维吾尔自治区',
+    '台湾省', '香港特别行政区', '澳门特别行政区',
+  ];
+
+  /// 文本里同时出现三个以上省份名，判定为「下拉被当成了地址」。
+  static bool _looksLikeRegionDump(String text) {
+    if (text.length < 12) return false;
+    var hits = 0;
+    for (final name in _provinceNames) {
+      if (text.contains(name) && ++hits >= 3) return true;
+    }
+    return false;
   }
 
   @visibleForTesting
@@ -927,7 +1108,11 @@ class ForumRepository {
   }
 
   Future<String> saveProfileBase(ProfileBaseSettings data) async {
-    final region = splitRegion(data.resideText);
+    // 选择器给的是站点原始的四个地区字段，直接提交；没动过居住地时退回
+    // 从显示文本拆——老数据只有那一串，拆得不一定准，但站点也只是按顺序拼。
+    final (province, city, dist, community) = data.hasRegion
+        ? (data.resideProvince, data.resideCity, data.resideDist, data.resideCommunity)
+        : splitRegion(data.resideText);
     final referer = AppConfig.uri(_profilePath('base')).toString();
     final response = await _http.post(
       'home.php',
@@ -941,10 +1126,10 @@ class ForumRepository {
         'birthyear': data.birthYear,
         'birthmonth': data.birthMonth,
         'birthday': data.birthDay,
-        'resideprovince': region.$1,
-        'residecity': region.$2,
-        'residedist': region.$3,
-        'residecommunity': region.$4,
+        'resideprovince': province,
+        'residecity': city,
+        'residedist': dist,
+        'residecommunity': community,
         for (final entry in data.privacy.entries) 'privacy[${entry.key}]': entry.value,
         'profilesubmit': 'true',
       },
