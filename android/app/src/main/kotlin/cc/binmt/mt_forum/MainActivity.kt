@@ -52,6 +52,10 @@ class MainActivity : FlutterActivity() {
                         }
                     }
                 }
+                // 检测更新时要按 CPU 架构挑安装包，Dart 侧拿不到 ABI。
+                "supportedAbi" -> {
+                    result.success(Build.SUPPORTED_ABIS.firstOrNull() ?: "")
+                }
                 "openDownloadedFile" -> {
                     val path = call.argument<String>("path")
                     val name = call.argument<String>("name") ?: path?.let { File(it).name }

@@ -9,6 +9,7 @@ import '../../services/offline_thread_cache.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_config.dart';
+import '../../core/block_list.dart';
 import '../../core/bbcode_media.dart';
 import '../../core/http_session.dart';
 import '../../core/page_message.dart';
@@ -132,6 +133,7 @@ class _ThreadPageState extends State<ThreadPage> {
   @override
   void initState() {
     super.initState();
+    BlockList.instance.addListener(_onBlockChanged);
     final preview = widget.previewDetail;
     if (preview != null) {
       _detail = preview;
@@ -147,8 +149,13 @@ class _ThreadPageState extends State<ThreadPage> {
     }
   }
 
+  void _onBlockChanged() {
+    if (mounted) setState(() {});
+  }
+
   @override
   void dispose() {
+    BlockList.instance.removeListener(_onBlockChanged);
     _scroll.dispose();
     _replyController.dispose();
     _replyFocus.dispose();
@@ -958,35 +965,45 @@ class _ThreadPageState extends State<ThreadPage> {
   /// 站点的黑名单入口按**昵称**提交，楼层的 author 就是站点渲染的昵称，
   /// 直接拿来用；formhash 是全站共用的，帖子页这一份就能过校验。
   Future<void> _blockAuthor(ForumPost post) async {
-    if (!await _ensureLogin()) return;
     final name = post.author.trim();
     if (name.isEmpty) {
-      _toast('拿不到这楼的昵称，无法拉黑');
+      _toast('拿不到这楼的昵称，无法屏蔽');
       return;
     }
     if (!mounted) return;
     final confirmed = await showGlassDialog<bool>(
       context: context,
       builder: (context) => GlassDialog(
-        title: const Text('加入黑名单'),
-        content: Text('拉黑后「$name」将无法给你发私信、留言。\n可以随时在 TA 的主页解除。'),
+        title: const Text('屏蔽用户'),
+        content: Text(
+          '屏蔽后「$name」的主题、回复和点评都不会再显示。\n'
+          '屏蔽只在本机生效，可以随时在「我的 → 屏蔽管理」里解除。',
+        ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('加入黑名单'),
+            child: const Text('屏蔽'),
           ),
         ],
       ),
     );
     if (confirmed != true || !mounted) return;
+
+    // 先落本地，界面立刻见效；站点黑名单只是顺带，失败也不影响这边。
+    await BlockList.instance.blockUser(name, uid: post.uid);
+    if (!mounted) return;
+    if (!AppState.instance.isLoggedIn) {
+      _toast('已屏蔽「$name」');
+      return;
+    }
     try {
       await _repo.blockUser(username: name, hash: _detail?.formhash ?? '');
       if (!mounted) return;
-      _toast('已把「$name」加入黑名单');
-    } catch (e) {
+      _toast('已屏蔽「$name」');
+    } catch (_) {
       if (!mounted) return;
-      _toast(e is SiteException ? e.message : '拉黑失败，请稍后重试');
+      _toast('已在本机屏蔽「$name」，站点黑名单没设置成功');
     }
   }
 
@@ -1282,25 +1299,51 @@ class _ThreadPageState extends State<ThreadPage> {
         const GlassMenuItem(value: 'refresh', icon: Icons.refresh_rounded, label: '刷新'),
       ];
 
+  /// 过滤掉被屏蔽作者的楼层，以及命中关键词的回复。
+  ///
+  /// 主题正文（isOp）不套关键词：关键词是挡评论的，正文里提一句就整帖消失
+  /// 属于误伤。原始 [_posts] 不动——楼层序号、翻页去重都按原始数据处理，
+  /// 这里只影响渲染，名单改回来内容就回来了。
+  List<ForumPost> get _visiblePosts {
+    final block = BlockList.instance;
+    if (block.isEmpty) return _posts;
+    return _posts
+        .where((post) =>
+            !block.blocksUser(post.author, uid: post.uid) &&
+            (post.isOp || !block.blocksText(post.plainText)))
+        .toList(growable: false);
+  }
+
+  List<ForumComment> _visibleComments(ForumPost post) {
+    final block = BlockList.instance;
+    if (block.isEmpty) return post.comments;
+    return post.comments
+        .where((comment) =>
+            !block.blocksUser(comment.author, uid: comment.uid) &&
+            !block.blocksText(comment.text))
+        .toList(growable: false);
+  }
+
   /// 评论区标题只属于第一页：它标记的是「主题正文结束、回复开始」。
   ///
   /// 早先只判断「列表第 2 项」，翻到第 2 页时本页第一楼恰好也是第 2 项，
   /// 于是标题被塞进 11 楼和 12 楼之间，看起来像两块不相干的内容。
-  bool get _showsSectionHeader => ThreadPage.needsSectionHeader(
+  bool _showsSectionHeader(List<ForumPost> posts) => ThreadPage.needsSectionHeader(
         page: _page,
         onlyOp: _onlyOp,
-        postCount: _posts.length,
-        firstPostIsOp: _posts.isNotEmpty && _posts.first.isOp,
+        postCount: posts.length,
+        firstPostIsOp: posts.isNotEmpty && posts.first.isOp,
       );
 
   Widget _buildBody() {
-    if (_loading && _posts.isEmpty) {
+    final posts = _visiblePosts;
+    if (_loading && posts.isEmpty) {
       return const FeedSkeleton(count: 3);
     }
-    if (_error != null && _posts.isEmpty) {
+    if (_error != null && posts.isEmpty) {
       return ErrorView(message: _error!, onRetry: _load);
     }
-    if (_posts.isEmpty) {
+    if (posts.isEmpty) {
       return RefreshIndicator(
         onRefresh: _refreshKeepPosition,
         child: ListView(
@@ -1322,13 +1365,13 @@ class _ThreadPageState extends State<ThreadPage> {
         controller: _scroll,
         physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
         padding: EdgeInsets.fromLTRB(kPageGutter, _topInset, kPageGutter, _composerBottomPadding),
-        itemCount: 1 + _posts.length + 1,
+        itemCount: 1 + posts.length + 1,
         itemBuilder: (context, index) {
           if (index == 0) return _header();
           final postIndex = index - 1;
-          if (postIndex < _posts.length) {
-            final post = _posts[postIndex];
-            if (postIndex == 1 && _showsSectionHeader) {
+          if (postIndex < posts.length) {
+            final post = posts[postIndex];
+            if (postIndex == 1 && _showsSectionHeader(posts)) {
               final scheme = Theme.of(context).colorScheme;
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1348,7 +1391,7 @@ class _ThreadPageState extends State<ThreadPage> {
                         const SizedBox(width: 9),
                         const Text('评论区', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
                         const SizedBox(width: 8),
-                        Text('${_detail?.replies ?? (_posts.length - 1)} 条回复',
+                        Text('${_detail?.replies ?? (posts.length - 1)} 条回复',
                           style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
                         const Spacer(),
                         Icon(Icons.forum_outlined, size: 17, color: scheme.onSurfaceVariant),
@@ -1762,7 +1805,7 @@ class _ThreadPageState extends State<ThreadPage> {
               const SizedBox(height: 10),
               _rateLog(post),
             ],
-            if (post.comments.isNotEmpty) ...[
+            if (_visibleComments(post).isNotEmpty) ...[
               const SizedBox(height: 10),
               _commentList(post),
             ],
@@ -1799,10 +1842,10 @@ class _ThreadPageState extends State<ThreadPage> {
           ),
         if (!_isMine(post) && post.uid > 0)
           const GlassMenuItem(value: 'pm', label: '发消息', icon: Icons.mail_outline_rounded),
-        if (!_isMine(post) && post.uid > 0)
+        if (!_isMine(post) && post.author.trim().isNotEmpty)
           const GlassMenuItem(
             value: 'block',
-            label: '加入黑名单',
+            label: '屏蔽该用户',
             icon: Icons.block_rounded,
             danger: true,
           ),
@@ -1956,6 +1999,7 @@ class _ThreadPageState extends State<ThreadPage> {
   /// 楼中楼点评列表：点击任意一条可针对该条点评发起正式回复。
   Widget _commentList(ForumPost post) {
     final scheme = Theme.of(context).colorScheme;
+    final comments = _visibleComments(post);
     return Container(
       // 撑满卡片：Column 默认按内容宽度收缩，点评短的时候底板只有半截宽，
       // 同一个列表里每楼的底色宽窄不一。
@@ -1969,11 +2013,11 @@ class _ThreadPageState extends State<ThreadPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '楼中楼 · ${post.comments.length}',
+            '楼中楼 · ${comments.length}',
             style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: scheme.outline),
           ),
           const SizedBox(height: 4),
-          for (final comment in post.comments)
+          for (final comment in comments)
             InkWell(
               onTap: () => _startCommentReply(post, comment),
               child: Padding(

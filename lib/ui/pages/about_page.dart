@@ -4,19 +4,37 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_config.dart';
 import '../widgets/glass_app_bar.dart';
+import 'update_sheet.dart';
 
 /// 关于本应用。
-class AboutPage extends StatelessWidget {
+class AboutPage extends StatefulWidget {
   const AboutPage({super.key});
 
+  @override
+  State<AboutPage> createState() => _AboutPageState();
+}
+
+class _AboutPageState extends State<AboutPage> {
   static const String _site = 'https://bbs.binmt.cc';
   static const String _manager = 'https://binmt.cc';
 
   /// 本项目仓库：装的是什么版本，都能顺着这一行找到源码。
   static const String _repo = 'https://github.com/Aioprh/mtforum-app';
 
+  bool _checking = false;
+
   Future<void> _open(String url) async {
     await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+  }
+
+  Future<void> _checkUpdate() async {
+    if (_checking) return;
+    setState(() => _checking = true);
+    try {
+      await checkForUpdates(context);
+    } finally {
+      if (mounted) setState(() => _checking = false);
+    }
   }
 
   @override
@@ -92,6 +110,20 @@ class AboutPage extends StatelessWidget {
             ),
             child: Column(
               children: [
+                ListTile(
+                  leading: const Icon(Icons.system_update_alt_rounded),
+                  title: const Text('检查更新'),
+                  subtitle: const Text('从 GitHub Releases 获取最新版本'),
+                  trailing: _checking
+                      ? const SizedBox(
+                          width: 17,
+                          height: 17,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.chevron_right_rounded, size: 19),
+                  onTap: _checking ? null : _checkUpdate,
+                ),
+                Divider(height: 1, color: scheme.outlineVariant.withValues(alpha: 0.45)),
                 ListTile(
                   leading: const Icon(Icons.public_rounded),
                   title: const Text('MT论坛'),

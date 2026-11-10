@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_config.dart';
+import '../../core/block_list.dart';
 import '../../core/http_session.dart';
 import '../../data/forum_repository.dart';
 import '../../data/models.dart';
@@ -62,11 +63,13 @@ class _UserPageState extends State<UserPage> {
     try {
       final (profile, hash, following, blocked) = await _repo.fetchUserProfile(widget.uid);
       if (!mounted) return;
+      final name = profile.username.isNotEmpty ? profile.username : widget.name;
       setState(() {
         _profile = profile;
         _hash = hash;
         _following = following;
-        _blocked = blocked;
+        // 站点黑名单和本机屏蔽取并集：本地屏蔽过的人，进主页也该显示已屏蔽。
+        _blocked = blocked || BlockList.instance.blocksUser(name, uid: widget.uid);
         _loading = false;
       });
     } catch (e) {
@@ -102,35 +105,27 @@ class _UserPageState extends State<UserPage> {
   /// 拉黑 / 解除拉黑。两个方向都先确认：拉黑会挡住对方私信和留言。
   Future<void> _toggleBlock() async {
     if (_blockBusy) return;
-    if (!AppState.instance.isLoggedIn) {
-      final ok = await Navigator.of(context).push<bool>(
-        noSwipeRoute(builder: (_) => const LoginPage()),
-      );
-      if (ok != true || !mounted) return;
-      // 登录前抓的那份主页是游客视角，没有 formhash，也没有拉黑状态。
-      await _load();
-      if (!mounted) return;
-    }
     final name = _profile?.username.isNotEmpty == true ? _profile!.username : widget.name;
     final block = !_blocked;
+    final who = name.isEmpty ? '该用户' : name;
     final confirmed = await showGlassDialog<bool>(
       context: context,
       builder: (context) => GlassDialog(
-        title: Text(block ? '加入黑名单' : '解除拉黑'),
+        title: Text(block ? '屏蔽用户' : '解除屏蔽'),
         content: Text(
           block
-              ? '拉黑后「${name.isEmpty ? '该用户' : name}」将无法给你发私信、留言，\n'
-                  '你也随时可以在这里解除。'
-              : '解除后「${name.isEmpty ? '该用户' : name}」可以重新给你发私信、留言。',
+              ? '屏蔽后「$who」的主题、回复和点评都不会再显示。\n'
+                  '屏蔽只在本机生效，可以随时在这里解除。'
+              : '解除后「$who」的内容会重新出现在列表和帖子里。',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: Text(block ? '取消' : '保持拉黑'),
+            child: Text(block ? '取消' : '保持屏蔽'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: Text(block ? '加入黑名单' : '解除拉黑'),
+            child: Text(block ? '屏蔽' : '解除屏蔽'),
           ),
         ],
       ),
@@ -139,14 +134,30 @@ class _UserPageState extends State<UserPage> {
 
     setState(() => _blockBusy = true);
     try {
+      // 本地名单先落，界面立刻生效，不依赖站点接口。
       if (block) {
-        await _repo.blockUser(username: name, hash: _hash);
+        await BlockList.instance.blockUser(name, uid: widget.uid);
       } else {
-        await _repo.unblockUser(uid: widget.uid);
+        await BlockList.instance.unblockUser(BlockedUser(name: name, uid: widget.uid));
       }
       if (!mounted) return;
       setState(() => _blocked = block);
-      _toast(block ? '已加入黑名单' : '已解除拉黑');
+
+      if (!AppState.instance.isLoggedIn) {
+        _toast(block ? '已屏蔽「$who」' : '已解除屏蔽');
+        return;
+      }
+      // 站点黑名单是附加项：能设就设，设不上不影响本机屏蔽。
+      try {
+        if (block) {
+          await _repo.blockUser(username: name, hash: _hash);
+        } else {
+          await _repo.unblockUser(uid: widget.uid);
+        }
+        _toast(block ? '已屏蔽「$who」' : '已解除屏蔽');
+      } catch (_) {
+        _toast(block ? '已在本机屏蔽「$who」' : '已在本机解除屏蔽');
+      }
     } catch (e) {
       _toast(e is SiteException ? e.message : '操作失败，请稍后重试');
     } finally {
@@ -296,7 +307,7 @@ class _UserPageState extends State<UserPage> {
                       children: [
                         if (profile?.group.isNotEmpty == true) _tag(scheme, profile!.group, scheme.primary),
                         if (profile?.level.isNotEmpty == true) _tag(scheme, profile!.level, scheme.tertiary),
-                        if (_blocked) _tag(scheme, '已拉黑', scheme.error),
+                        if (_blocked) _tag(scheme, '已屏蔽', scheme.error),
                         _tag(scheme, 'UID ${widget.uid}', scheme.outline),
                       ],
                     ),
@@ -360,7 +371,7 @@ class _UserPageState extends State<UserPage> {
                   items: [
                     GlassMenuItem(
                       value: 'block',
-                      label: _blocked ? '解除拉黑' : '加入黑名单',
+                      label: _blocked ? '解除屏蔽' : '屏蔽该用户',
                       icon: _blocked ? Icons.lock_open_rounded : Icons.block_rounded,
                       danger: !_blocked,
                     ),

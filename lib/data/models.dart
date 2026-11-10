@@ -1,3 +1,5 @@
+import '../core/block_list.dart';
+
 class ForumBoard {
   const ForumBoard({
     required this.fid,
@@ -302,6 +304,10 @@ class ForumPost {
   final List<ForumComment> comments;
   final List<RateRecord> rates;
   final String rateSummary;
+
+  /// 正文纯文本缓存，关键词屏蔽要拿它比对；HTML 转文本不便宜，按楼层存一份。
+  String? _plainText;
+  String get plainText => _plainText ??= BlockList.plainTextOf(html);
 
   /// 楼层标签：主题正文不参与评论排序；首条评论为沙发，第十楼为下水道。
   String get floorLabel => isPinned ? '置顶 $floor#' : seatLabel;

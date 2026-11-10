@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/app_config.dart';
 import '../../data/models.dart';
 import '../../state/app_state.dart';
 import '../widgets/glass_app_bar.dart';
@@ -8,6 +9,7 @@ import '../widgets/thread_feed.dart';
 import '../widgets/user_avatar.dart';
 import 'about_page.dart';
 import 'black_house_page.dart';
+import 'block_list_page.dart';
 import 'browse_history_page.dart';
 import 'credit_page.dart';
 import 'friends_page.dart';
@@ -27,6 +29,7 @@ import 'tags_page.dart';
 import 'download_manager_page.dart';
 import 'mcp_page.dart';
 import 'offline_cache_page.dart';
+import 'update_sheet.dart';
 import 'user_page.dart';
 import '../navigation/app_routes.dart';
 import '../widgets/cookie_dialog.dart';
@@ -447,6 +450,9 @@ class _ProfilePageState extends State<ProfilePage>
                   _MenuItem(Icons.download_for_offline_outlined, '下载管理', () {
                     _openPage(const DownloadManagerPage());
                   }),
+                  _MenuItem(Icons.block_rounded, '屏蔽管理', () {
+                    _openPage(const BlockListPage());
+                  }),
                   // 未登录时「我的收藏」那一组不可见，这里保留一个入口，
                   // 浏览历史是纯本地数据，游客也该能翻。
                   if (!state.isLoggedIn)
@@ -477,6 +483,12 @@ class _ProfilePageState extends State<ProfilePage>
                     '液态玻璃',
                     _pickLiquidGlass,
                     trailing: AppState.instance.glassEnabled ? '已开启' : '已关闭',
+                  ),
+                  _MenuItem(
+                    Icons.system_update_alt_rounded,
+                    '检查更新',
+                    () => checkForUpdates(context),
+                    trailing: AppConfig.versionLabel,
                   ),
                   _MenuItem(Icons.info_outline_rounded, '关于本应用', () {
                     Navigator.of(context)

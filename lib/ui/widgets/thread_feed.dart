@@ -2,6 +2,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import '../../core/block_list.dart';
 import '../../core/http_session.dart';
 import '../../data/models.dart';
 import '../pages/thread_page.dart';
@@ -86,13 +87,31 @@ class _ThreadFeedState extends State<ThreadFeed> {
   String? _error;
   int _page = 1;
 
+  /// 过滤掉被屏蔽作者的主题。
+  ///
+  /// 这里不套关键词：关键词是给「评论」用的，标题里碰巧带一个词就整帖消失
+  /// 太粗暴了。列表数据仍保留原始批次——屏蔽名单随时可能改，按需过滤比在
+  /// 加载时删掉再想办法恢复简单得多。
+  List<ThreadSummary> get _visible {
+    final block = BlockList.instance;
+    if (block.isEmpty) return _items;
+    return _items
+        .where((thread) => !block.blocksUser(thread.author, uid: thread.uid))
+        .toList(growable: false);
+  }
+
   @override
   void initState() {
     super.initState();
     _scroll = widget.controller ?? ScrollController();
     _ownsScroll = widget.controller == null;
     _scroll.addListener(_onScroll);
+    BlockList.instance.addListener(_onBlockChanged);
     if (widget.enabled) _loadFirst();
+  }
+
+  void _onBlockChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
@@ -103,6 +122,7 @@ class _ThreadFeedState extends State<ThreadFeed> {
 
   @override
   void dispose() {
+    BlockList.instance.removeListener(_onBlockChanged);
     if (_ownsScroll) _scroll.dispose();
     super.dispose();
   }
@@ -227,15 +247,16 @@ class _ThreadFeedState extends State<ThreadFeed> {
 
   /// 列表尾部的状态：空、出错、加载中、到底。
   Widget _tail(ColorScheme scheme, bool showSkeleton) {
-    if (_items.isEmpty && _initialized && _error == null) {
+    final items = _visible;
+    if (items.isEmpty && _initialized && _error == null) {
       return SizedBox(height: 320, child: EmptyView(text: widget.emptyText));
     }
     if (_error != null) {
       return ErrorView(
         message: _error!,
-        compact: _items.isNotEmpty,
+        compact: items.isNotEmpty,
         onRetry: () {
-          if (_items.isEmpty) {
+          if (items.isEmpty) {
             _loadFirst();
           } else {
             _loadMore();
@@ -255,7 +276,7 @@ class _ThreadFeedState extends State<ThreadFeed> {
         ),
       );
     }
-    if (!_hasMore && _items.isNotEmpty) {
+    if (!_hasMore && items.isNotEmpty) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 18),
         child: Center(
@@ -272,7 +293,8 @@ class _ThreadFeedState extends State<ThreadFeed> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final showSkeleton = _loading && _items.isEmpty && _error == null;
+    final items = _visible;
+    final showSkeleton = _loading && items.isEmpty && _error == null;
 
     // header 与吸顶条各自占一个 sliver，列表项放进 SliverPadding，
     // 这样吸顶条能独立钉在顶部，不会跟着帖子一起滚走。
@@ -331,8 +353,8 @@ class _ThreadFeedState extends State<ThreadFeed> {
               return _tail(scheme, showSkeleton);
             }
 
-            if (index < _items.length) {
-              final thread = _items[index];
+            if (index < items.length) {
+              final thread = items[index];
               return Padding(
                 padding: const EdgeInsets.only(bottom: 11),
                 child: ThreadCard(
@@ -350,7 +372,7 @@ class _ThreadFeedState extends State<ThreadFeed> {
               );
             }
             return _tail(scheme, showSkeleton);
-          }, childCount: (showSkeleton ? 5 : _items.length) + 1),
+          }, childCount: (showSkeleton ? 5 : items.length) + 1),
         ),
       ),
     ];
