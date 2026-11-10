@@ -5,7 +5,6 @@ import 'package:flutter/services.dart';
 
 import 'dart:ui';
 
-import '../services/update_service.dart';
 import '../state/app_state.dart';
 
 import 'pages/boards_page.dart';
@@ -26,29 +25,49 @@ class AppShell extends StatefulWidget {
   State<AppShell> createState() => _AppShellState();
 }
 
-class _AppShellState extends State<AppShell> {
+class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   int _index = 0;
   DateTime? _lastBackPressedAt;
 
   Timer? _autoCheckTimer;
 
+  /// 上一次自动检查的时刻。冷启动必查；从后台回来则隔半小时才再查，
+  /// 免得用户来回切应用就把 GitHub 的匿名额度撞干净。
+  DateTime? _lastUpdateCheck;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // 等首屏稳下来再查，别和首页的帖子请求抢带宽，也别一进来就弹窗。
-    _autoCheckTimer = Timer(const Duration(seconds: 5), () {
+    _autoCheckTimer = Timer(const Duration(seconds: 3), () {
       if (mounted) _autoCheckUpdate();
     });
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _autoCheckTimer?.cancel();
     super.dispose();
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    final last = _lastUpdateCheck;
+    // 启动时 Flutter 也会发一次 resumed，那次交给 initState 的定时器，
+    // 这里只管「从后台切回来」，且半小时内不重复请求。
+    if (last == null) return;
+    if (DateTime.now().difference(last) >= const Duration(minutes: 30)) {
+      _autoCheckUpdate();
+    }
+  }
+
   Future<void> _autoCheckUpdate() async {
-    if (!await UpdateService.claimAutoCheck() || !mounted) return;
+    if (!mounted) return;
+    _lastUpdateCheck = DateTime.now();
+    // silent 只压掉「已是最新」的提示，有新版本照样弹更新面板。
     await checkForUpdates(context, silent: true);
   }
 

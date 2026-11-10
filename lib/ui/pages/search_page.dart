@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/block_list.dart';
 import '../../core/http_session.dart';
 import '../../data/models.dart';
 import '../../state/app_state.dart';
@@ -10,8 +11,10 @@ import '../widgets/measure_height.dart';
 import '../widgets/state_views.dart';
 import '../widgets/thread_glass.dart';
 import '../widgets/thread_card.dart';
+import '../widgets/user_hit_card.dart';
 import 'login_page.dart';
 import 'thread_page.dart';
+import 'user_page.dart';
 import '../navigation/app_routes.dart';
 
 /// 站内搜索（Discuz 原生搜索流程）。
@@ -31,11 +34,16 @@ class _SearchPageState extends State<SearchPage> with AutomaticKeepAliveClientMi
 
   List<ForumCategory> _categories = const [];
   List<ThreadSummary> _results = const [];
+  List<UserProfile> _users = const [];
   bool _loading = false;
   bool _loadingMore = false;
   bool _hasMore = false;
   int _nextPage = 11;
-  bool _searched = false;
+
+  /// 0 搜帖子 / 1 搜用户。两个维度各自记住搜过没有，来回切不丢结果。
+  int _mode = 0;
+  bool _postSearched = false;
+  bool _userSearched = false;
   String? _error;
   int _fid = 0;
 
@@ -71,14 +79,18 @@ class _SearchPageState extends State<SearchPage> with AutomaticKeepAliveClientMi
   Future<void> _search() async {
     final keyword = _keyword.text.trim();
     if (keyword.isEmpty) {
-      _toast('请输入搜索关键词');
+      _toast(_mode == 1 ? '请输入要搜索的用户名' : '请输入搜索关键词');
       return;
     }
     FocusScope.of(context).unfocus();
+    if (_mode == 1) {
+      await _searchUsers(keyword);
+      return;
+    }
     setState(() {
       _loading = true;
       _error = null;
-      _searched = true;
+      _postSearched = true;
       _results = const [];
     });
     try {
@@ -98,6 +110,40 @@ class _SearchPageState extends State<SearchPage> with AutomaticKeepAliveClientMi
         _loading = false;
       });
     }
+  }
+
+  Future<void> _searchUsers(String keyword) async {
+    setState(() {
+      _loading = true;
+      _error = null;
+      _userSearched = true;
+      _users = const [];
+    });
+    try {
+      final items = await AppState.instance.repo.searchUsers(keyword);
+      if (!mounted) return;
+      setState(() {
+        _users = items;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e is SiteException ? e.message : '搜索用户失败，请稍后重试';
+        _loading = false;
+      });
+    }
+  }
+
+  /// 切换搜索维度。另一边的结果留着，切回来不用重搜。
+  void _switchMode(int mode) {
+    if (mode == _mode) return;
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _mode = mode;
+      _error = null;
+      _loading = false;
+    });
   }
 
   Future<void> _loadMore() async {
@@ -203,16 +249,29 @@ class _SearchPageState extends State<SearchPage> with AutomaticKeepAliveClientMi
               _SearchBead(loading: _loading, onTap: _loading ? null : _search),
             ],
           ),
-          if (_categories.isNotEmpty) ...[
-            const SizedBox(height: 9),
-            GlassPill(
-              label: _filterLabel,
-              icon: Icons.tune_rounded,
-              trailing: Icons.keyboard_arrow_down_rounded,
-              selected: _fid != 0,
-              onTap: _openBoardPicker,
-            ),
-          ],
+          const SizedBox(height: 9),
+          Row(
+            children: [
+              GlassSegmented<int>(
+                segments: const [(0, '帖子'), (1, '用户')],
+                value: _mode,
+                onChanged: _switchMode,
+                dense: true,
+              ),
+              if (_mode == 0 && _categories.isNotEmpty) ...[
+                const SizedBox(width: 8),
+                Flexible(
+                  child: GlassPill(
+                    label: _filterLabel,
+                    icon: Icons.tune_rounded,
+                    trailing: Icons.keyboard_arrow_down_rounded,
+                    selected: _fid != 0,
+                    onTap: _openBoardPicker,
+                  ),
+                ),
+              ],
+            ],
+          ),
         ],
       ),
     );
@@ -250,7 +309,7 @@ class _SearchPageState extends State<SearchPage> with AutomaticKeepAliveClientMi
     );
     if (!mounted || picked == null || picked == _fid) return;
     setState(() => _fid = picked);
-    if (_searched && _keyword.text.trim().isNotEmpty) _search();
+    if (_postSearched && _keyword.text.trim().isNotEmpty) _search();
   }
 
   Widget _resultArea(ColorScheme scheme, double topPadding) {
@@ -258,7 +317,8 @@ class _SearchPageState extends State<SearchPage> with AutomaticKeepAliveClientMi
     // 否则最后一条结果被压在底栏下面。88 与首页、版块页保持一致。
     final bottomPad = 26 + floatingNavSpace(context);
 
-    if (!_searched) {
+    if (_mode == 1) return _userArea(scheme, topPadding, bottomPad);
+    if (!_postSearched) {
       return ListView(
         padding: EdgeInsets.fromLTRB(20, topPadding + 26, 20, bottomPad),
         children: [
@@ -355,6 +415,99 @@ class _SearchPageState extends State<SearchPage> with AutomaticKeepAliveClientMi
           ),
         );
       },
+    );
+  }
+
+  /// 用户搜索结果。版块筛选、加载更多都只属于帖子，这里只有一屏列表。
+  Widget _userArea(ColorScheme scheme, double topPadding, double bottomPad) {
+    if (!_userSearched) {
+      return ListView(
+        padding: EdgeInsets.fromLTRB(20, topPadding + 26, 20, bottomPad),
+        children: [
+          Icon(
+            Icons.person_search_rounded,
+            size: 54,
+            color: scheme.outline.withValues(alpha: 0.55),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            '输入用户名，找到 TA 的主页和帖子',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '按账号名搜索，结果最多显示 100 位',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 11.5, color: scheme.outline),
+          ),
+        ],
+      );
+    }
+    if (_loading) {
+      return Padding(
+        padding: EdgeInsets.only(top: topPadding),
+        child: const FeedSkeleton(count: 3),
+      );
+    }
+    if (_error != null) {
+      final needLogin = _error!.contains('登录');
+      return ListView(
+        padding: EdgeInsets.only(top: topPadding + 40),
+        children: [
+          ErrorView(message: _error!, onRetry: _search),
+          if (needLogin)
+            Center(
+              child: OutlinedButton.icon(
+                onPressed: _openLogin,
+                icon: const Icon(Icons.login_rounded, size: 18),
+                label: const Text('去登录'),
+              ),
+            ),
+        ],
+      );
+    }
+    if (_users.isEmpty) {
+      return Padding(
+        padding: EdgeInsets.only(top: topPadding),
+        child: const EmptyView(
+          text: '没有找到这个用户，检查一下用户名',
+          icon: Icons.person_off_rounded,
+        ),
+      );
+    }
+    return ListView.separated(
+      padding: EdgeInsets.fromLTRB(14, topPadding + 4, 14, bottomPad),
+      physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+      itemCount: _users.length + 1,
+      separatorBuilder: (_, __) => const SizedBox(height: 9),
+      itemBuilder: (context, index) {
+        if (index == _users.length) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: Text(
+              '找到 ${_users.length} 位用户',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 11.5, color: scheme.outline),
+            ),
+          );
+        }
+        return _userCard(_users[index]);
+      },
+    );
+  }
+
+  Widget _userCard(UserProfile user) {
+    return UserHitCard(
+      user: user,
+      blocked: BlockList.instance.blocksUser(user.username, uid: user.uid),
+      onTap: () => Navigator.of(context).push(
+        appRoute(builder: (_) => UserPage(uid: user.uid, name: user.username)),
+      ),
     );
   }
 }

@@ -4566,6 +4566,97 @@ class ForumRepository {
     return results;
   }
 
+  /// 按用户名搜索站内用户。
+  ///
+  /// Discuz 没有独立的用户检索接口，触屏模板把「查找好友」做成了成员搜索：
+  /// `home.php?mod=spacecp&ac=search` 提交 username 后返回一屏
+  /// `comiis_userlist01` 列表。这里复用它，字段与用户主页保持一致。
+  Future<List<UserProfile>> searchUsers(String keyword) async {
+    final text = keyword.trim();
+    if (text.isEmpty) return const [];
+    final result = await _http.get(
+      'home.php',
+      query: {
+        'mod': 'spacecp',
+        'ac': 'search',
+        'searchsubmit': 'true',
+        'type': 'base',
+        'username': text,
+        'mobile': '2',
+      },
+    );
+    _ensureOk(result);
+    final items = _parseUserHits(result.body);
+    if (items.isNotEmpty) return items;
+    // 空列表就是没搜到；只有明确的登录 / 权限提示才当错误抛出去。
+    final message = _pageMessage(parser.parse(result.body));
+    if (message != null &&
+        (message.contains('登录') ||
+            message.contains('权限') ||
+            message.contains('禁止'))) {
+      throw SiteException(message);
+    }
+    return const [];
+  }
+
+  /// 解析用户搜索结果行。
+  ///
+  /// 一行里带 uid 的链接不止一个（加好友、关注、打招呼、发消息），昵称在
+  /// `p.tit a` 里，所以昵称和 uid 都以标题链接为准；头像、用户组、积分
+  /// 再从行内其它节点补。这样改名或昵称里带数字都不会串到操作按钮上。
+  List<UserProfile> _parseUserHits(String html) {
+    final doc = parser.parse(html);
+    final items = <UserProfile>[];
+    final seen = <int>{};
+    const selectors = [
+      '.comiis_userlist01 li',
+      '#friend_ul li',
+      'ul.buddy li',
+    ];
+    for (final selector in selectors) {
+      for (final element in doc.querySelectorAll(selector)) {
+        final nameLink = element.querySelector('p.tit a[href*="uid="]') ??
+            element.querySelector('p.tit a') ??
+            element.querySelector('h4 a[href*="uid="]');
+        final name = _clean(nameLink?.text ?? '');
+        if (name.isEmpty) continue;
+        var uid = _uidFromHref(nameLink?.attributes['href'] ?? '');
+        // 标题链接不带 uid 时退回行内第一个个人空间链接，操作链接要排除。
+        if (uid <= 0) {
+          for (final link in element.querySelectorAll('a[href]')) {
+            final href = (link.attributes['href'] ?? '').replaceAll('&amp;', '&');
+            if (href.contains('mod=spacecp') || href.contains('ac=follow')) continue;
+            uid = _uidFromHref(href);
+            if (uid > 0) break;
+          }
+        }
+        if (uid <= 0 || !seen.add(uid)) continue;
+        final avatarEl = element.querySelector('a.list01_limg img') ??
+            element.querySelector('dd.avt img') ??
+            element.querySelector('img');
+        // 「高中生 积分: 1523」——用户组和积分挤在同一个段落里。
+        final meta = _clean(element.querySelector('p.txt')?.text ?? '');
+        var group = meta;
+        var credits = '';
+        final credit = RegExp(r'积分\s*[:：]\s*(\d+)').firstMatch(meta);
+        if (credit != null) {
+          credits = credit.group(1)!;
+          group = _clean(meta.substring(0, credit.start));
+        }
+        items.add(UserProfile(
+          uid: uid,
+          username: name,
+          avatar: avatarEl == null ? '' : _pickImage(avatarEl),
+          group: group,
+          credits: credits,
+        ));
+        if (items.length >= 100) break;
+      }
+      if (items.isNotEmpty) break;
+    }
+    return items;
+  }
+
   // ---------------------------------------------------------------- 解析
 
   /// 解析主题列表（测试用）。
@@ -4577,6 +4668,11 @@ class ForumRepository {
   @visibleForTesting
   static List<ThreadSummary> parseLooseThreadsForTest(String html, {void Function(int raw)? onRaw}) =>
       ForumRepository.instance._parseLooseThreads(html, onRaw: onRaw);
+
+  /// 用户搜索结果解析（测试用）。
+  @visibleForTesting
+  static List<UserProfile> parseUserHitsForTest(String html) =>
+      ForumRepository.instance._parseUserHits(html);
 
   /// 解析主题列表。
   ///
