@@ -64,10 +64,11 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
   String _birthMonth = '';
   String _birthDay = '';
 
-  /// 居住地四个字段。页面上的地址串只是它们的拼接结果，提交时按字段走，
-  /// 免得跟老代码一样靠空格去猜哪一段是省、哪一段是区。
   /// 页面显示的那一行地址；跟四个字段分开存，清除时才能一起清干净。
   String _resideText = '';
+
+  /// 居住地四个字段。地址串只是它们的拼接结果，提交时按字段走，
+  /// 免得跟老代码一样靠空格去猜哪一段是省、哪一段是区。
   String _resideProvince = '';
   String _resideCity = '';
   String _resideDist = '';
