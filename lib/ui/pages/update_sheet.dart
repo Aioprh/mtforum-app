@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_config.dart';
 import '../../core/native_bridge.dart';
@@ -141,7 +142,12 @@ class _UpdateSheetState extends State<UpdateSheet> {
         .replaceAll(RegExp(r'^\s*[-*]\s+', multiLine: true), '· ')
         .replaceAll(RegExp(r'\[([^\]]+)\]\([^)]+\)'), r'$1')
         .trim();
-    return notes.isEmpty ? '这次发布没有附更新说明。' : notes;
+    if (notes.isEmpty) return '这次发布没有附更新说明，可以点下面的链接查看提交记录。';
+    // CI 自动生成的 release 说明只有一行 Full Changelog，展示出来等于没说。
+    if (notes.startsWith('Full Changelog')) {
+      return '这次发布没有附详细说明，可以点下面的链接查看完整提交记录。';
+    }
+    return notes;
   }
 
   @override
@@ -201,8 +207,27 @@ class _UpdateSheetState extends State<UpdateSheet> {
                     style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant),
                   ),
                   const SizedBox(height: 14),
-                  _sectionTitle(scheme, '更新说明'),
-                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      _sectionTitle(scheme, '更新说明'),
+                      const Spacer(),
+                      TextButton(
+                        onPressed: () => launchUrl(
+                          Uri.parse(
+                            'https://github.com/${UpdateService.repo}/releases/tag/${widget.release.tag}',
+                          ),
+                          mode: LaunchMode.externalApplication,
+                        ),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: const Text('在 GitHub 查看', style: TextStyle(fontSize: 11)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
