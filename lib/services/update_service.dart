@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:html/parser.dart' as parser;
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/app_config.dart';
 
@@ -98,6 +99,22 @@ class UpdateService {
 
   /// 请求超时：慢网络下 12 秒足够，再久不如让用户重试。
   static const Duration timeout = Duration(seconds: 12);
+
+  static const String _autoCheckKey = 'mt_forum_update_check_day';
+
+  /// 启动时自动检查一天最多一次；返回 true 表示今天还没查过。
+  ///
+  /// 先把日期写进去再发起请求：网络失败也算查过，否则每次冷启动都去撞
+  /// GitHub，反而更容易被限流。
+  static Future<bool> claimAutoCheck() async {
+    final prefs = await SharedPreferences.getInstance();
+    final now = DateTime.now();
+    final today = '${now.year}-${now.month.toString().padLeft(2, '0')}-'
+        '${now.day.toString().padLeft(2, '0')}';
+    if (prefs.getString(_autoCheckKey) == today) return false;
+    await prefs.setString(_autoCheckKey, today);
+    return true;
+  }
 
   /// Releases 页的 atom 订阅，API 被限流时的退路。
   static const String _atom = 'https://github.com/$repo/releases.atom';

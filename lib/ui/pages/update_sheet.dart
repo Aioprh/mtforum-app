@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/app_config.dart';
@@ -18,7 +20,8 @@ Future<void> checkForUpdates(BuildContext context, {bool silent = false}) async 
     final check = await UpdateService.check();
     if (!context.mounted) return;
     if (check.hasUpdate) {
-      await UpdateSheet.show(context, check.release!);
+      // 面板自己跑，别让调用方的「检查中」一直转到用户关窗。
+      unawaited(UpdateSheet.show(context, check.release!));
       return;
     }
     if (check.failed) {

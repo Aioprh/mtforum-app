@@ -5,12 +5,14 @@ import 'package:flutter/services.dart';
 
 import 'dart:ui';
 
+import '../services/update_service.dart';
 import '../state/app_state.dart';
 
 import 'pages/boards_page.dart';
 import 'pages/compose_page.dart';
 import 'pages/home_page.dart';
 import 'pages/profile_page.dart';
+import 'pages/update_sheet.dart';
 import 'pages/search_page.dart';
 import 'widgets/glass_compose_button.dart';
 import 'widgets/measure_height.dart';
@@ -27,6 +29,20 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   int _index = 0;
   DateTime? _lastBackPressedAt;
+
+  @override
+  void initState() {
+    super.initState();
+    // 等首屏稳下来再查，别和首页的帖子请求抢带宽，也别一进来就弹窗。
+    Timer(const Duration(seconds: 5), () {
+      if (mounted) _autoCheckUpdate();
+    });
+  }
+
+  Future<void> _autoCheckUpdate() async {
+    if (!await UpdateService.claimAutoCheck() || !mounted) return;
+    await checkForUpdates(context, silent: true);
+  }
 
   late final List<Widget> _pages = [
     HomePage(onOpenSearch: () => setState(() => _index = 2)),
