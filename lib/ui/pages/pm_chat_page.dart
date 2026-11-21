@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 
+import '../../core/bbcode_render.dart';
 import '../../core/http_session.dart';
 import '../../data/models.dart';
 import '../../state/app_state.dart';
 import '../widgets/glass_app_bar.dart';
-import '../widgets/glass_controls.dart';
 import '../widgets/measure_height.dart';
+import '../widgets/pm_composer.dart';
+import '../widgets/post_html_view.dart';
 import '../widgets/state_views.dart';
-import '../widgets/thread_glass.dart';
 import '../widgets/user_avatar.dart';
 import 'login_page.dart';
 import 'user_page.dart';
@@ -33,6 +34,7 @@ class _PmChatPageState extends State<PmChatPage> {
   String _peer = '';
   bool _loading = true;
   bool _sending = false;
+  bool _showEmoji = false;
   String? _error;
 
   @override
@@ -97,7 +99,10 @@ class _PmChatPageState extends State<PmChatPage> {
     final text = _input.text.trim();
     if (text.isEmpty || _sending) return;
     FocusScope.of(context).unfocus();
-    setState(() => _sending = true);
+    setState(() {
+      _sending = true;
+      _showEmoji = false;
+    });
     try {
       var hash = _formhash;
       if (hash.isEmpty) {
@@ -112,11 +117,13 @@ class _PmChatPageState extends State<PmChatPage> {
       );
       if (!mounted) return;
       _input.clear();
+      final html = bbcodeToHtml(text);
       setState(() {
         _formhash = hash;
         _sending = false;
         _messages.add(PmMessage(
-          text: text,
+          text: _plainOfHtml(html),
+          html: html,
           author: AppState.instance.profile?.username ?? '我',
           uid: AppState.instance.profile?.uid ?? 0,
           time: '刚刚',
@@ -132,6 +139,27 @@ class _PmChatPageState extends State<PmChatPage> {
         SnackBar(content: Text(e is SiteException ? e.message : '发送失败，请稍后重试')),
       );
     }
+  }
+
+  /// 本地回显的纯文本版本：HTML 只给气泡渲染，摘要/复制仍用文字。
+  String _plainOfHtml(String html) {
+    return html
+        .replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n')
+        .replaceAll(RegExp(r'</(div|p|blockquote|pre)>', caseSensitive: false), '\n')
+        .replaceAll(RegExp(r'<[^>]+>'), '')
+        .replaceAll('&nbsp;', ' ')
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .replaceAll('&amp;', '&')
+        .replaceAll(RegExp(r'\n{3,}'), '\n\n')
+        .trim();
+  }
+
+  void _setEmojiVisible(bool visible) {
+    if (_showEmoji == visible) return;
+    setState(() => _showEmoji = visible);
+    // 面板顶上来会盖住最后几条消息，顺势滚到底，别让人以为聊天记录被吞了。
+    if (visible) _scrollToBottom();
   }
 
   void _scrollToBottom() {
@@ -187,7 +215,7 @@ class _PmChatPageState extends State<PmChatPage> {
                     bottom: insets,
                     child: MeasureHeight(
                       onHeight: _onComposerMeasured,
-                      child: _composer(scheme),
+                      child: _composer(),
                     ),
                   ),
                 ],
@@ -197,7 +225,7 @@ class _PmChatPageState extends State<PmChatPage> {
   }
 
   /// 输入条给列表让出的高度，由 [MeasureHeight] 实测，首帧先给个估值。
-  double _composerReserve = 64;
+  double _composerReserve = 100;
 
   void _onComposerMeasured(double height) {
     if ((height - _composerReserve).abs() < 0.5) return;
@@ -246,10 +274,20 @@ class _PmChatPageState extends State<PmChatPage> {
 
   Widget _bubble(ColorScheme scheme, PmMessage message) {
     final mine = message.mine;
-    final text = Text(
-      message.text,
-      style: TextStyle(fontSize: 13.5, height: 1.45, color: mine ? scheme.onPrimary : scheme.onSurface),
-    );
+    // 网页版私信正文是 HTML：表情是一枚 <img>，加粗/颜色/链接/引用都在标签里。
+    // 只读纯文本会把表情吞掉，纯表情消息直接变成空泡。
+    final body = message.html.isEmpty
+        ? Text(
+            message.text,
+            style: TextStyle(fontSize: 13.5, height: 1.45, color: mine ? scheme.onPrimary : scheme.onSurface),
+          )
+        : PostHtmlView(
+            html: message.html,
+            dense: true,
+            selectable: false,
+            textColor: mine ? scheme.onPrimary : scheme.onSurface,
+            linkColor: mine ? scheme.onPrimary : null,
+          );
     final time = message.time.isEmpty
         ? null
         : Padding(
@@ -280,7 +318,9 @@ class _PmChatPageState extends State<PmChatPage> {
                     child: Text(_peer, style: TextStyle(fontSize: 10, color: scheme.outline)),
                   ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                  padding: message.html.isEmpty
+                      ? const EdgeInsets.symmetric(horizontal: 12, vertical: 9)
+                      : const EdgeInsets.fromLTRB(12, 7, 12, 7),
                   decoration: BoxDecoration(
                     color: mine ? scheme.primary : scheme.surfaceContainerHighest.withValues(alpha: 0.7),
                     borderRadius: BorderRadius.only(
@@ -293,7 +333,7 @@ class _PmChatPageState extends State<PmChatPage> {
                       color: mine ? Colors.transparent : scheme.outlineVariant.withValues(alpha: 0.45),
                     ),
                   ),
-                  child: text,
+                  child: body,
                 ),
                 if (time != null) time,
               ],
@@ -305,42 +345,13 @@ class _PmChatPageState extends State<PmChatPage> {
     );
   }
 
-  Widget _composer(ColorScheme scheme) {
-    return GlassBackdrop(
-      showBorder: false,
-      opacityScale: 0.92,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          border: Border(
-            top: BorderSide(color: ThreadGlass.borderColor(context), width: 0.6),
-          ),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Expanded(
-                child: GlassField(
-                  controller: _input,
-                  minLines: 1,
-                  maxLines: 4,
-                  textInputAction: TextInputAction.newline,
-                  hintText: '输入私信内容…',
-                ),
-              ),
-              const SizedBox(width: 6),
-              IconButton.filled(
-                tooltip: '发送',
-                onPressed: _sending ? null : _send,
-                icon: _sending
-                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.send_rounded, size: 19),
-              ),
-            ],
-          ),
-        ),
-      ),
+  Widget _composer() {
+    return PmComposer(
+      controller: _input,
+      sending: _sending,
+      showEmoji: _showEmoji,
+      onEmojiChanged: _setEmojiVisible,
+      onSend: _send,
     );
   }
 

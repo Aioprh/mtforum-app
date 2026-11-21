@@ -17,6 +17,7 @@ import '../core/upload_hash.dart';
 import '../core/upload_result.dart';
 import '../core/waf_solver.dart';
 import 'models.dart';
+import 'smilies.dart';
 
 /// 论坛数据仓库：负责请求、解析与表单提交。
 class ForumRepository {
@@ -3523,7 +3524,8 @@ class ForumRepository {
     var peer = '';
     for (final node in doc.querySelectorAll('dl[id^="pmlist_"]')) {
       final text = _pmNodeText(node);
-      if (text.isEmpty) continue;
+      final html = _pmNodeHtml(node);
+      if (text.isEmpty && html.isEmpty) continue;
       final authorLink = _pmAuthorLink(node);
       final authorUid = _pmAuthorUid(node);
       // 作者 uid 才是判断归属的依据：对方的消息带头像/昵称链接，
@@ -3536,6 +3538,7 @@ class ForumRepository {
       if (!mine && author.isNotEmpty && peer.isEmpty) peer = author;
       messages.add(PmMessage(
         text: text,
+        html: html,
         author: author,
         uid: authorUid,
         time: _clean(node.querySelector('dd.ptm span.xg1, dd.ptm .xg1')?.text ?? ''),
@@ -3568,27 +3571,63 @@ class ForumRepository {
           continue;
         }
         if (!afterBreak) continue;
-        final classes = child.classes;
-        if (classes.contains('xg1') || classes.contains('p_pop') || child.localName == 'script') {
-          continue;
-        }
-        // pm_o 在默认模板里是「共 N 条 · 菜单 | 回复」的操作区，
-        // p_pop 里还藏着一个 hover 才弹出的下拉（删除 / 忽略）。
-        // 这些东西靠 CSS 摆到右侧、悬停才出现，直接取文本会一起塞进摘要。
-        // 个别主题拿 pm_o 装正文，所以只在带菜单按钮时才认定是操作区。
-        if (classes.contains('pm_o')) {
-          if (child.querySelector('.p_pop') != null || child.querySelector('a.o') != null) {
-            continue;
-          }
-          if (_clean(child.text).length <= 6) continue;
-        }
-        if (child.id.contains('menu')) continue;
+        if (_isPmNoise(child)) continue;
         buffer.write(_pmVisibleText(child));
       } else if (afterBreak) {
         buffer.write(child.text);
       }
     }
     return _clean(buffer.toString());
+  }
+
+  /// 私信节点正文的 HTML 版本。
+  ///
+  /// 网页版私信编辑器支持官方表情与 BBCode，服务端下发时已经是
+  /// `<img src="…/smiley/…">`、`<b>`、`<blockquote>` 这些标签；只取纯文本
+  /// 会把表情整个吞掉，纯表情消息甚至会被当成空消息丢掉。这里保留节点原样，
+  /// 交给私信气泡按正文渲染。
+  String _pmNodeHtml(Element node) {
+    final body = node.querySelector('dd.ptm') ?? node;
+    final buffer = StringBuffer();
+    var afterBreak = false;
+    for (final child in body.nodes) {
+      if (child is Element) {
+        if (child.localName == 'br') {
+          if (afterBreak) buffer.write('<br>');
+          afterBreak = true;
+          continue;
+        }
+        if (!afterBreak) continue;
+        if (_isPmNoise(child)) continue;
+        buffer.write(child.outerHtml);
+      } else if (afterBreak) {
+        buffer.write(const HtmlEscape(HtmlEscapeMode.element).convert(child.text ?? ''));
+      }
+    }
+    final html = buffer.toString().trim();
+    return html
+        .replaceAll(RegExp(r'(?:\s*<br\s*/?>)+$', caseSensitive: false), '')
+        .trim();
+  }
+
+  /// 时间、操作菜单这类「网页上看得见但不算正文」的节点。
+  bool _isPmNoise(Element child) {
+    final classes = child.classes;
+    if (classes.contains('xg1') || classes.contains('p_pop') || child.localName == 'script') {
+      return true;
+    }
+    // pm_o 在默认模板里是「共 N 条 · 菜单 | 回复」的操作区，
+    // p_pop 里还藏着一个 hover 才弹出的下拉（删除 / 忽略）。
+    // 这些东西靠 CSS 摆到右侧、悬停才出现，直接取文本会一起塞进摘要。
+    // 个别主题拿 pm_o 装正文，所以只在带菜单按钮时才认定是操作区。
+    if (classes.contains('pm_o')) {
+      if (child.querySelector('.p_pop') != null || child.querySelector('a.o') != null) {
+        return true;
+      }
+      if (_clean(child.text).length <= 6) return true;
+    }
+    if (child.id.contains('menu')) return true;
+    return false;
   }
 
   /// 取元素里的「看得见」的文本。
@@ -3608,6 +3647,19 @@ class ForumRepository {
       if (style.contains('display:none')) return;
       if (node.classes.contains('p_pop')) return;
       if (node.localName == 'script' || node.localName == 'style') return;
+      // 官网私信的表情在 HTML 里是一枚 22px 的 <img>，文本节点里什么都没有；
+      // 摘要直接跳过就会让「只发了一个表情」的消息变成空白。这里还原成
+      // 官方表情代码（如 [呵呵]），列表和本地回显都能看出内容。
+      if (node.localName == 'img') {
+        final src = node.attributes['src'] ?? node.attributes['data-src'] ?? '';
+        final code = smileyCodeOfUrl(src);
+        if (code != null) {
+          buffer.write(code);
+        } else if (src.isNotEmpty) {
+          buffer.write('[图片]');
+        }
+        return;
+      }
       // 只有「菜单」两个字的悬浮按钮，点开才是下拉层。
       if (node.localName == 'a' && node.classes.contains('o')) return;
       for (final child in node.nodes) {

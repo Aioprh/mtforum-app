@@ -33,11 +33,24 @@ class PostHtmlView extends StatefulWidget {
     this.images = const <String>[],
     this.onReply,
     this.selectable = true,
+    this.dense = false,
+    this.textColor,
+    this.linkColor,
   });
 
   final String html;
   final List<String> images;
   final VoidCallback? onReply;
+
+  /// 是否使用紧凑排版。私信气泡里空间只有半屏宽，正文按帖子的 15.5/1.62
+  /// 排会显得又大又散，这里换成 13.5/1.45、段间距减半。
+  final bool dense;
+
+  /// 正文颜色。自己的私信气泡是主色底，正文必须压成 onPrimary。
+  final Color? textColor;
+
+  /// 链接颜色；为空时沿用「阅读配色」里的链接色。
+  final Color? linkColor;
 
   /// 正文是否可长按选择/复制。
   ///
@@ -142,8 +155,19 @@ class _PostHtmlViewState extends State<PostHtmlView> {
   }
 
   /// 正文链接用的颜色：默认跟随主题色，用户可以在「阅读配色」里改。
-  Color _linkColor(BuildContext context) =>
+  Color _linkColor(BuildContext context) => widget.linkColor ??
       AppState.instance.readLinkColorOf(Theme.of(context).colorScheme);
+
+  /// 正文基准色：私信里自己的气泡是主色底，需要 onPrimary。
+  Color _textColor(BuildContext context) =>
+      widget.textColor ?? Theme.of(context).colorScheme.onSurface;
+
+  double get _fontSize => widget.dense ? 13.5 : 15.5;
+
+  double get _lineHeight => widget.dense ? 1.45 : 1.62;
+
+  /// 块与块之间的留白；私信里压缩到一半，气泡才不会被几段话撑得很长。
+  double get _blockGap => widget.dense ? 4 : 8;
 
   /// 「回复可见 / 需要回复」提示用的颜色。
   Color _hintColor(BuildContext context) =>
@@ -261,13 +285,13 @@ class _PostHtmlViewState extends State<PostHtmlView> {
       inline.clear();
       widgets.add(
         Padding(
-          padding: const EdgeInsets.only(bottom: 8),
+          padding: EdgeInsets.only(bottom: _blockGap),
           child: Text.rich(
             TextSpan(children: spans),
             style: TextStyle(
-              fontSize: 15.5,
-              height: 1.62,
-              color: Theme.of(context).colorScheme.onSurface,
+              fontSize: _fontSize,
+              height: _lineHeight,
+              color: _textColor(context),
             ),
           ),
         ),
@@ -394,9 +418,9 @@ class _PostHtmlViewState extends State<PostHtmlView> {
           context,
           node,
           TextStyle(
-            fontSize: 15.5,
-            height: 1.62,
-            color: Theme.of(context).colorScheme.onSurface,
+            fontSize: _fontSize,
+            height: _lineHeight,
+            color: _textColor(context),
           ),
         ),
       );
@@ -415,9 +439,9 @@ class _PostHtmlViewState extends State<PostHtmlView> {
     void Function() flush,
   ) {
     final style = TextStyle(
-      fontSize: 15.5,
-      height: 1.62,
-      color: Theme.of(context).colorScheme.onSurface,
+      fontSize: _fontSize,
+      height: _lineHeight,
+      color: _textColor(context),
     );
     final lines = text.split('\n');
     for (var i = 0; i < lines.length; i++) {
@@ -958,7 +982,10 @@ class _PostHtmlViewState extends State<PostHtmlView> {
     TextStyle style,
   ) {
     if (body.isEmpty) return const <InlineSpan>[];
-    if (links.isEmpty) return _linkifyText(context, body, style);
+    // 引用卡自带浅色底，不能跟着气泡正文色走：自己的气泡是主色底时，
+    // onPrimary 的白色链接落在浅灰卡上会直接看不见。
+    final quoteLink = AppState.instance.readLinkColorOf(Theme.of(context).colorScheme);
+    if (links.isEmpty) return _linkifyText(context, body, style, linkColor: quoteLink);
 
     final hits = <({int start, int end, String text, String url})>[];
     for (final link in links) {
@@ -974,7 +1001,7 @@ class _PostHtmlViewState extends State<PostHtmlView> {
         index = body.indexOf(link.text, index + link.text.length);
       }
     }
-    if (hits.isEmpty) return _linkifyText(context, body, style);
+    if (hits.isEmpty) return _linkifyText(context, body, style, linkColor: quoteLink);
     // 起点升序；同起点时长的优先，短的重叠片段随后被丢掉。
     hits.sort(
       (a, b) => a.start != b.start
@@ -992,7 +1019,7 @@ class _PostHtmlViewState extends State<PostHtmlView> {
     for (final hit in picked) {
       if (hit.start > cursor) {
         spans.addAll(
-          _linkifyText(context, body.substring(cursor, hit.start), style),
+          _linkifyText(context, body.substring(cursor, hit.start), style, linkColor: quoteLink),
         );
       }
       final recognizer = TapGestureRecognizer()
@@ -1002,7 +1029,7 @@ class _PostHtmlViewState extends State<PostHtmlView> {
         TextSpan(
           text: hit.text,
           style: style.copyWith(
-            color: _linkColor(context),
+            color: quoteLink,
             decoration: TextDecoration.underline,
           ),
           recognizer: recognizer,
@@ -1011,7 +1038,7 @@ class _PostHtmlViewState extends State<PostHtmlView> {
       cursor = hit.end;
     }
     if (cursor < body.length) {
-      spans.addAll(_linkifyText(context, body.substring(cursor), style));
+      spans.addAll(_linkifyText(context, body.substring(cursor), style, linkColor: quoteLink));
     }
     return spans;
   }
@@ -1495,8 +1522,9 @@ class _PostHtmlViewState extends State<PostHtmlView> {
   List<InlineSpan> _linkifyText(
     BuildContext context,
     String text,
-    TextStyle style,
-  ) {
+    TextStyle style, {
+    Color? linkColor,
+  }) {
     final spans = <InlineSpan>[];
     // 只吃 ASCII 里的 URL 合法字符：紧跟其后的中文不该被吞进链接。
     const urlChars = r'[A-Za-z0-9\-._~:/?#\[\]@!$&()*+,;=%]';
@@ -1546,7 +1574,7 @@ class _PostHtmlViewState extends State<PostHtmlView> {
           TextSpan(
             text: url,
             style: style.copyWith(
-              color: _linkColor(context),
+              color: linkColor ?? _linkColor(context),
               decoration: TextDecoration.underline,
             ),
             recognizer: recognizer,
@@ -1702,9 +1730,9 @@ class _PostHtmlViewState extends State<PostHtmlView> {
             Text(
               text,
               style: TextStyle(
-                fontSize: 15.5,
-                height: 1.62,
-                color: Theme.of(context).colorScheme.onSurface,
+                fontSize: _fontSize,
+                height: _lineHeight,
+                color: _textColor(context),
               ),
             ),
         ];

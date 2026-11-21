@@ -188,13 +188,21 @@ class PmConversation {
 class PmMessage {
   const PmMessage({
     required this.text,
+    this.html = '',
     this.author = '',
     this.uid = 0,
     this.time = '',
     this.mine = false,
   });
 
+  /// 纯文本版本：列表摘要、通知、复制用。
   final String text;
+
+  /// 站点渲染后的正文 HTML。网页版私信编辑器支持表情与 BBCode，服务端
+  /// 已经把 `[呵呵]`、`[b]` 这些转成了 `<img>` / `<b>`，按纯文本读会把
+  /// 表情整段吞掉。
+  final String html;
+
   final String author;
   final int uid;
   final String time;

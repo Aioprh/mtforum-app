@@ -295,3 +295,26 @@ const List<ForumSmileySet> kSmileySets = <ForumSmileySet>[
     ],
   ),
 ];
+
+/// 表情代码 → 图片地址。私信正文在网页端已经被转成 `<img>`，本地回显时
+/// 还得把用户插入的 `[呵呵]` 原样转回去，两边才长得一样。
+final Map<String, String> kSmileyUrlByCode = <String, String>{
+  for (final set in kSmileySets)
+    for (final smiley in set.items) smiley.code: set.urlOf(smiley),
+};
+
+/// 图片文件名 → 表情代码。用于把私信摘要里的表情图还原成 `[呵呵]`，
+/// 否则纯表情消息在列表里会变成一条空白。
+final Map<String, String> kSmileyCodeByFile = <String, String>{
+  for (final set in kSmileySets)
+    for (final smiley in set.items) smiley.file.toLowerCase(): smiley.code,
+};
+
+/// 从表情图地址里认出是哪一枚官方表情；不是表情图返回 null。
+String? smileyCodeOfUrl(String url) {
+  if (url.isEmpty) return null;
+  if (!url.contains('/smiley/') && !url.contains('smiley')) return null;
+  final path = Uri.tryParse(url)?.path ?? url;
+  final file = path.split('/').last.toLowerCase();
+  return kSmileyCodeByFile[file];
+}
