@@ -1671,14 +1671,16 @@ class _ThreadPageState extends State<ThreadPage> {
 
   Widget _postCard(ForumPost post) {
     final scheme = Theme.of(context).colorScheme;
+    final isDark = scheme.brightness == Brightness.dark;
     final targeted = _replyTarget?.pid == post.pid;
     return Card(
       clipBehavior: Clip.antiAlias,
       margin: EdgeInsets.zero,
       elevation: 0,
-      color: post.isOp
-          ? scheme.primary.withValues(alpha: 0.045)
-          : scheme.surface,
+      // 主题楼和回复楼统一白底。之前主题楼铺了一层 4.5% 的主色淡蓝、
+      // 再配 38% 的主色描边，整块看着像「被选中」，和周围玻璃卡片的
+      // 中性色不是一套语言；楼主身份交给右上角的「主题正文」标签即可。
+      color: scheme.surface,
       surfaceTintColor: Colors.transparent,
       shadowColor: Colors.transparent,
       shape: RoundedRectangleBorder(
@@ -1686,12 +1688,12 @@ class _ThreadPageState extends State<ThreadPage> {
         // 挨在一起，看着像两套卡片。以 14 收齐。
         borderRadius: BorderRadius.circular(14),
         side: BorderSide(
+          // 描边只用来勾出卡片边界，不承担「这是楼主」的信息，
+          // 所以走中性色；深浅色下各给一档，避免浅色发灰、深色发亮。
           color: targeted
               ? scheme.primary.withValues(alpha: 0.75)
-              : post.isOp
-                  ? scheme.primary.withValues(alpha: 0.38)
-                  : scheme.outlineVariant.withValues(alpha: 0.55),
-          width: targeted ? 1.5 : post.isOp ? 1.1 : 0.8,
+              : scheme.outlineVariant.withValues(alpha: isDark ? 0.5 : 0.62),
+          width: targeted ? 1.5 : 0.8,
         ),
       ),
       child: Padding(
