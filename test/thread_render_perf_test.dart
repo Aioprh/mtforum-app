@@ -17,7 +17,7 @@ void main() {
 
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
-        body: ListView(children: [PostHtmlView(html: html)]),
+        body: ListView(children: [PostHtmlView(html: html, progressive: true)]),
       ),
     ));
     // 正文按块分帧上屏（每帧 24 块），首帧只铺第一块。这里把后续帧推完，
@@ -70,7 +70,7 @@ void main() {
     addTearDown(tester.view.reset);
 
     await tester.pumpWidget(MaterialApp(
-      home: Scaffold(body: ListView(children: [PostHtmlView(html: html)])),
+      home: Scaffold(body: ListView(children: [PostHtmlView(html: html, progressive: true)])),
     ));
     await tester.pump();
     final firstFrame = tester.getSize(find.byType(PostHtmlView)).height;

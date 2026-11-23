@@ -116,6 +116,13 @@ class _ThreadPageState extends State<ThreadPage> {
   /// 楼层定位只做一次：之后「只看楼主」重载不该把用户再拽回那一楼。
   bool _initialPidHandled = false;
 
+  /// 主题楼是否已经分帧铺开过。
+  ///
+  /// 分块铺开只为「点开帖子」那一瞬间服务：首楼滚出屏幕被列表回收后，
+  /// 再进来必须一次铺满，否则整篇高度先从几万像素缩到一小截，滚动位置
+  /// 会被 clamp 回顶部。这里按页面记，退出重进仍能享受首屏分帧。
+  bool _opProgressiveDone = false;
+
   /// 当前这一页里已经显示过的楼层 pid，用来识别「站点把最后一页又发了一遍」。
   final Set<int> _shownPids = <int>{};
 
@@ -1673,7 +1680,10 @@ class _ThreadPageState extends State<ThreadPage> {
     final scheme = Theme.of(context).colorScheme;
     final isDark = scheme.brightness == Brightness.dark;
     final targeted = _replyTarget?.pid == post.pid;
-    return Card(
+    // 首楼第一次上屏才分帧铺开；之后任何重建都直接全铺，见 [_opProgressiveDone]。
+    final progressive = post.isOp && !_opProgressiveDone;
+    if (progressive) _opProgressiveDone = true;
+    final card = Card(
       clipBehavior: Clip.antiAlias,
       margin: EdgeInsets.zero,
       elevation: 0,
@@ -1798,7 +1808,12 @@ class _ThreadPageState extends State<ThreadPage> {
               ],
             ),
             const SizedBox(height: 11),
-            PostHtmlView(html: post.html, images: post.images, onReply: _focusReply),
+            PostHtmlView(
+              html: post.html,
+              images: post.images,
+              onReply: _focusReply,
+              progressive: progressive,
+            ),
             if (post.isOp && !_isMine(post)) ...[
               const SizedBox(height: 12),
               _opActions(post),
@@ -1829,6 +1844,10 @@ class _ThreadPageState extends State<ThreadPage> {
         ),
       ),
     );
+    // 主题楼动辄几万像素：滚出 cacheExtent 后一旦被回收，回来时图片要
+    // 重新解码、正文要重新布局，高度不会立刻回到原值，滚动位置就会跑。
+    // 只保留这一楼，回复楼仍交给列表正常回收。
+    return post.isOp ? _KeepAlive(child: card) : card;
   }
 
   /// 楼层「更多」菜单的项。按身份和权限组合，和原来 PopupMenuItem 的顺序一致。
@@ -3768,5 +3787,32 @@ class _RateSheetState extends State<_RateSheet> {
         ],
       ),
     );
+  }
+}
+
+/// 让一栋楼在滚出视口后仍保留 Element。
+///
+/// 只给主题楼用。长图文帖一楼能有几万像素，`SliverList` 回收之后再重建，
+/// 图片需要重新解码、正文需要重新布局，高度在头几帧回不到原值；列表的
+/// 总高度跟着缩水，当前滚动位置就会被 clamp，看起来像「突然回到顶部」。
+/// 回复楼层高度有限，仍交给列表正常回收。
+class _KeepAlive extends StatefulWidget {
+  const _KeepAlive({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_KeepAlive> createState() => _KeepAliveState();
+}
+
+class _KeepAliveState extends State<_KeepAlive>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    return widget.child;
   }
 }

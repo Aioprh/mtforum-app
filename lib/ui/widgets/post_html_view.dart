@@ -36,11 +36,21 @@ class PostHtmlView extends StatefulWidget {
     this.dense = false,
     this.textColor,
     this.linkColor,
+    this.progressive = false,
   });
 
   final String html;
   final List<String> images;
   final VoidCallback? onReply;
+
+  /// 首次挂载时是否分帧铺开正文。
+  ///
+  /// 只给「点开帖子首屏那一楼」开启：长图文帖一次铺三百多个 widget 要
+  /// 300ms 上下，正好撞上转场。但分块期间这一楼的高度是逐步长起来的，
+  /// 一旦滚出屏幕被列表回收、再回来时又从第一块开始，整篇高度会瞬间
+  /// 缩到一小截，当前滚动位置被 clamp 回去——表现就是「突然回到顶部」。
+  /// 所以同一个正文只分块一次，重建时一律全铺。
+  final bool progressive;
 
   /// 是否使用紧凑排版。私信气泡里空间只有半屏宽，正文按帖子的 15.5/1.62
   /// 排会显得又大又散，这里换成 13.5/1.45、段间距减半。
@@ -71,6 +81,12 @@ class _PostHtmlViewState extends State<PostHtmlView> {
   int _visibleChunks = 1;
   bool _chunkScheduled = false;
 
+  /// 本次挂载是否允许分帧铺开。
+  ///
+  /// 由调用方保证同一楼只在首次挂载时给 true：列表回收后重建时直接从
+  /// 完整高度开始，否则高度骤减会把滚动位置 clamp 回前面。
+  bool _progressive = false;
+
   /// 每帧最多新铺多少个正文块。
   ///
   /// 长图文帖一楼就有三百多个 widget，一次性全铺开要 300ms 上下：点开帖子
@@ -85,6 +101,7 @@ class _PostHtmlViewState extends State<PostHtmlView> {
   @override
   void initState() {
     super.initState();
+    _progressive = widget.progressive;
     _lastLinkColor = AppState.instance.readLinkColor;
     _lastHintColor = AppState.instance.readHintColor;
     AppState.instance.addListener(_onReadPaletteChanged);
@@ -102,12 +119,15 @@ class _PostHtmlViewState extends State<PostHtmlView> {
     setState(_reset);
   }
 
-  /// 丢掉已解析的内容，下一次 build 重新解析、重新分帧。
+  /// 丢掉已解析的内容，下一次 build 重新解析。
+  ///
+  /// 这里**不能**把 [_visibleChunks] 拨回 1：重排时如果这一楼已经铺到第
+  /// N 块，退回去会让它瞬间变矮，列表的滚动位置会被 clamp（表现为回顶）。
+  /// 新内容的块数更少时，build 里的循环会自己截断。
   void _reset() {
     _disposeRecognizers();
     _cache = null;
     _chunks = null;
-    _visibleChunks = 1;
   }
 
   @override
@@ -119,7 +139,12 @@ class _PostHtmlViewState extends State<PostHtmlView> {
   @override
   void didUpdateWidget(covariant PostHtmlView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.html != widget.html) _reset();
+    if (oldWidget.html != widget.html) {
+      // 同一位置换了正文（刷新、翻页复用元素）时不再分块：
+      // 用户此刻多半正停在页面中段，高度骤变会把位置带跑。
+      _progressive = false;
+      _reset();
+    }
   }
 
   /// 排下一帧再铺一块。
@@ -1747,11 +1772,14 @@ class _PostHtmlViewState extends State<PostHtmlView> {
       );
     }
     final chunks = _chunks ??= _split(cache);
+    // 非首次挂载直接全铺：列表回收重建时，这一楼必须在第一帧就回到
+    // 完整高度，否则总高度骤减，正在看的位置会被夹到前面去。
+    final visibleChunks = _progressive ? _visibleChunks : chunks.length;
     final visible = <Widget>[];
-    for (var i = 0; i < _visibleChunks && i < chunks.length; i++) {
+    for (var i = 0; i < visibleChunks && i < chunks.length; i++) {
       visible.addAll(chunks[i]);
     }
-    if (_visibleChunks < chunks.length) _scheduleNextChunk();
+    if (_progressive && _visibleChunks < chunks.length) _scheduleNextChunk();
     final content = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: visible,
